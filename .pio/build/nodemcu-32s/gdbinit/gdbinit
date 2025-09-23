@@ -1,0 +1,2 @@
+source /home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/gdbinit/symbols
+source /home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/gdbinit/connect

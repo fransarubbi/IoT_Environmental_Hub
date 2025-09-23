@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/CMakeFiles/bootloader
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/CMakeFiles/bootloader.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/CMakeFiles/bootloader-complete.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
