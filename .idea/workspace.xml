@@ -4,15 +4,53 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="BackendCodeEditorMiscSettings">
+    <option name="/Default/Environment/Hierarchy/GeneratedFilesCacheKey/Timestamp/@EntryValue" value="3" type="long" />
     <option name="/Default/Housekeeping/FeatureSuggestion/FeatureSuggestionManager/DisabledSuggesters/=SwitchToGoToActionSuggester/@EntryIndexedValue" value="true" type="bool" />
+    <option name="/Default/Housekeeping/GlobalSettingsUpgraded/IsUpgraded/@EntryValue" value="true" type="bool" />
+  </component>
+  <component name="CMakeProjectFlavorService">
+    <option name="flavorId" value="CMakePlainProjectFlavor" />
   </component>
   <component name="CMakeRunConfigurationManager">
     <generated>
       <config projectName="IoT_Environmental_Hub" targetName="PlatformIO" />
     </generated>
   </component>
+  <component name="CMakeSettings">
+    <configurations>
+      <configuration PROFILE_NAME="Debug" ENABLED="true" CONFIG_NAME="Debug" />
+    </configurations>
+  </component>
   <component name="ChangeListManager">
-    <list default="true" id="134f3a1e-47ad-4c6e-a9e8-c3f2ac10e001" name="Changes" comment="" />
+    <list default="true" id="134f3a1e-47ad-4c6e-a9e8-c3f2ac10e001" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/data.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/editor.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/editor.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/codemodel-v2-d598729eb23d4d090003.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/index-2025-09-23T00-13-58-0405.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-__idf_esp_app_format-22c1720067b00d259c02.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-__idf_src-d138dfac337c16efe0ea.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.sconsign313.dblite" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.sconsign313.dblite" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/CMakeOutput.log" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/CMakeOutput.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/.cmake/api/v1/reply/index-2025-09-23T00-14-00-0074.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/CMakeOutput.log" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/CMakeOutput.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/build.ninja" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/build.ninja" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/compile_commands.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/compile_commands.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/idedata.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/project_description.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/project_description.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/project.checksum" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/project.checksum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/DHT11/dht11.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/DHT11/dht11.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/KY037/ky037.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/KY037/ky037.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/Settings/settings.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Settings/settings.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/sensors/sensors.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Data/data.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/dht11.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/dht11.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ky037.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/ky037.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mq135.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/mq135.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mqtt.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/mqtt.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/settings.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/settings.c" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -26,6 +64,17 @@
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
     </projectState>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="master" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="AvQaVzW8" />
   </component>
   <component name="PlatformioLocalSettings">
     <option name="availableProjects">
@@ -60,9 +109,9 @@
     <option name="minorVersion" value="2.2" />
     <option name="productBranch" value="Classic" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 6
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 6
+}</component>
   <component name="ProjectId" id="334pvn4NOUTywzgqTXP4IAc3xUh" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -74,21 +123,32 @@
     "RunOnceActivity.RadMigrateCodeStyle": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "ky037",
     "junie.onboarding.icon.badge.shown": "true",
     "last_opened_file_path": "/home/franco/IoT_Environmental_Hub",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
     "org.rust.first.attach.projects": "true",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
   <component name="RunManager">
-    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
       <method v="2">
-        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
       </method>
+    </configuration>
+    <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="IoT_Environmental_Hub" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
+      <method v="2" />
     </configuration>
     <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="IoT_Environmental_Hub" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
       <method v="2" />
@@ -105,10 +165,22 @@
       <option name="presentableId" value="Default" />
       <updated>1758586432637</updated>
       <workItem from="1758586434026" duration="37000" />
+      <workItem from="1758587100514" duration="24320000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

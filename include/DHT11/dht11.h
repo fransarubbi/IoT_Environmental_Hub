@@ -34,6 +34,7 @@ extern dht11_data_t dht11_data;
 /* ===== Declaracion de funciones de la API ===== */
 void dht11_init(void);
 esp_err_t dht11_read_data(void);
+void dht11_task(void *);
 
 
 #endif //DHT11_H

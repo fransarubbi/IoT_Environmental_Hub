@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "IoT_Environmental_Hub",
-    "project_version":    "1",
+    "project_version":    "e7c4e47-dirty",
     "project_path":       "/home/franco/IoT_Environmental_Hub",
     "idf_path":           "/home/franco/.platformio/packages/framework-espidf@3.50401.0",
     "build_dir":          "/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s",
@@ -1450,7 +1450,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/src/libsrc.a",
-            "sources": [ "/home/franco/IoT_Environmental_Hub/src/CMakeLists.txt", "/home/franco/IoT_Environmental_Hub/src/dht11.c", "/home/franco/IoT_Environmental_Hub/src/ky037.c", "/home/franco/IoT_Environmental_Hub/src/main.c", "/home/franco/IoT_Environmental_Hub/src/mq135.c", "/home/franco/IoT_Environmental_Hub/src/mqtt.c", "/home/franco/IoT_Environmental_Hub/src/settings.c" ],
+            "sources": [ "/home/franco/IoT_Environmental_Hub/src/CMakeLists.txt", "/home/franco/IoT_Environmental_Hub/src/data.c", "/home/franco/IoT_Environmental_Hub/src/dht11.c", "/home/franco/IoT_Environmental_Hub/src/ky037.c", "/home/franco/IoT_Environmental_Hub/src/main.c", "/home/franco/IoT_Environmental_Hub/src/mq135.c", "/home/franco/IoT_Environmental_Hub/src/mqtt.c", "/home/franco/IoT_Environmental_Hub/src/settings.c" ],
             "include_dirs": []
         },
         "tcp_transport": {

@@ -1,5 +1,4 @@
 #include "MQTT/mqtt.h"
-#include "data/data.h"
 #include "esp_log.h"
 #include <string.h>
 
@@ -119,7 +118,7 @@ void mqtt_reconnect_task(void *arg) {
 
 
 /* ----- Tarea principal ----- */
-void mqtt_task(void *pvParam) {
+/*void mqtt_task(void *pvParam) {
     mqtt_client_t *mqtt = (mqtt_client_t *)pvParam;
     char buffer[MAX_BUFFER_SIZE];
 
@@ -133,4 +132,4 @@ void mqtt_task(void *pvParam) {
             }
         }
     }
-}
+}*/

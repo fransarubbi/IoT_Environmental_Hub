@@ -311,3 +311,23 @@ void dht11_init(void) {
     gpio_set_level(DHT11_PIN, 1);
 }
 
+
+/**
+ * @brief Tarea del sensor DHT11
+ * @param pvParameters
+ */
+void dht11_task(void *pvParameters) {
+    while (1) {
+        // Leer datos del sensor
+        esp_err_t ret = dht11_read_data();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "ERROR: No se pudieron leer los datos.");
+        }
+        else {
+            ESP_LOGI(TAG, "DHT11 - Temperatura: %d.%d°C, Humedad: %d.%d%%",
+                     dht11_data.temperature, dht11_data.temp_decimal,
+                     dht11_data.humidity, dht11_data.hum_decimal);
+        }
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
