@@ -49,6 +49,7 @@ bool setting_is_device_configured(void);
 esp_err_t setting_save_to_nvs(void);
 bool setting_load_from_nvs(void);
 void show_startup_info(void);
+void uart_config_task(void *);
 
 
 #endif //SETTINGS_H

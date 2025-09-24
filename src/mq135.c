@@ -1,5 +1,4 @@
 #include "MQ135/mq135.h"
-#include "ADC_MANAGER/adc_manager.h"
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
 #include "freertos/FreeRTOS.h"

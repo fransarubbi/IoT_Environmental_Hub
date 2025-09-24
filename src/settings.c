@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include <errno.h>
 #include <stdint.h>
+#include "nvs_flash.h"
 
 
 
@@ -418,5 +419,35 @@ bool setting_is_device_configured(void) {
         return true;
     }
     return false;
+}
+
+
+/**
+ * @brief Tarea de configuracion del sistema a traves de UART
+ * @param pvParameters
+ */
+void uart_config_task(void *pvParameters) {
+    // 1. Inicializar NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    // 2. Cargar configuración si existe
+    if (!setting_load_from_nvs()) {   //    No existe
+        bool flag = false;
+        while (!flag) {
+            flag = setting_mode_start();
+            vTaskDelay(10 / portTICK_PERIOD_MS); // Ceder CPU y evitar watchdog
+        }
+    }
+    else {   // Existe
+        ret = uart_init();
+    }
+    settings.sample_rate = 1;
+    show_config();
+    vTaskDelete(NULL); // Termina esta tarea
 }
 
