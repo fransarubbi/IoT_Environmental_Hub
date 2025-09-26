@@ -3,16 +3,8 @@
 
 
 #define DHT11_PIN                GPIO_NUM_4      // Pin 4
-#define DHT11_RMT_CHANNEL        RMT_CHANNEL_0   // Canal RMT
 #define DHT11_START_SIGNAL_LOW     20000    // 20 ms señal baja de inicio
-#define DHT11_START_SIGNAL_HIGH    30       // 30 micro seg señal alta de inicio
-#define RMT_CLK_RES_HZ             1000000    // Reloj del RMT
-#define RMT_BUFFER_SIZE            64          // Tamaño del buffer RMT
-#define RMT_TIMEOUT                10        // Timeout de recepcion
-#define DHT11_DURATION0_MIN        50       // 50 micro seg bit de inicio min
-#define DHT11_DURATION0_MAX        60       // 60 micro seg bit de inicio max
-#define DHT11_DURATION1_MIN        20       // Filtrar menores de 20
-#define DHT11_DURATION1_BIT1       65       // 65 micro seg para bit 1
+#define DHT11_START_SIGNAL_HIGH    40       // 30 micro seg señal alta de inicio
 
 
 #include <esp_err.h>
@@ -34,7 +26,6 @@ extern dht11_data_t dht11_data;
 /* ===== Declaracion de funciones de la API ===== */
 void dht11_init(void);
 esp_err_t dht11_read_data(void);
-void dht11_task(void *);
 
 
 #endif //DHT11_H

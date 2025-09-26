@@ -1,8 +1,13 @@
 #ifndef SENSORS_H
 #define SENSORS_H
 
+#define ID_KY037 0
+#define ID_DHT11 1
+#define ID_MQ135 2
 
 #include <stdint.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
 
 typedef struct {
@@ -12,15 +17,12 @@ typedef struct {
     uint8_t dht11_temp_decimal;     // Parte decimal de temperatura
     uint8_t dht11_humidity;         // Parte entera de humedad
     uint8_t dht11_hum_decimal;      // Parte decimal de humedad
-    uint8_t dht11_checksum;         // Checksum dht11
 
     uint8_t air_quality;
 } data_sensors_t;
 
-extern data_sensors_t data_sensors;
 
+void data_json_encrypt_task(void *);
 
-void sensors_init();
-void task_sensors(void *);
 
 #endif //SENSORS_H
