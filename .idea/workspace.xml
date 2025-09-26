@@ -23,32 +23,74 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="134f3a1e-47ad-4c6e-a9e8-c3f2ac10e001" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/data.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/editor.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/editor.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/include/AES-CTR/aes-ctr.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/aes-ctr.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/codemodel-v2-d598729eb23d4d090003.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/index-2025-09-23T00-13-58-0405.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-__idf_esp_app_format-22c1720067b00d259c02.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-__idf_src-d138dfac337c16efe0ea.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/codemodel-v2-8177eaf4fbb2aa17d119.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/index-2025-09-23T21-54-28-0132.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-IoT_Environmental_Hub.elf-668a58e09c74dda7ca11.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-__idf_esp_app_format-a5747709aad463a4c25d.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-__idf_src-9d0d6f9d8d932d1a0334.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-_project_elf_src-9a73fdd466075cd110a4.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-app-e2707b1603107a9d264a.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-bootloader-c6888fa4a2e312aa4d39.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-confserver-7a751ad6a464a0669fef.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-encrypted-flash-ab28ef3645551dc57388.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-erase_flash-1b767d17b13413c2887d.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-flash-d18c56fca9039586bc2f.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-gen_project_binary-aabfd74e4d203975fcc9.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-menuconfig-6faf1b9b7c4c3e3d180b.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-merge-bin-053550d67f0589c6b078.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-monitor-eb5a2a005c83edb89e0a.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-save-defconfig-8b0a2b6acdfd0fd37147.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-size-components-88a307df3f534e8359d2.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-size-f53403e2a0323bfc8f02.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-size-files-71476c09c360612972bc.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-uf2-a072dd223d493607e380.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.cmake/api/v1/reply/target-uf2-app-ab356519d0eb222ed45f.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.sconsign313.dblite" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.sconsign313.dblite" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/CMakeOutput.log" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/CMakeOutput.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/.cmake/api/v1/reply/index-2025-09-23T00-14-00-0074.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/HEAD" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/HEAD" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/head-ref" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/head-ref" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/IoT_Environmental_Hub.map" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/IoT_Environmental_Hub.map" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.elf" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.elf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/.cmake/api/v1/reply/index-2025-09-23T21-54-29-0825.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/CMakeOutput.log" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/CMakeOutput.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/build.ninja" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/build.ninja" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp_bootloader_format/esp_bootloader_desc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp_bootloader_format/esp_bootloader_desc.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/build.ninja" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/build.ninja" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/compile_commands.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/compile_commands.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/idedata.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_app_format/libesp_app_format.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_app_format/libesp_app_format.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_app_format/esp_app_desc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_app_format/esp_app_desc.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_bootloader_format/esp_bootloader_desc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_bootloader_format/esp_bootloader_desc.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.elf" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.elf" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/project_description.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/project_description.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/data.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/data.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/dht11.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/dht11.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/ky037.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/ky037.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/main.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/main.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/mq135.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/mq135.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/settings.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/settings.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/project.checksum" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/project.checksum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/DHT11/dht11.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/DHT11/dht11.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/Data/data.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Data/data.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/KY037/ky037.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/KY037/ky037.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/Settings/settings.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Settings/settings.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/sensors/sensors.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Data/data.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/README" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/Settings/settings.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Setting/settings.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/platformio.ini" beforeDir="false" afterPath="$PROJECT_DIR$/platformio.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/CMakeLists.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/data.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/dht11.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/dht11.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ky037.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/ky037.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/mq135.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/mq135.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/mqtt.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/mqtt.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/settings.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/settings.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -68,10 +110,14 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="master" />
+        <entry key="$PROJECT_DIR$" value="ky037" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/src/aes-ctr.c" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/src/main.c" root0="FORCE_HIGHLIGHTING" />
   </component>
   <component name="MacroExpansionManager">
     <option name="directoryName" value="AvQaVzW8" />
@@ -113,39 +159,63 @@
   &quot;associatedIndex&quot;: 6
 }</component>
   <component name="ProjectId" id="334pvn4NOUTywzgqTXP4IAc3xUh" />
+  <component name="ProjectStatusUIService">{
+  &quot;uiKindId&quot;: &quot;Widget&quot;
+}</component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.RadMigrateCodeStyle": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "ky037",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/home/franco/IoT_Environmental_Hub",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "org.rust.first.attach.projects": "true",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.RadMigrateCodeStyle&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;AES-CTR&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/franco/IoT_Environmental_Hub&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;CPPToolchains&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/components/Settings" />
+      <recent name="$PROJECT_DIR$/components/MQTT" />
+      <recent name="$PROJECT_DIR$/components/MQ135" />
+      <recent name="$PROJECT_DIR$/components/KY037" />
+      <recent name="$PROJECT_DIR$/components/DHT11" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/include/Setting" />
+      <recent name="$PROJECT_DIR$/include/MQTT" />
+      <recent name="$PROJECT_DIR$/include/MQ135" />
+      <recent name="$PROJECT_DIR$/include/KY037" />
+      <recent name="$PROJECT_DIR$/include/DHT11" />
+    </key>
+  </component>
   <component name="RunManager">
-    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
       <method v="2">
-        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
+        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
       </method>
+    </configuration>
+    <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="IoT_Environmental_Hub" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
+      <method v="2" />
     </configuration>
     <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="IoT_Environmental_Hub" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
       <method v="2" />
@@ -165,7 +235,12 @@
       <option name="presentableId" value="Default" />
       <updated>1758586432637</updated>
       <workItem from="1758586434026" duration="37000" />
-      <workItem from="1758587100514" duration="24320000" />
+      <workItem from="1758587100514" duration="47291000" />
+      <workItem from="1758755209379" duration="2833000" />
+      <workItem from="1758759227590" duration="633000" />
+      <workItem from="1758759867652" duration="5585000" />
+      <workItem from="1758770088884" duration="1067000" />
+      <workItem from="1758815536211" duration="24395000" />
     </task>
     <servers />
   </component>

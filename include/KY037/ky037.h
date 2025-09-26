@@ -5,7 +5,7 @@
 #include "driver/gpio.h"
 
 
-#define KY037_PIN GPIO_NUM_4
+#define KY037_PIN GPIO_NUM_5
 
 
 /* ----- Estructura para estadísticas internas (usada por la ISR) ----- */
@@ -22,13 +22,13 @@ typedef struct {
     uint32_t max_duration;    // Duración máxima en milisegundos
 } ky037_t;
 
-
+extern ky037_stats_t ky037_stats;
+extern SemaphoreHandle_t xStatsMutex;
 
 esp_err_t ky037_init(void);
 // Declaraciones de tareas (para uso interno)
 void vStatsTask(void *pvParameters);
-void vKy037_Get_Stats_Task(void *pvParameters);
-
+void ky037_task(void *);
 
 
 #endif //KY037_H

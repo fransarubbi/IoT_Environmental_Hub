@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "IoT_Environmental_Hub",
-    "project_version":    "e7c4e47-dirty",
+    "project_version":    "7644dd9-dirty",
     "project_path":       "/home/franco/IoT_Environmental_Hub",
     "idf_path":           "/home/franco/.platformio/packages/framework-espidf@3.50401.0",
     "build_dir":          "/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s",
@@ -1445,13 +1445,13 @@
             "dir": "/home/franco/IoT_Environmental_Hub/src",
             "type": "LIBRARY",
             "lib": "__idf_src",
-            "reqs": [],
+            "reqs": [ "mbedtls" ],
             "priv_reqs": [],
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/src/libsrc.a",
-            "sources": [ "/home/franco/IoT_Environmental_Hub/src/CMakeLists.txt", "/home/franco/IoT_Environmental_Hub/src/data.c", "/home/franco/IoT_Environmental_Hub/src/dht11.c", "/home/franco/IoT_Environmental_Hub/src/ky037.c", "/home/franco/IoT_Environmental_Hub/src/main.c", "/home/franco/IoT_Environmental_Hub/src/mq135.c", "/home/franco/IoT_Environmental_Hub/src/mqtt.c", "/home/franco/IoT_Environmental_Hub/src/settings.c" ],
-            "include_dirs": []
+            "sources": [ "/home/franco/IoT_Environmental_Hub/src/main.c", "/home/franco/IoT_Environmental_Hub/src/settings.c", "/home/franco/IoT_Environmental_Hub/src/mqtt.c", "/home/franco/IoT_Environmental_Hub/src/mq135.c", "/home/franco/IoT_Environmental_Hub/src/ky037.c", "/home/franco/IoT_Environmental_Hub/src/dht11.c", "/home/franco/IoT_Environmental_Hub/src/data.c", "/home/franco/IoT_Environmental_Hub/src/aes-ctr.c" ],
+            "include_dirs": [ "." ]
         },
         "tcp_transport": {
             "alias": "idf::tcp_transport",
@@ -2868,11 +2868,11 @@
             "prefix": "idf",
             "dir": "/home/franco/IoT_Environmental_Hub/src",
             "lib": "__idf_src",
-            "reqs": [],
+            "reqs": [ "mbedtls" ],
             "priv_reqs": [],
             "managed_reqs": [],
             "managed_priv_reqs": [],
-            "include_dirs": []
+            "include_dirs": [ "." ]
         }
     },
     "debug_prefix_map_gdbinit": "",

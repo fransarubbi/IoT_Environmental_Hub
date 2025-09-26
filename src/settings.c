@@ -1,4 +1,4 @@
-#include "Settings/settings.h"
+#include "Setting/settings.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "nvs.h"
@@ -8,7 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include <errno.h>
 #include <stdint.h>
-#include "nvs_flash.h"
+
 
 
 
@@ -73,6 +73,7 @@ static void show_help(void) {
     uart_send_text("| SET_MQTT_PASS <pass>      - Configura password MQTT                |\r\n");
     uart_send_text("| SET_DEVICE_NAME <name>    - Configura nombre del dispositivo       |\r\n");
     uart_send_text("| SET_SAMPLE <rate>         - Configura frecuencia de envio de datos |\r\n");
+    uart_send_text("| SET_AES_KEY <key>         - Configura clave de cifrado de AES-CTR  |\r\n");
     uart_send_text("| SHOW                      - Muestra configuracion actual           |\r\n");
     uart_send_text("| EXIT                      - Salir                                  |\r\n");
     uart_send_text("| HELP                      - Muestra mensaje de ayuda               |\r\n");
@@ -105,6 +106,8 @@ void show_config(void) {
     sprintf(temp_buffer, "| Device Name:      %s\r\n", settings.device_name);
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| Sample Rate:      %lu\r\n", settings.sample_rate);
+    uart_send_text(temp_buffer);
+    sprintf(temp_buffer,"| AES Key:           %s\r\n", strlen(settings.aes_key) > 0 ? "**configurado**" : "no configurado");
     uart_send_text(temp_buffer);
     uart_send_text("|========================================|\r\n\r\n");
 }
@@ -244,6 +247,21 @@ static bool process_command(const char *command) {
             }
         }
     }
+    else if (strcmp(cmd, CMD_SET_AES_KEY) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <key> -\r\n");
+        }
+        else {
+            if (strlen(param) == 32) {
+                strncpy(settings.aes_key, param, AES_KEY_LEN - 1);
+                settings.aes_key[AES_KEY_LEN - 1] = '\0';
+                uart_send_text("- INFO: Clave AES configurada correctamente -\r\n");
+            }
+            else {
+                uart_send_text("- ERROR: La clave debe tener 32 caracteres obligatoriamente -\r\n");
+            }
+        }
+    }
     else if (strcmp(cmd, CMD_EXIT) == 0 && setting_is_device_configured()) {
         esp_err_t ret = setting_save_to_nvs();
         if (ret == ESP_OK) {
@@ -348,6 +366,9 @@ esp_err_t setting_save_to_nvs(void) {
     ret = nvs_set_u32(nvs_handle, "sample_rate", settings.sample_rate);
     if (ret != ESP_OK) goto exit;
 
+    ret = nvs_set_str(nvs_handle, "aes_key", settings.aes_key);
+    if (ret != ESP_OK) goto exit;
+
     ret = nvs_commit(nvs_handle);
 
     exit:
@@ -396,6 +417,10 @@ bool setting_load_from_nvs(void) {
     if (ret != ESP_OK) goto exit;
 
     ret = nvs_get_u32(nvs_handle, "sample_rate", &settings.sample_rate);
+    if (ret != ESP_OK) goto exit;
+
+    required_size = sizeof(settings.aes_key);
+    ret = nvs_get_str(nvs_handle, "aes_key", settings.aes_key, &required_size);
     if (ret == ESP_OK) {
         nvs_close(nvs_handle);
         return true;
@@ -415,39 +440,13 @@ bool setting_is_device_configured(void) {
     if (strlen(settings.wifi_ssid) > 0 && strlen(settings.wifi_password) > 0
         && strlen(settings.mqtt_host) > 0 && settings.mqtt_port != 0
         && strlen(settings.mqtt_user) > 0 && strlen(settings.mqtt_password) > 0
-        && strlen(settings.device_name) > 0 && settings.sample_rate > 0) {
+        && strlen(settings.device_name) > 0 && settings.sample_rate > 0
+        && strlen(settings.aes_key) > 0) {
         return true;
     }
     return false;
 }
 
 
-/**
- * @brief Tarea de configuracion del sistema a traves de UART
- * @param pvParameters
- */
-void uart_config_task(void *pvParameters) {
-    // 1. Inicializar NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
 
-    // 2. Cargar configuración si existe
-    if (!setting_load_from_nvs()) {   //    No existe
-        bool flag = false;
-        while (!flag) {
-            flag = setting_mode_start();
-            vTaskDelay(10 / portTICK_PERIOD_MS); // Ceder CPU y evitar watchdog
-        }
-    }
-    else {   // Existe
-        ret = uart_init();
-    }
-    settings.sample_rate = 1;
-    show_config();
-    vTaskDelete(NULL); // Termina esta tarea
-}
 
