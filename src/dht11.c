@@ -19,7 +19,7 @@ dht11_data_t dht11_data;
 /**
  * @brief Configura GPIO con pull-up para DHT11
  */
-static void dht11_gpio_init(void) {
+static esp_err_t dht11_gpio_init(void) {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << DHT11_PIN),
         .mode = GPIO_MODE_INPUT_OUTPUT_OD,  // Open-drain bidireccional
@@ -30,11 +30,11 @@ static void dht11_gpio_init(void) {
 
     esp_err_t ret = gpio_config(&io_conf);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ERROR: Error configurando GPIO: %s", esp_err_to_name(ret));
+        return ret;
     }
-
     gpio_set_level(DHT11_PIN, 1); // Asegurar estado alto inicial
     vTaskDelay(pdMS_TO_TICKS(1000)); // Esperar 1 segundo para estabilizar el sensor
+    return ESP_OK;
 }
 
 
@@ -115,12 +115,13 @@ esp_err_t dht11_read_data(void) {
 /**
  * @brief Funcion de inicializacion del DHT11.
  */
-void dht11_init(void) {
-    dht11_gpio_init();
+esp_err_t dht11_init(void) {
+    esp_err_t ret = dht11_gpio_init();
     dht11_data.humidity = 0;
     dht11_data.hum_decimal = 0;
     dht11_data.temperature = 0;
     dht11_data.temp_decimal = 0;
     dht11_data.checksum = 0;
+    return ret;
 }
 

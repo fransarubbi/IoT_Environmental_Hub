@@ -5,6 +5,7 @@
 #include "esp_log.h"
 
 #include "Data/data.h"
+#include "MQ135/mq135.h"
 #include "DHT11/dht11.h"
 #include "KY037/ky037.h"
 #include "MQTT/mqtt.h"
@@ -12,10 +13,8 @@
 
 
 
-
 static const char *TAG = "MAIN";
 SemaphoreHandle_t config_done_sem;
-QueueHandle_t queue_data = NULL;
 
 
 /**
@@ -59,19 +58,18 @@ void app_main(void) {
         return;
     }
 
-    queue_data = xQueueCreate(10, sizeof(data_sensors_t));
-    if (queue_data == NULL) {
-        ESP_LOGE(TAG, "- ERROR: Error creando la cola de sensores -");
-        return;
-    }
-
     // Crear tarea de configuracion UART
     xTaskCreate(uart_config_task, "uart_config_task", 4096, NULL, 6, NULL);
 
     // Esperar a que la configuracion este lista
     if (xSemaphoreTake(config_done_sem, portMAX_DELAY)) {
-        dht11_init();
-        ky037_init();
-        xTaskCreate(data_json_encrypt_task, "data_json_encrypt_task", 4096, NULL, 6, NULL);
+        esp_err_t retMQ135 = mq135_init();
+        esp_err_t retDHT11 = dht11_init();
+        esp_err_t retKY037 = ky037_init();
+
+        if (retMQ135 == ESP_OK && retDHT11 == ESP_OK && retKY037 == ESP_OK) {
+            //vTaskDelay(pdMS_TO_TICKS(240000));   // 4 minutos de estabilizacion del mq135
+            xTaskCreate(data_json_encrypt_task, "data_json_encrypt_task", 4096, NULL, 6, NULL);
+        }
     }
 }
