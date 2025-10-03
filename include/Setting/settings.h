@@ -3,7 +3,6 @@
 
 #include "esp_err.h"
 #include <stdbool.h>
-#include <stdint.h>
 
 
 /* ---- Configuraciones del sistema ---- */
@@ -11,13 +10,15 @@
 #define SETTINGS_UART_BAUD_RATE       115200
 #define SETTINGS_MAX_STRING_LEN       100
 #define SETTINGS_BUFFER_SIZE          256
-#define AES_KEY_LEN                   33
+#define AES_KEY_LEN                   32
+#define MQTTS_PREFIX                  "mqtts://"
+#define MQTTS_PREFIX_LEN              (sizeof(MQTTS_PREFIX) - 1)
+
 
 /* ---- Comandos disponibles ---- */
 #define CMD_SET_WIFI_SSID          "SET_SSID"
 #define CMD_SET_WIFI_PASS          "SET_PASS"
-#define CMD_SET_MQTT_HOST          "SET_MQTT_HOST"
-#define CMD_SET_MQTT_PORT          "SET_MQTT_PORT"
+#define CMD_SET_MQTT_URI           "SET_MQTT_URI"
 #define CMD_SET_MQTT_USER          "SET_MQTT_USER"
 #define CMD_SET_MQTT_PASS          "SET_MQTT_PASS"
 #define CMD_SET_DEVICE_NAME        "SET_DEVICE_NAME"
@@ -30,10 +31,11 @@
 
 /* ---- Estructura de configuracion ---- */
 typedef struct {
-    char wifi_ssid[SETTINGS_MAX_STRING_LEN];
-    char wifi_password[SETTINGS_MAX_STRING_LEN];
-    char mqtt_host[SETTINGS_MAX_STRING_LEN];
-    uint16_t mqtt_port;
+    uint8_t wifi_ssid[32];
+    uint8_t wifi_ssid_len;
+    uint8_t wifi_password[64];
+    uint8_t wifi_pass_len;
+    char mqtt_uri[SETTINGS_MAX_STRING_LEN];
     char mqtt_user[SETTINGS_MAX_STRING_LEN];
     char mqtt_password[SETTINGS_MAX_STRING_LEN];
     char device_name[SETTINGS_MAX_STRING_LEN];

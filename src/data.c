@@ -43,8 +43,8 @@ void data_json_encrypt_task(void *pvParameters) {
         }
 
         char json[190];
-        char output_base64[256];
-        unsigned char iv_out[16];
+        //char output_base64[256];
+        //unsigned char iv_out[16];
         snprintf(json, sizeof(json),
         "{\"Contador de pulsos de sonido\": %lu, \"Maxima duracion de pulso\": %lu, "
         "\"Temperatura\": %u, \"Humedad\": %u, \"CO2 ppm:\" %.2f, \"CO ppm:\" %.2f,"

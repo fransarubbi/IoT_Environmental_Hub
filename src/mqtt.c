@@ -1,53 +1,91 @@
 #include "MQTT/mqtt.h"
+#include "Setting/settings.h"
 #include "esp_log.h"
-#include <string.h>
+#include <esp_mac.h>
+
 
 static const char *TAG = "MQTT";
+static char mac_addr[18];
+mqtt_client_t mqtt;
 
 
-/* ----- Inicializacion ----- */
-void mqtt_client_init(mqtt_client_t *mqtt, const char *uri,
-                      const char *user, const char *pass) {
-    memset(mqtt, 0, sizeof(mqtt_client_t));   // inicializa la estructura mqtt con ceros
-    mqtt->config.broker.address.uri = uri;  // define la dirección del broker MQTT
+/* Certificado CA (ca.crt) (valida el servidor) */
+static const char *ca_cert_pem = "-----BEGIN CERTIFICATE-----\n"
+"MIIF... CA.crt ...\n"
+"-----END CERTIFICATE-----\n";
 
-    if (user && strlen(user) > 0) {     // configurar usuario si se proporciona
-        mqtt->config.credentials.username = user;
+
+/* Certificado cliente (client.crt) (identifica la ESP32) */
+static const char *client_cert_pem = "-----BEGIN CERTIFICATE-----\n"
+"MIIF... client.crt ...\n"
+"-----END CERTIFICATE-----\n";
+
+
+/* Llave de cliente privado (client.key) (para cifrado mTLS) */
+static const char *client_key_pem = "-----BEGIN PRIVATE KEY-----\n"
+"MIIE... client.key ...\n"
+"-----END PRIVATE KEY-----\n";
+
+
+
+/**
+ * @brief Obtener direccion MAC del microcontrolador.
+ * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
+ */
+static esp_err_t get_mac_address(void) {
+    uint8_t mac[6];
+
+    esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    if (ret == ESP_OK) {
+        snprintf(mac_addr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    } else {
+        return ESP_FAIL;
     }
-
-    if (pass && strlen(pass) > 0) {   // configurar contrasena si se proporciona
-        mqtt->config.credentials.authentication.password = pass;
-    }
-
-    mqtt->client = NULL;   // inicializa el puntero al cliente MQTT como NULL
-    mqtt->reconnecting = pdFALSE;   // controla si se esta en modo reconexion
+    return ESP_OK;
 }
 
 
-/* ----- Callback principal -----
- * Es la funcion que se ejecuta cuando ocurren eventos en el cliente MQTT */
-esp_err_t mqtt_event_handler_cb(mqtt_client_t *mqtt,
-                                esp_mqtt_event_handle_t event) {
+/**
+ * @brief Callback interno para procesar eventos MQTT específicos.
+ * @param event Handle del evento MQTT con información del mismo
+ * @return ESP_OK si el evento fue procesado correctamente
+ */
+static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "Conectado al broker");
-            mqtt->reconnecting = pdFALSE;
+            // Suscribir / publicar iniciales
+            esp_mqtt_client_subscribe(event->client, "/devices/esp32/cmd", 1);
+            esp_mqtt_client_publish(event->client, "/devices/esp32/status", "online", 0, 1, true);
             break;
 
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGW(TAG, "Desconectado del broker");
-            if (mqtt->reconnecting == pdFALSE) {
-                mqtt->reconnecting = pdTRUE;
-                xTaskCreate(mqtt_reconnect_task, "mqtt_reconnect_task",
-                            4096, mqtt, 5, NULL);
-            }
             break;
 
         case MQTT_EVENT_PUBLISHED:
             ESP_LOGI(TAG, "Publicado msg_id=%d", event->msg_id);
             break;
 
-        default:   // ignorar otros eventos
+        case MQTT_EVENT_ERROR:
+            ESP_LOGE(TAG, "Error tipo: %d", event->error_handle->error_type);
+            if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+                ESP_LOGE(TAG, "Error SSL/TLS");
+            }
+            break;
+
+        case MQTT_EVENT_SUBSCRIBED:
+            ESP_LOGI(TAG, "SUBSCRIBED");
+            break;
+
+        case MQTT_EVENT_DATA:
+            ESP_LOGI(TAG, "Tópico: %.*s", event->topic_len, event->topic);
+            ESP_LOGI(TAG, "Datos: %.*s", event->data_len, event->data);
+            // Aquí procesar comandos recibidos
+            break;
+
+        default:
             break;
     }
 
@@ -55,81 +93,83 @@ esp_err_t mqtt_event_handler_cb(mqtt_client_t *mqtt,
 }
 
 
-/* ----- Callback puente -----
- * Esta funcion hace de “puente”: convierte los parametros (void*) en el tipo correcto y llama al callback real mqtt_event_handler_cb */
-void mqtt_event_handler(void *handler_args,
-                        esp_event_base_t base,
-                        int32_t event_id,
-                        void *event_data) {
-    mqtt_client_t *mqtt = (mqtt_client_t *)handler_args;
+/**
+ * @brief Callback para manejar eventos del cliente MQTT.
+ * @param handler_args Argumentos del handler
+ * @param base Base del evento (ESP_EVENT_BASE)
+ * @param event_id ID del evento MQTT
+ * @param event_data Datos del evento (cast a esp_mqtt_event_handle_t)
+ * @return void
+ */
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
+                        int32_t event_id, void *event_data) {
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
-
-    mqtt_event_handler_cb(mqtt, event);
+    mqtt_event_handler_cb(event);
 }
 
 
-/* ----- Start ----- */
-esp_err_t mqtt_client_start(mqtt_client_t *mqtt) {
-    mqtt->client = esp_mqtt_client_init(&mqtt->config);
-    if (!mqtt->client) return ESP_FAIL;
+/**
+ * @brief Inicializacion y configuracion del cliente MQTT.
+ * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
+ */
+esp_err_t mqtt_init(void) {
 
-    // registramos el callback y pasamos mqtt como handler_args
-    esp_mqtt_client_register_event(mqtt->client,
-                                   ESP_EVENT_ANY_ID,
-                                   mqtt_event_handler,
-                                   mqtt);
+    esp_err_t ret = get_mac_address();
+    memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
-    return esp_mqtt_client_start(mqtt->client);
+    if (ret == ESP_OK) {
+        mqtt.config.broker.address.uri = settings.mqtt_uri;   // Establecer la URI del broker
+        mqtt.config.broker.address.transport = MQTT_TRANSPORT_OVER_SSL;  // Configura transporte SSL/TLS
+        mqtt.config.broker.verification.certificate = (const char *)ca_cert_pem;  // Certificado CA
+        mqtt.config.buffer.size = 1024;           // Tamaño del buffer de salida
+        mqtt.config.buffer.out_size = 1024;       // Tamaño del buffer de envío
+        mqtt.config.credentials.authentication.certificate = (const char *)client_cert_pem;  // Certificado del cliente
+        mqtt.config.credentials.authentication.key = (const char *)client_key_pem;   // Clave para mTLS
+        mqtt.config.credentials.username  = settings.mqtt_user;  // Usuario MQTT
+        mqtt.config.credentials.client_id = mac_addr;    // ID (la MAC de la ESP32)
+        mqtt.config.credentials.authentication.password = settings.mqtt_password;  // Contrasena de MQTT
+        mqtt.config.network.disable_auto_reconnect = false;   // Reconectar automaticamente si se pierde conexion
+        mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad
+        mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5
+        mqtt.config.network.timeout_ms = 30000;   // Timeout de 30 seg
+        mqtt.config.session.disable_clean_session = false;  //  No guarda sesion entre desconexiones
+
+        /* ---- Last Will Testament ----
+         * Si el ESP32 se desconecta inesperadamente, el broker publicará "offline" en el tópico status con QoS 1 y
+         * retain (permanece hasta nueva publicación)
+         */
+        mqtt.config.session.last_will.topic = "/devices/esp32/status";
+        mqtt.config.session.last_will.msg = "offline";
+        mqtt.config.session.last_will.qos = 1;
+        mqtt.config.session.last_will.retain = true;
+        mqtt.config.network.reconnect_timeout_ms = 5000;  // Esperar 5 seg entre intentos de reconexion
+        mqtt.client = esp_mqtt_client_init(&mqtt.config);
+        if (!mqtt.client) return ESP_FAIL;
+
+        esp_mqtt_client_register_event(mqtt.client, ESP_EVENT_ANY_ID,
+                                       mqtt_event_handler, mqtt.client);
+        esp_mqtt_client_start(mqtt.client);
+    }
+    else {
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }
 
 
-/* ----- Publish ----- */
-esp_err_t mqtt_client_publish(mqtt_client_t *mqtt,
-                              const char *topic,
-                              const char *payload,
-                              int qos, int retain) {
-    if (!mqtt->client) return ESP_FAIL;
+/**
+ * @brief Publica el mensaje al broker.
+ * @param topic
+ * @param payload
+ * @param qos
+ * @param retain
+ * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
+ */
+esp_err_t mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain) {
+    if (!mqtt.client) return ESP_FAIL;
 
-    int msg_id = esp_mqtt_client_publish(mqtt->client,
-                                         topic,
-                                         payload,
-                                         0, qos, retain);
+    int msg_id = esp_mqtt_client_publish(mqtt.client, topic,payload,
+                                         len, qos, retain);
     return (msg_id >= 0) ? ESP_OK : ESP_FAIL;
 }
 
-
-/* ----- Tarea de reconexión ----- */
-void mqtt_reconnect_task(void *arg) {
-    mqtt_client_t *mqtt = (mqtt_client_t *)arg;
-
-    while (mqtt->reconnecting == pdTRUE) {
-        ESP_LOGI(TAG, "Intentando reconectar al broker...");
-        esp_err_t err = esp_mqtt_client_reconnect(mqtt->client);
-        if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Reconexión exitosa");
-            mqtt->reconnecting = pdFALSE;
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(5000));   // espera 5 segundos
-    }
-
-    vTaskDelete(NULL);
-}
-
-
-/* ----- Tarea principal ----- */
-/*void mqtt_task(void *pvParam) {
-    mqtt_client_t *mqtt = (mqtt_client_t *)pvParam;
-    char buffer[MAX_BUFFER_SIZE];
-
-    while (1) {
-        // Espera datos de sensores
-        if (xQueueReceive(data_formated, &buffer, portMAX_DELAY)) {
-            if (mqtt_client_publish(mqtt, "sensor/data", buffer, 1, 0) != ESP_OK) {
-                ESP_LOGW(TAG, "Error publicando mensaje MQTT");
-            } else {
-                ESP_LOGI(TAG, "Mensaje publicado: %s", buffer);
-            }
-        }
-    }
-}*/
