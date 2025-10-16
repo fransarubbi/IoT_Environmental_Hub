@@ -89,10 +89,14 @@ esp_err_t wifi_init(void) {
                         &instance_got_ip);
     if (ret != ESP_OK) return ret;
 
-    wifi_config_t wifi_config;
+    wifi_config_t wifi_config = { 0 };
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_UNSPECIFIED;
     memcpy(wifi_config.sta.ssid, settings.wifi_ssid, sizeof(wifi_config.sta.ssid));
     memcpy(wifi_config.sta.password, settings.wifi_password, sizeof(wifi_config.sta.password));
+
+    ESP_LOGI("WIFI", "SSID: %d", strlen((char *)wifi_config.sta.ssid));
+    ESP_LOGI("WIFI", "Password length: %d", strlen((char *)wifi_config.sta.password));
 
     ret = esp_wifi_set_mode(WIFI_MODE_STA);
     if (ret != ESP_OK) return ret;

@@ -30099,6 +30099,348 @@
                 "id": "component-config-wi-fi-provisioning-manager",
                 "title": "Wi-Fi Provisioning Manager",
                 "type": "menu"
+            },
+            {
+                "children": [
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Toggle SD card support\nThis requires IDF v5+ as older ESP-IDF do not support SD card erase.",
+                        "id": "LITTLEFS_SDMMC_SUPPORT",
+                        "name": "LITTLEFS_SDMMC_SUPPORT",
+                        "range": null,
+                        "title": "SDMMC support (requires ESP-IDF v5+)",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Define maximum number of partitions that can be mounted.",
+                        "id": "LITTLEFS_MAX_PARTITIONS",
+                        "name": "LITTLEFS_MAX_PARTITIONS",
+                        "range": [
+                            1,
+                            10
+                        ],
+                        "title": "Maximum Number of Partitions",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Logical page size of LITTLEFS partition, in bytes. Must be multiple\nof flash page size (which is usually 256 bytes).\nLarger page sizes reduce overhead when storing large files, and\nimprove filesystem performance when reading large files.\nSmaller page sizes reduce overhead when storing small (< page size)\nfiles.",
+                        "id": "LITTLEFS_PAGE_SIZE",
+                        "name": "LITTLEFS_PAGE_SIZE",
+                        "range": [
+                            256,
+                            1024
+                        ],
+                        "title": "LITTLEFS logical page size",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Includes NULL-terminator. If flashing a prebuilt filesystem image,\nrebuild the filesystem image if this value changes.\nmklittlefs, the tool that generates the image will automatically be rebuilt.\nIf downloading a pre-built release of mklittlefs, it was most-likely\nbuilt with LFS_NAME_MAX=32 and should not be used.",
+                        "id": "LITTLEFS_OBJ_NAME_LEN",
+                        "name": "LITTLEFS_OBJ_NAME_LEN",
+                        "range": [
+                            16,
+                            1022
+                        ],
+                        "title": "Maximum object name length including NULL terminator.",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Minimum size of a block read. All read operations will be a\nmultiple of this value.",
+                        "id": "LITTLEFS_READ_SIZE",
+                        "name": "LITTLEFS_READ_SIZE",
+                        "range": null,
+                        "title": "Minimum size of a block read.",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Minimum size of a block program. All write operations will be a\nmultiple of this value.",
+                        "id": "LITTLEFS_WRITE_SIZE",
+                        "name": "LITTLEFS_WRITE_SIZE",
+                        "range": null,
+                        "title": "Minimum size of a block write.",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Look ahead size. Must be a multiple of 8.",
+                        "id": "LITTLEFS_LOOKAHEAD_SIZE",
+                        "name": "LITTLEFS_LOOKAHEAD_SIZE",
+                        "range": null,
+                        "title": "Look ahead size.",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Size of block caches. Each cache buffers a portion of a block in RAM.\nThe littlefs needs a read cache, a program cache, and one additional\ncache per file. Larger caches can improve performance by storing more\ndata and reducing the number of disk accesses. Must be a multiple of\nthe read and program sizes, and a factor of the block size (4096).",
+                        "id": "LITTLEFS_CACHE_SIZE",
+                        "name": "LITTLEFS_CACHE_SIZE",
+                        "range": null,
+                        "title": "Cache Size",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Number of erase cycles before littlefs evicts metadata logs and moves \nthe metadata to another block. Suggested values are in the\nrange 100-1000, with large values having better performance at the cost\nof less consistent wear distribution.\nSet to -1 to disable block-level wear-leveling.",
+                        "id": "LITTLEFS_BLOCK_CYCLES",
+                        "name": "LITTLEFS_BLOCK_CYCLES",
+                        "range": [
+                            -1,
+                            1024
+                        ],
+                        "title": "LittleFS wear-leveling block cycles",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Saves timestamp on modification. Uses an additional 4bytes.",
+                        "id": "LITTLEFS_USE_MTIME",
+                        "name": "LITTLEFS_USE_MTIME",
+                        "range": null,
+                        "title": "Save file modification time",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Records the filepath only as a 32-bit hash in the file descriptor instead\nof the entire filepath. Saves approximately `sizeof(filepath)` bytes\nper file descriptor.\nIf enabled, functionality (like fstat) that requires the file path \nfrom the file descriptor will not work.\nIn rare cases, may cause unlinking or renaming issues (unlikely) if\nthere's a hash collision between an open filepath and a filepath\nto be modified.",
+                        "id": "LITTLEFS_USE_ONLY_HASH",
+                        "name": "LITTLEFS_USE_ONLY_HASH",
+                        "range": null,
+                        "title": "Don't store filepath in the file descriptor",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Converts LittleFS error codes into human readable strings.\nMay increase binary size depending on logging level.",
+                        "id": "LITTLEFS_HUMAN_READABLE",
+                        "name": "LITTLEFS_HUMAN_READABLE",
+                        "range": null,
+                        "title": "Make errno human-readable",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [],
+                                "depends_on": "<choice LITTLEFS_MTIME>",
+                                "help": "Saves timestamp on modification.",
+                                "id": "LITTLEFS_MTIME_USE_SECONDS",
+                                "name": "LITTLEFS_MTIME_USE_SECONDS",
+                                "range": null,
+                                "title": "Use Seconds",
+                                "type": "bool"
+                            },
+                            {
+                                "children": [],
+                                "depends_on": "<choice LITTLEFS_MTIME>",
+                                "help": "Saves nonce on modification; intended for detecting filechanges\non systems without access to a RTC.\n\nA file who's nonce is the same as it was at a previous time has \nhigh probability of not having been modified.\n\nUpon file modification, the nonce is incremented by one. Upon file\ncreation, a random nonce is assigned.\n\nThere is a very slim chance that a file will have the same nonce if\nit is deleted and created again (approx 1 in 4 billion).",
+                                "id": "LITTLEFS_MTIME_USE_NONCE",
+                                "name": "LITTLEFS_MTIME_USE_NONCE",
+                                "range": null,
+                                "title": "Use Nonce",
+                                "type": "bool"
+                            }
+                        ],
+                        "depends_on": "LITTLEFS_USE_MTIME",
+                        "help": "Save an additional 4-byte attribute. Options listed below.",
+                        "id": "component-config-littlefs-mtime-attribute-options",
+                        "name": "LITTLEFS_MTIME",
+                        "title": "mtime attribute options",
+                        "type": "choice"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Enabling this feature allows for greater drop-in compatability\nwhen replacing SPIFFS. Since SPIFFS doesn't have folders, and \nfolders are just considered as part of a file name, enabling this\nwill automatically create folders as necessary to create a file\ninstead of throwing an error. Similarly, upon the deletion of the\nlast file in a folder, the folder will be deleted. It is recommended\nto only enable this flag as a stop-gap solution.",
+                        "id": "LITTLEFS_SPIFFS_COMPAT",
+                        "name": "LITTLEFS_SPIFFS_COMPAT",
+                        "range": null,
+                        "title": "Improve SPIFFS drop-in compatability",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Enabling this feature extends SPIFFS capability.\nIn SPIFFS data is written immediately to the flash storage when fflush() function called.\nIn LittleFS flush() does not write data to the flash, and fsync() call needed after.\nWith this feature fflush() will write data to the storage.",
+                        "id": "LITTLEFS_FLUSH_FILE_EVERY_WRITE",
+                        "name": "LITTLEFS_FLUSH_FILE_EVERY_WRITE",
+                        "range": null,
+                        "title": "Flush file to flash after each write operation",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": "!LITTLEFS_USE_ONLY_HASH && LITTLEFS_SPIFFS_COMPAT",
+                        "help": "Support opening directory by following APIs:\n\n    int fd = open(\"my_directory\", O_DIRECTORY);",
+                        "id": "LITTLEFS_OPEN_DIR",
+                        "name": "LITTLEFS_OPEN_DIR",
+                        "range": null,
+                        "title": "Support opening directory",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [],
+                                "depends_on": "LITTLEFS_FCNTL_GET_PATH",
+                                "help": "ESP-IDF's header file \"fcntl.h\" doesn't support macro \"F_GETPATH\",\nso we should define this macro here.",
+                                "id": "LITTLEFS_FCNTL_F_GETPATH_VALUE",
+                                "name": "LITTLEFS_FCNTL_F_GETPATH_VALUE",
+                                "range": null,
+                                "title": "Value of command F_GETPATH",
+                                "type": "int"
+                            }
+                        ],
+                        "depends_on": "!LITTLEFS_USE_ONLY_HASH",
+                        "help": "Support getting directory by following APIs:\n\n    char buffer[MAXPATHLEN];\n\n    int fd = open(\"my_file\", flags);\n    fcntl(fd, F_GETPATH, buffer);",
+                        "id": "LITTLEFS_FCNTL_GET_PATH",
+                        "name": "LITTLEFS_FCNTL_GET_PATH",
+                        "range": null,
+                        "title": "Support get file or directory path",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [
+                                    {
+                                        "children": [],
+                                        "depends_on": "<choice LITTLEFS_DISK_VERSION>",
+                                        "help": null,
+                                        "id": "LITTLEFS_DISK_VERSION_MOST_RECENT",
+                                        "name": "LITTLEFS_DISK_VERSION_MOST_RECENT",
+                                        "range": null,
+                                        "title": "Write the most recent LittleFS version",
+                                        "type": "bool"
+                                    },
+                                    {
+                                        "children": [],
+                                        "depends_on": "<choice LITTLEFS_DISK_VERSION>",
+                                        "help": null,
+                                        "id": "LITTLEFS_DISK_VERSION_2_1",
+                                        "name": "LITTLEFS_DISK_VERSION_2_1",
+                                        "range": null,
+                                        "title": "Write LittleFS 2.1",
+                                        "type": "bool"
+                                    },
+                                    {
+                                        "children": [],
+                                        "depends_on": "<choice LITTLEFS_DISK_VERSION>",
+                                        "help": null,
+                                        "id": "LITTLEFS_DISK_VERSION_2_0",
+                                        "name": "LITTLEFS_DISK_VERSION_2_0",
+                                        "range": null,
+                                        "title": "Write LittleFS 2.0 (no forward-looking erase-state CRCs)",
+                                        "type": "bool"
+                                    }
+                                ],
+                                "depends_on": "LITTLEFS_MULTIVERSION",
+                                "help": "See LITTLEFS_MULTIVERSION for details.",
+                                "id": "component-config-littlefs-support-selecting-the-littlefs-minor-version-to-write-to-disk-littlefs_disk_version",
+                                "name": "LITTLEFS_DISK_VERSION",
+                                "title": "LITTLEFS_DISK_VERSION",
+                                "type": "choice"
+                            }
+                        ],
+                        "depends_on": null,
+                        "help": "LittleFS 2.6 bumps the on-disk minor version of littlefs from lfs2.0 -> lfs2.1.\n\nThis change is backwards-compatible, but after the first write with the new version,\nthe image on disk will no longer be mountable by older versions of littlefs.\n\nEnabling LITTLEFS_MULTIVERSION allows to select the On-disk version\nto use when writing in the form of 16-bit major version\n+ 16-bit minor version. This limiting metadata to what is supported by\nolder minor versions. Note that some features will be lost. Defaults to\nto the most recent minor version when zero.",
+                        "id": "LITTLEFS_MULTIVERSION",
+                        "name": "LITTLEFS_MULTIVERSION",
+                        "range": null,
+                        "title": "Support selecting the LittleFS minor version to write to disk",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [],
+                                "depends_on": "<choice LITTLEFS_MALLOC_STRATEGY>",
+                                "help": "Disallow dynamic allocation, static buffers must be provided by the calling application.",
+                                "id": "LITTLEFS_MALLOC_STRATEGY_DISABLE",
+                                "name": "LITTLEFS_MALLOC_STRATEGY_DISABLE",
+                                "range": null,
+                                "title": "Static buffers only",
+                                "type": "bool"
+                            },
+                            {
+                                "children": [],
+                                "depends_on": "<choice LITTLEFS_MALLOC_STRATEGY>",
+                                "help": "Uses an automatic allocation strategy. On systems with heap in SPIRAM, if\nthe allocation size does not exceed SPIRAM_MALLOC_ALWAYSINTERNAL then internal\nheap allocation if preferred, otherwise allocation will be attempted from SPIRAM\nheap.",
+                                "id": "LITTLEFS_MALLOC_STRATEGY_DEFAULT",
+                                "name": "LITTLEFS_MALLOC_STRATEGY_DEFAULT",
+                                "range": null,
+                                "title": "Default heap selection",
+                                "type": "bool"
+                            },
+                            {
+                                "children": [],
+                                "depends_on": "<choice LITTLEFS_MALLOC_STRATEGY>",
+                                "help": "Uses ESP-IDF heap_caps_malloc to allocate from internal heap.",
+                                "id": "LITTLEFS_MALLOC_STRATEGY_INTERNAL",
+                                "name": "LITTLEFS_MALLOC_STRATEGY_INTERNAL",
+                                "range": null,
+                                "title": "Internal heap",
+                                "type": "bool"
+                            },
+                            {
+                                "children": [],
+                                "depends_on": "(SPIRAM_USE_MALLOC || SPIRAM_USE_CAPS_ALLOC) && <choice LITTLEFS_MALLOC_STRATEGY>",
+                                "help": "Uses ESP-IDF heap_caps_malloc to allocate from SPIRAM heap.",
+                                "id": "LITTLEFS_MALLOC_STRATEGY_SPIRAM",
+                                "name": "LITTLEFS_MALLOC_STRATEGY_SPIRAM",
+                                "range": null,
+                                "title": "SPIRAM heap",
+                                "type": "bool"
+                            }
+                        ],
+                        "depends_on": null,
+                        "help": "Maps lfs_malloc to ESP-IDF capabilities-based memory allocator or\ndisables dynamic allocation in favour of user-provided static buffers.",
+                        "id": "component-config-littlefs-buffer-allocation-strategy",
+                        "name": "LITTLEFS_MALLOC_STRATEGY",
+                        "title": "Buffer allocation strategy",
+                        "type": "choice"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Selects whether littlefs performs runtime assert checks.",
+                        "id": "LITTLEFS_ASSERTS",
+                        "name": "LITTLEFS_ASSERTS",
+                        "range": null,
+                        "title": "Enable asserts",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Use esp_partition_mmap to map the partitions to memory, which can provide a significant\nperformance boost in some cases. Make sure the chip you're using has enough available address\nspace to map the partition (for the ESP32 there is 4MB available).",
+                        "id": "LITTLEFS_MMAP_PARTITION",
+                        "name": "LITTLEFS_MMAP_PARTITION",
+                        "range": null,
+                        "title": "Memory map LITTLEFS partitions",
+                        "type": "bool"
+                    }
+                ],
+                "depends_on": null,
+                "id": "component-config-littlefs",
+                "title": "LittleFS",
+                "type": "menu"
             }
         ],
         "depends_on": null,

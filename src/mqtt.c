@@ -9,24 +9,6 @@ static char mac_addr[18];
 mqtt_client_t mqtt;
 
 
-/* Certificado CA (ca.crt) (valida el servidor) */
-static const char *ca_cert_pem = "-----BEGIN CERTIFICATE-----\n"
-"MIIF... CA.crt ...\n"
-"-----END CERTIFICATE-----\n";
-
-
-/* Certificado cliente (client.crt) (identifica la ESP32) */
-static const char *client_cert_pem = "-----BEGIN CERTIFICATE-----\n"
-"MIIF... client.crt ...\n"
-"-----END CERTIFICATE-----\n";
-
-
-/* Llave de cliente privado (client.key) (para cifrado mTLS) */
-static const char *client_key_pem = "-----BEGIN PRIVATE KEY-----\n"
-"MIIE... client.key ...\n"
-"-----END PRIVATE KEY-----\n";
-
-
 
 /**
  * @brief Obtener direccion MAC del microcontrolador.
@@ -114,6 +96,20 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
  */
 esp_err_t mqtt_init(void) {
 
+    size_t ca_size, client_cert_size, client_key_size;
+
+    char *ca_cert_pem = load_file_to_memory("/data/ca.crt", &ca_size);
+    char *client_cert_pem = load_file_to_memory("/data/client.crt", &client_cert_size);
+    char *client_key_pem = load_file_to_memory("/data/client.key", &client_key_size);
+
+    if (!ca_cert_pem || !client_cert_pem || !client_key_pem) {
+        ESP_LOGE(TAG, "Error cargando certificados desde LittleFS");
+        free(ca_cert_pem);
+        free(client_cert_pem);
+        free(client_key_pem);
+        return ESP_FAIL;
+    }
+
     esp_err_t ret = get_mac_address();
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
@@ -151,8 +147,15 @@ esp_err_t mqtt_init(void) {
         esp_mqtt_client_start(mqtt.client);
     }
     else {
+        free(ca_cert_pem);
+        free(client_cert_pem);
+        free(client_key_pem);
         return ESP_FAIL;
     }
+
+    free(ca_cert_pem);
+    free(client_cert_pem);
+    free(client_key_pem);
     return ESP_OK;
 }
 

@@ -10,6 +10,10 @@
 #include <stdint.h>
 
 
+//#include "esp_littlefs.h"
+//#include "esp_littlefs/esp_littlefs.h"
+#include "esp_vfs_fat.h"
+#include "esp_littlefs.h"
 
 
 static const char *TAG = "SETTINGS";
@@ -475,4 +479,51 @@ bool setting_is_device_configured(void) {
 
 
 
+esp_err_t littlefs_init(void) {
+    esp_err_t ret;
 
+    esp_vfs_littlefs_conf_t conf = {
+        .base_path = "/data",
+        .partition_label = "storage",
+        .format_if_mount_failed = true
+    };
+
+    ret = esp_vfs_littlefs_register(&conf);
+
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Fallo al montar LittleFS, intentando formatear...");
+        } else if (ret == ESP_ERR_NOT_FOUND) {
+            ESP_LOGE(TAG, "Particion LittleFS no encontrada en la tabla de particiones.");
+        }
+    }
+    return ret;
+}
+
+
+
+char* load_file_to_memory(const char *path, size_t *out_size) {
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        ESP_LOGE(TAG, "No se pudo abrir archivo: %s", path);
+        return NULL;
+    }
+
+    fseek(f, 0, SEEK_END);
+    size_t size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char *buffer = malloc(size + 1);
+    if (!buffer) {
+        ESP_LOGE(TAG, "No se pudo asignar memoria para archivo");
+        fclose(f);
+        return NULL;
+    }
+
+    fread(buffer, 1, size, f);
+    buffer[size] = '\0'; // Null-terminator para PEM
+    fclose(f);
+
+    if (out_size) *out_size = size;
+    return buffer;
+}

@@ -3,6 +3,7 @@
 #include "MQ135/mq135.h"
 #include "KY037/ky037.h"
 #include "Setting/settings.h"
+#include "MQTT/mqtt.h"
 #include "AES-CTR/aes-ctr.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -54,7 +55,7 @@ void data_json_encrypt_task(void *pvParameters) {
         data.co2ppm, data.coppm, data.nh3ppm, data.c6h6pm, data.no2ppm);
         ESP_LOGI(TAG, "%s", json);
         //aes_ctr_encrypt_to_base64((const unsigned char *)json, sizeof(json), iv_out, output_base64, sizeof(output_base64));
-
+        mqtt_publish("test/topic", json, sizeof(json), 2, 0);
         vTaskDelay(pdMS_TO_TICKS(6000));  // settings.sample_rate*60000
     }
 }

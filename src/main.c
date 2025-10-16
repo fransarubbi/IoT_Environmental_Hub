@@ -66,8 +66,9 @@ void app_main(void) {
     if (xSemaphoreTake(config_done_sem, portMAX_DELAY)) {
         esp_err_t retWiFi = wifi_init();
         if (retWiFi == ESP_OK) {
+            esp_err_t retLittleFS = littlefs_init();
             esp_err_t retMQTT = mqtt_init();
-            if (retMQTT == ESP_OK) {
+            if (retMQTT == ESP_OK && retLittleFS == ESP_OK) {
                 esp_err_t retMQ135 = mq135_init();
                 esp_err_t retDHT11 = dht11_init();
                 esp_err_t retKY037 = ky037_init();
