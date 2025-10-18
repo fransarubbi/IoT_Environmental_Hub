@@ -54,8 +54,8 @@ void aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
 
-    // Se carga la clave secreta compartida (aes_key). 128 indica que se usa AES-128 (16 bytes de clave).
-    mbedtls_aes_setkey_enc(&aes, (unsigned char*)settings.aes_key, 256); // AES-128
+    // Se carga la clave secreta compartida (aes_key). 256 indica que se usa AES-256 (32 bytes de clave).
+    mbedtls_aes_setkey_enc(&aes, (unsigned char*)settings.aes_key, 256); // AES-256
 
     // AES-CTR genera un keystream usando (clave + IV) y lo combina con el mensaje haciendo un XOR. Como resultado, sale el ciphertext
     ret = mbedtls_aes_crypt_ctr(&aes, input_len, &nc_off, iv_out, stream_block, input, ciphertext);

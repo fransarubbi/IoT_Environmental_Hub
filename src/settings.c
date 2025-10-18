@@ -8,12 +8,8 @@
 #include "freertos/FreeRTOS.h"
 #include <errno.h>
 #include <stdint.h>
+#include "nvs_flash.h"
 
-
-//#include "esp_littlefs.h"
-//#include "esp_littlefs/esp_littlefs.h"
-#include "esp_vfs_fat.h"
-#include "esp_littlefs.h"
 
 
 static const char *TAG = "SETTINGS";
@@ -24,13 +20,12 @@ settings_t settings;     // Configuracion global del dispositivo
 static char uart_buffer[SETTINGS_BUFFER_SIZE];   // Variables internas
 
 
-
 /**
  * @brief Inicializa UART para el modo configuración.
  * @return esp_err_t  Devuelve ESP_OK si la inicializacion fue exitosa.
  */
-esp_err_t uart_init(void) {
-    const uart_config_t uart_config = {
+static esp_err_t uart_config(void) {
+    const uart_config_t uart_conf = {
         .baud_rate = SETTINGS_UART_BAUD_RATE,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
@@ -45,11 +40,38 @@ esp_err_t uart_init(void) {
         return ret;
     }
 
-    ret = uart_param_config(SETTINGS_UART_PORT_NUM, &uart_config);
+    ret = uart_param_config(SETTINGS_UART_PORT_NUM, &uart_conf);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Error configurando UART: %s", esp_err_to_name(ret));
         return ret;
     }
+    return ESP_OK;
+}
+
+
+/**
+ * @brief Tarea de configuracion del sistema a traves de UART
+ */
+esp_err_t uart_init(void) {
+
+    esp_err_t ret = nvs_flash_init();   // Inicializar NVS
+    if (ret != ESP_OK) return ret;
+
+    // Cargar configuracion si existe
+    if (!setting_load_from_nvs()) {   // No existe
+        ret = uart_config();
+        memset(&settings, 0, sizeof(settings_t));
+        if (ret == ESP_OK) {
+            bool flag = false;
+            while (!flag) {
+                flag = setting_mode_start();
+            }
+        }
+        else {
+            return ESP_FAIL;
+        }
+    }
+    show_config();
     return ESP_OK;
 }
 
@@ -145,7 +167,7 @@ static bool process_command(const char *command) {
     char *endptr;
 
     // Parsear comando y parámetro
-    int parsed = sscanf(command, "%31s %99s", cmd, param);
+    int parsed = sscanf(command, "%31s %99[^\n]", cmd, param);
 
     if (parsed < 1) {
         uart_send_text("- ERROR: Comando invalido. Use HELP para ver los comandos disponibles -\r\n");
@@ -168,13 +190,8 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <SSID> -\r\n");
             return false;
         }
-        size_t ssid_len = strlen(param);
-        if (ssid_len >= sizeof(settings.wifi_ssid)) {
-            ssid_len = sizeof(settings.wifi_ssid) - 1;
-        }
-        memcpy(settings.wifi_ssid, param, ssid_len);
-        settings.wifi_ssid[ssid_len] = 0;
-        settings.wifi_ssid_len = ssid_len;
+        SAFE_STRCPY(settings.wifi_ssid, param);
+        settings.wifi_ssid_len = strlen((char *)settings.wifi_ssid);
         uart_send_text("- INFO: SSID configurado correctamente -\r\n");
         return false;
     }
@@ -184,13 +201,8 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <password> -\r\n");
             return false;
         }
-        size_t pass_len = strlen(param);
-        if (pass_len >= sizeof(settings.wifi_password)) {
-            pass_len = sizeof(settings.wifi_pass_len) - 1;
-        }
-        memcpy(settings.wifi_password, param, pass_len);
-        settings.wifi_password[pass_len] = 0;
-        settings.wifi_pass_len = pass_len;
+        SAFE_STRCPY(settings.wifi_password, param);
+        settings.wifi_pass_len = strlen((char *)settings.wifi_password);
         uart_send_text("- INFO: Password WiFi configurado correctamente -\r\n");
         return false;
     }
@@ -205,13 +217,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: MQTT uri erroneo. Falta mqtts:// como primer parametro -\r\n");
             return false;
         }
-        size_t uri_len = strlen(param);
-        size_t max_copy_len = sizeof(settings.mqtt_uri) - 1;
-        if (uri_len > max_copy_len) {
-            uri_len = max_copy_len;
-        }
-        memcpy(settings.mqtt_uri, param, uri_len);
-        settings.mqtt_uri[uri_len] = '\0';
+        SAFE_STRCPY(settings.mqtt_uri, param);
         uart_send_text("- INFO: MQTT uri configurado correctamente -\r\n");
         return false;
     }
@@ -221,13 +227,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro usuario -\r\n");
             return false;
         }
-        size_t user_len = strlen(param);
-        size_t max_copy_len = sizeof(settings.mqtt_user) - 1;
-        if (user_len > max_copy_len) {
-            user_len = max_copy_len;
-        }
-        memcpy(settings.mqtt_user, param, user_len);
-        settings.mqtt_user[user_len] = '\0';
+        SAFE_STRCPY(settings.mqtt_user, param);
         uart_send_text("- INFO: Usuario MQTT configurado correctamente -\r\n");
         return false;
     }
@@ -237,13 +237,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <password> -\r\n");
             return false;
         }
-        size_t pass_len = strlen(param);
-        size_t max_copy_len = sizeof(settings.mqtt_password) - 1;
-        if (pass_len > max_copy_len) {
-            pass_len = max_copy_len;
-        }
-        memcpy(settings.mqtt_password, param, pass_len);
-        settings.mqtt_user[pass_len] = '\0';
+        SAFE_STRCPY(settings.mqtt_password, param);
         uart_send_text("- INFO: Password MQTT configurado correctamente -\r\n");
         return false;
     }
@@ -253,13 +247,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <name> -\r\n");
             return false;
         }
-        size_t device_len = strlen(param);
-        size_t max_copy_len = sizeof(settings.device_name) - 1;
-        if (device_len > max_copy_len) {
-            device_len = max_copy_len;
-        }
-        memcpy(settings.device_name, param, device_len);
-        settings.mqtt_user[device_len] = '\0';
+        SAFE_STRCPY(settings.device_name, param);
         uart_send_text("INFO: Nombre del dispositivo configurado correctamente -\r\n");
         return false;
     }
@@ -327,12 +315,6 @@ bool setting_mode_start(void) {
     char c;
     bool flag = false;
 
-    // Inicializar UART
-    esp_err_t ret = uart_init();
-    if (ret != ESP_OK) {
-        return false;
-    }
-
     show_menu();
     strcpy(buffer_aux, "config>  ");
     uart_send_text(buffer_aux);
@@ -342,25 +324,23 @@ bool setting_mode_start(void) {
 
         if (bytes > 0) {
             if (c == '\n') {
+                uart_send_text("\r\n");
                 flag = process_command(uart_buffer);
                 memset(uart_buffer, 0, sizeof(uart_buffer));
-                memset(uart_buffer, 0, sizeof(uart_buffer));
-                memset(buffer_aux, 0, sizeof(buffer_aux));
-                strcpy(buffer_aux, "config>  ");
+                uart_send_text("\r\n");  // Nueva linea
                 show_menu();
-                uart_send_text(buffer_aux);
+                uart_send_text("config>  ");
+            }
+            else if (c == '\r') {  // Ignorar carriage return si viene separado
+                continue;
             }
             else {
-                char tmp[2] = {c,'\0'};   // convierte el char en un string de 1 char
+                char tmp[2] = {c, '\0'};
                 strcat(uart_buffer, tmp);
-                strcat(buffer_aux, tmp);
-                uart_send_text("\r");
-                uart_send_text(buffer_aux);
+                uart_send_text(tmp);  // Solo imprime el caracter nuevo
             }
         }
     }
-
-    uart_send_text("\r\n- INFO: Modo configuracion finalizado -\r\n");
     uart_send_text("------------ Iniciando aplicacion ------------\r\n\r\n");
     return true;
 }
@@ -477,53 +457,3 @@ bool setting_is_device_configured(void) {
     return false;
 }
 
-
-
-esp_err_t littlefs_init(void) {
-    esp_err_t ret;
-
-    esp_vfs_littlefs_conf_t conf = {
-        .base_path = "/data",
-        .partition_label = "storage",
-        .format_if_mount_failed = true
-    };
-
-    ret = esp_vfs_littlefs_register(&conf);
-
-    if (ret != ESP_OK) {
-        if (ret == ESP_FAIL) {
-            ESP_LOGE(TAG, "Fallo al montar LittleFS, intentando formatear...");
-        } else if (ret == ESP_ERR_NOT_FOUND) {
-            ESP_LOGE(TAG, "Particion LittleFS no encontrada en la tabla de particiones.");
-        }
-    }
-    return ret;
-}
-
-
-
-char* load_file_to_memory(const char *path, size_t *out_size) {
-    FILE *f = fopen(path, "rb");
-    if (!f) {
-        ESP_LOGE(TAG, "No se pudo abrir archivo: %s", path);
-        return NULL;
-    }
-
-    fseek(f, 0, SEEK_END);
-    size_t size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    char *buffer = malloc(size + 1);
-    if (!buffer) {
-        ESP_LOGE(TAG, "No se pudo asignar memoria para archivo");
-        fclose(f);
-        return NULL;
-    }
-
-    fread(buffer, 1, size, f);
-    buffer[size] = '\0'; // Null-terminator para PEM
-    fclose(f);
-
-    if (out_size) *out_size = size;
-    return buffer;
-}

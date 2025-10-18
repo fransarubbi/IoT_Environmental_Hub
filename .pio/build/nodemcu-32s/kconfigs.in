@@ -74,4 +74,3 @@ source "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/
 source "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/vfs/Kconfig"
 source "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/wear_levelling/Kconfig"
 source "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/wifi_provisioning/Kconfig"
-source "/home/franco/IoT_Environmental_Hub/.pio/libdeps/nodemcu-32s/esp_littlefs/Kconfig"

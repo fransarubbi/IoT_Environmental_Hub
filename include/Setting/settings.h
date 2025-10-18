@@ -23,10 +23,21 @@
 #define CMD_SET_MQTT_PASS          "SET_MQTT_PASS"
 #define CMD_SET_DEVICE_NAME        "SET_DEVICE_NAME"
 #define CMD_SET_SAMPLE             "SET_SAMPLE"
-#define CMD_SET_AES_KEY             "SET_AES_KEY"
+#define CMD_SET_AES_KEY            "SET_AES_KEY"
 #define CMD_SHOW_CONFIG            "SHOW"
 #define CMD_EXIT                   "EXIT"
 #define CMD_HELP                   "HELP"
+
+
+/* ---- Macro para realizar copia de parametro a la variable ---- */
+#define SAFE_STRCPY(dest, src) do {      \
+size_t _len = strlen(src);               \
+size_t _max = sizeof(dest) - 1;          \
+if (_len > _max) _len = _max;            \
+memcpy(dest, src, _len);                 \
+dest[_len] = '\0';                       \
+} while(0)
+
 
 
 /* ---- Estructura de configuracion ---- */
@@ -55,8 +66,6 @@ bool setting_is_device_configured(void);
 esp_err_t setting_save_to_nvs(void);
 bool setting_load_from_nvs(void);
 void show_startup_info(void);
-esp_err_t littlefs_init(void);
-char* load_file_to_memory(const char *, size_t *);
 
 
 #endif //SETTINGS_H

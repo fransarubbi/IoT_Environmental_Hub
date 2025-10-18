@@ -838,10 +838,3 @@
 /home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/src/CMakeFiles/rebuild_cache.dir
 /home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/src/CMakeFiles/install.dir
 /home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/src/CMakeFiles/list_install_components.dir
-/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/CMakeFiles/install/strip.dir
-/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/CMakeFiles/install/local.dir
-/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/CMakeFiles/__idf_esp_littlefs.dir
-/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/CMakeFiles/install.dir
-/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/CMakeFiles/list_install_components.dir
-/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/CMakeFiles/edit_cache.dir
-/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/CMakeFiles/rebuild_cache.dir

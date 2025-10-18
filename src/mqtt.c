@@ -2,12 +2,14 @@
 #include "Setting/settings.h"
 #include "esp_log.h"
 #include <esp_mac.h>
+#include "certs/ca_crt.h"
+#include "certs/client_crt.h"
+#include "certs/client_key.h"
 
 
 static const char *TAG = "MQTT";
 static char mac_addr[18];
 mqtt_client_t mqtt;
-
 
 
 /**
@@ -96,31 +98,17 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
  */
 esp_err_t mqtt_init(void) {
 
-    size_t ca_size, client_cert_size, client_key_size;
-
-    char *ca_cert_pem = load_file_to_memory("/data/ca.crt", &ca_size);
-    char *client_cert_pem = load_file_to_memory("/data/client.crt", &client_cert_size);
-    char *client_key_pem = load_file_to_memory("/data/client.key", &client_key_size);
-
-    if (!ca_cert_pem || !client_cert_pem || !client_key_pem) {
-        ESP_LOGE(TAG, "Error cargando certificados desde LittleFS");
-        free(ca_cert_pem);
-        free(client_cert_pem);
-        free(client_key_pem);
-        return ESP_FAIL;
-    }
-
     esp_err_t ret = get_mac_address();
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
     if (ret == ESP_OK) {
         mqtt.config.broker.address.uri = settings.mqtt_uri;   // Establecer la URI del broker
         mqtt.config.broker.address.transport = MQTT_TRANSPORT_OVER_SSL;  // Configura transporte SSL/TLS
-        mqtt.config.broker.verification.certificate = (const char *)ca_cert_pem;  // Certificado CA
+        mqtt.config.broker.verification.certificate = (const char *)ca_crt;  // Certificado CA
         mqtt.config.buffer.size = 1024;           // Tamaño del buffer de salida
         mqtt.config.buffer.out_size = 1024;       // Tamaño del buffer de envío
-        mqtt.config.credentials.authentication.certificate = (const char *)client_cert_pem;  // Certificado del cliente
-        mqtt.config.credentials.authentication.key = (const char *)client_key_pem;   // Clave para mTLS
+        mqtt.config.credentials.authentication.certificate = (const char *)client_crt;  // Certificado del cliente
+        mqtt.config.credentials.authentication.key = (const char *)client_key;   // Clave para mTLS
         mqtt.config.credentials.username  = settings.mqtt_user;  // Usuario MQTT
         mqtt.config.credentials.client_id = mac_addr;    // ID (la MAC de la ESP32)
         mqtt.config.credentials.authentication.password = settings.mqtt_password;  // Contrasena de MQTT
@@ -147,15 +135,8 @@ esp_err_t mqtt_init(void) {
         esp_mqtt_client_start(mqtt.client);
     }
     else {
-        free(ca_cert_pem);
-        free(client_cert_pem);
-        free(client_key_pem);
         return ESP_FAIL;
     }
-
-    free(ca_cert_pem);
-    free(client_cert_pem);
-    free(client_key_pem);
     return ESP_OK;
 }
 

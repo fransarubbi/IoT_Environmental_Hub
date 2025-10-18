@@ -552,8 +552,3 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/src/cmake_install.cmake")
 endif()
 
-if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  # Include the install script for the subdirectory.
-  include("/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/esp_littlefs/cmake_install.cmake")
-endif()
-
