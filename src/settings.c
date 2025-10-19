@@ -8,16 +8,25 @@
 #include "freertos/FreeRTOS.h"
 #include <errno.h>
 #include <stdint.h>
+#include <ctype.h>
 #include "nvs_flash.h"
 
 
-
 static const char *TAG = "SETTINGS";
-
-
-
 settings_t settings;     // Configuracion global del dispositivo
 static char uart_buffer[SETTINGS_BUFFER_SIZE];   // Variables internas
+
+
+
+/**
+ * @brief Convierte el string a mayusculas
+ * @param str string que se quiere modificar
+ */
+static void to_uppercase(char *str) {
+    for (uint8_t i = 0; str[i] != '\0'; i++) {
+        str[i] = (char)toupper((unsigned char)str[i]);
+    }
+}
 
 
 /**
@@ -54,21 +63,24 @@ static esp_err_t uart_config(void) {
  */
 esp_err_t uart_init(void) {
 
-    esp_err_t ret = nvs_flash_init();   // Inicializar NVS
-    if (ret != ESP_OK) return ret;
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "Borrando NVS...");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    ESP_LOGI(TAG, "NVS inicializado correctamente");
+
+    ret = uart_config();
+    if (ret != ESP_OK) return ESP_FAIL;
 
     // Cargar configuracion si existe
     if (!setting_load_from_nvs()) {   // No existe
-        ret = uart_config();
         memset(&settings, 0, sizeof(settings_t));
-        if (ret == ESP_OK) {
-            bool flag = false;
-            while (!flag) {
-                flag = setting_mode_start();
-            }
-        }
-        else {
-            return ESP_FAIL;
+        bool flag = false;
+        while (!flag) {
+            flag = setting_mode_start();
         }
     }
     show_config();
@@ -90,9 +102,11 @@ static void uart_send_text(const char *text) {
  */
 static void show_help(void) {
     uart_send_text("\r\n\n");
+    uart_send_text("| ================================================================== |\r\n");
+    uart_send_text("| ------- Puede usar mayusculas o minusculas, es indistinto! ------- |\r\n");
     uart_send_text("| ====================== COMANDOS DISPONIBLES ====================== |\r\n");
-    uart_send_text("| SET_SSID <ssid>           - Configura SSID WiFi                    |\r\n");
-    uart_send_text("| SET_PASS <password>       - Configura password WiFi                |\r\n");
+    uart_send_text("| SET_WIFI_SSID <ssid>      - Configura SSID WiFi                    |\r\n");
+    uart_send_text("| SET_WIFI_PASS <password>  - Configura password WiFi                |\r\n");
     uart_send_text("| SET_MQTT_URI <uri>        - Configura uri MQTT                     |\r\n");
     uart_send_text("| SET_MQTT_USER <user>      - Configura usuario MQTT                 |\r\n");
     uart_send_text("| SET_MQTT_PASS <pass>      - Configura password MQTT                |\r\n");
@@ -173,6 +187,8 @@ static bool process_command(const char *command) {
         uart_send_text("- ERROR: Comando invalido. Use HELP para ver los comandos disponibles -\r\n");
         return false;
     }
+
+    to_uppercase(cmd);
 
     // Procesar comandos
     if (strcmp(cmd, CMD_HELP) == 0) {
@@ -289,7 +305,7 @@ static bool process_command(const char *command) {
     if (strcmp(cmd, CMD_EXIT) == 0 && setting_is_device_configured()) {
         esp_err_t ret = setting_save_to_nvs();
         if (ret == ESP_OK) {
-            uart_send_text("- INFO: Configuracion guardada correctamente. Saliendo del modo configuracion -\r\n");
+            uart_send_text("\n- INFO: Configuracion guardada correctamente. Saliendo del modo configuracion -\r\n");
             return true;
         }
         uart_send_text("- ERROR: No se pudo guardar la configuracion -\r\n");
@@ -326,6 +342,7 @@ bool setting_mode_start(void) {
             if (c == '\n') {
                 uart_send_text("\r\n");
                 flag = process_command(uart_buffer);
+                if (flag) break;
                 memset(uart_buffer, 0, sizeof(uart_buffer));
                 uart_send_text("\r\n");  // Nueva linea
                 show_menu();
@@ -341,7 +358,6 @@ bool setting_mode_start(void) {
             }
         }
     }
-    uart_send_text("------------ Iniciando aplicacion ------------\r\n\r\n");
     return true;
 }
 
@@ -351,43 +367,27 @@ bool setting_mode_start(void) {
  * @return esp_err_t  Devuelve ESP_OK cuando el almacenamiento fue correcto.
  */
 esp_err_t setting_save_to_nvs(void) {
-    nvs_handle_t nvs_handle;
+    nvs_handle_t h;
+    esp_err_t ret = nvs_open("device_setting", NVS_READWRITE, &h);
+    if (ret != ESP_OK) return ret;
 
-    esp_err_t ret = nvs_open("device_setting", NVS_READWRITE, &nvs_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error abriendo NVS: %s", esp_err_to_name(ret));
-        return ret;
-    }
+    if ((ret = nvs_set_blob(h, "wifi_ssid", settings.wifi_ssid, settings.wifi_ssid_len)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_blob(h, "wifi_password", settings.wifi_password, settings.wifi_pass_len)) != ESP_OK) goto exit;
 
-    ret = nvs_set_str(nvs_handle, "wifi_ssid", (const char *)settings.wifi_ssid);
-    if (ret != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "mqtt_uri", settings.mqtt_uri)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "mqtt_user", settings.mqtt_user)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "mqtt_password", settings.mqtt_password)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "device_name", settings.device_name)) != ESP_OK) goto exit;
 
-    ret = nvs_set_str(nvs_handle, "wifi_password", (const char *)settings.wifi_password);
-    if (ret != ESP_OK) goto exit;
+    if ((ret = nvs_set_u32(h, "sample_rate", settings.sample_rate)) != ESP_OK) goto exit;
 
-    ret = nvs_set_str(nvs_handle, "mqtt_uri", settings.mqtt_uri);
-    if (ret != ESP_OK) goto exit;
+    if ((ret = nvs_set_blob(h, "aes_key", settings.aes_key, AES_KEY_LEN)) != ESP_OK) goto exit;
 
-    ret = nvs_set_str(nvs_handle, "mqtt_user", settings.mqtt_user);
-    if (ret != ESP_OK) goto exit;
-
-    ret = nvs_set_str(nvs_handle, "mqtt_password", settings.mqtt_password);
-    if (ret != ESP_OK) goto exit;
-
-    ret = nvs_set_str(nvs_handle, "device_name", settings.device_name);
-    if (ret != ESP_OK) goto exit;
-
-    ret = nvs_set_u32(nvs_handle, "sample_rate", settings.sample_rate);
-    if (ret != ESP_OK) goto exit;
-
-    ret = nvs_set_str(nvs_handle, "aes_key", settings.aes_key);
-    if (ret != ESP_OK) goto exit;
-
-    ret = nvs_commit(nvs_handle);
+    ret = nvs_commit(h);
 
     exit:
-        nvs_close(nvs_handle);
-        return ret;
+        nvs_close(h);
+    return ret;
 }
 
 
@@ -397,49 +397,46 @@ esp_err_t setting_save_to_nvs(void) {
  * Sino retorna false.
  */
 bool setting_load_from_nvs(void) {
-    nvs_handle_t nvs_handle;
-    size_t required_size;
-
-    esp_err_t ret = nvs_open("device_setting", NVS_READONLY, &nvs_handle);
+    nvs_handle_t h;
+    esp_err_t ret = nvs_open("device_setting", NVS_READONLY, &h);
     if (ret != ESP_OK) return false;
 
-    required_size = sizeof(settings.wifi_ssid);
-    ret = nvs_get_str(nvs_handle, "wifi_ssid", (char *)settings.wifi_ssid, &required_size);
-    if (ret != ESP_OK) goto exit;
+    size_t size;
 
-    required_size = sizeof(settings.wifi_password);
-    ret = nvs_get_str(nvs_handle, "wifi_password", (char *)settings.wifi_password, &required_size);
-    if (ret != ESP_OK) goto exit;
+    size = sizeof(settings.wifi_ssid);
+    ret = nvs_get_blob(h, "wifi_ssid", settings.wifi_ssid, &size);
+    if (ret != ESP_OK || size == 0) goto exit;
+    settings.wifi_ssid_len = size;
 
-    required_size = sizeof(settings.mqtt_uri);
-    ret = nvs_get_str(nvs_handle, "mqtt_uri", settings.mqtt_uri, &required_size);
-    if (ret != ESP_OK) goto exit;
+    size = sizeof(settings.wifi_password);
+    ret = nvs_get_blob(h, "wifi_password", settings.wifi_password, &size);
+    if (ret != ESP_OK || size == 0) goto exit;
+    settings.wifi_pass_len = size;
 
-    required_size = sizeof(settings.mqtt_user);
-    ret = nvs_get_str(nvs_handle, "mqtt_user", settings.mqtt_user, &required_size);
-    if (ret != ESP_OK) goto exit;
+    size = sizeof(settings.mqtt_uri);
+    if (nvs_get_str(h, "mqtt_uri", settings.mqtt_uri, &size) != ESP_OK) goto exit;
 
-    required_size = sizeof(settings.mqtt_password);
-    ret = nvs_get_str(nvs_handle, "mqtt_password", settings.mqtt_password, &required_size);
-    if (ret != ESP_OK) goto exit;
+    size = sizeof(settings.mqtt_user);
+    if (nvs_get_str(h, "mqtt_user", settings.mqtt_user, &size) != ESP_OK) goto exit;
 
-    required_size = sizeof(settings.device_name);
-    ret = nvs_get_str(nvs_handle, "device_name", settings.device_name, &required_size);
-    if (ret != ESP_OK) goto exit;
+    size = sizeof(settings.mqtt_password);
+    if (nvs_get_str(h, "mqtt_password", settings.mqtt_password, &size) != ESP_OK) goto exit;
 
-    ret = nvs_get_u32(nvs_handle, "sample_rate", &settings.sample_rate);
-    if (ret != ESP_OK) goto exit;
+    size = sizeof(settings.device_name);
+    if (nvs_get_str(h, "device_name", settings.device_name, &size) != ESP_OK) goto exit;
 
-    required_size = sizeof(settings.aes_key);
-    ret = nvs_get_str(nvs_handle, "aes_key", settings.aes_key, &required_size);
-    if (ret == ESP_OK) {
-        nvs_close(nvs_handle);
-        return true;
-    }
+    if (nvs_get_u32(h, "sample_rate", &settings.sample_rate) != ESP_OK) goto exit;
+
+    size = sizeof(settings.aes_key);
+    ret = nvs_get_blob(h, "aes_key", settings.aes_key, &size);
+    if (ret != ESP_OK || size != AES_KEY_LEN) goto exit;
+
+    nvs_close(h);
+    return true;
 
     exit:
-        nvs_close(nvs_handle);
-        return false;
+        nvs_close(h);
+    return false;
 }
 
 

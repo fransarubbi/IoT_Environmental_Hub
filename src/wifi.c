@@ -68,6 +68,7 @@ esp_err_t wifi_init(void) {
     esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    cfg.nvs_enable = false;
     ret = esp_wifi_init(&cfg);
     if (ret != ESP_OK) return ret;
 

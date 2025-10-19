@@ -16,8 +16,8 @@
 
 
 /* ---- Comandos disponibles ---- */
-#define CMD_SET_WIFI_SSID          "SET_SSID"
-#define CMD_SET_WIFI_PASS          "SET_PASS"
+#define CMD_SET_WIFI_SSID          "SET_WIFI_SSID"
+#define CMD_SET_WIFI_PASS          "SET_WIFI_PASS"
 #define CMD_SET_MQTT_URI           "SET_MQTT_URI"
 #define CMD_SET_MQTT_USER          "SET_MQTT_USER"
 #define CMD_SET_MQTT_PASS          "SET_MQTT_PASS"
