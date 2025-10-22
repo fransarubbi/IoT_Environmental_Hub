@@ -3,8 +3,8 @@
 #include "esp_log.h"
 #include <esp_mac.h>
 #include "certs/ca_crt.h"
-#include "certs/client_crt.h"
-#include "certs/client_key.h"
+#include "certs/client1_crt.h"
+#include "certs/client1_key.h"
 
 
 static const char *TAG = "MQTT";
@@ -38,34 +38,34 @@ static esp_err_t get_mac_address(void) {
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "Conectado al broker");
+            ESP_LOGI(TAG, "- INFO: Conectado al broker -");
             // Suscribir / publicar iniciales
             esp_mqtt_client_subscribe(event->client, "/devices/esp32/cmd", 1);
             esp_mqtt_client_publish(event->client, "/devices/esp32/status", "online", 0, 1, true);
             break;
 
         case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGW(TAG, "Desconectado del broker");
+            ESP_LOGW(TAG, "- WARNING: Desconectado del broker -");
             break;
 
         case MQTT_EVENT_PUBLISHED:
-            ESP_LOGI(TAG, "Publicado msg_id=%d", event->msg_id);
+            ESP_LOGI(TAG, "- INFO: Publicado msg_id=%d -", event->msg_id);
             break;
 
         case MQTT_EVENT_ERROR:
-            ESP_LOGE(TAG, "Error tipo: %d", event->error_handle->error_type);
+            ESP_LOGE(TAG, "- ERROR: Error tipo: %d -", event->error_handle->error_type);
             if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-                ESP_LOGE(TAG, "Error SSL/TLS");
+                ESP_LOGE(TAG, "- ERROR: Error SSL/TLS -");
             }
             break;
 
         case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "SUBSCRIBED");
+            ESP_LOGI(TAG, "- INFO: SUBSCRIBED -");
             break;
 
         case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "Tópico: %.*s", event->topic_len, event->topic);
-            ESP_LOGI(TAG, "Datos: %.*s", event->data_len, event->data);
+            ESP_LOGI(TAG, "- INFO: Tópico: %.*s -", event->topic_len, event->topic);
+            ESP_LOGI(TAG, "- INFO: Datos: %.*s -", event->data_len, event->data);
             // Aquí procesar comandos recibidos
             break;
 
@@ -97,18 +97,18 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
  * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
  */
 esp_err_t mqtt_init(void) {
-
+    esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
     esp_err_t ret = get_mac_address();
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
     if (ret == ESP_OK) {
+        strcpy(settings.mac_address, mac_addr);
         mqtt.config.broker.address.uri = settings.mqtt_uri;   // Establecer la URI del broker
-        mqtt.config.broker.address.transport = MQTT_TRANSPORT_OVER_SSL;  // Configura transporte SSL/TLS
         mqtt.config.broker.verification.certificate = (const char *)ca_crt;  // Certificado CA
         mqtt.config.buffer.size = 1024;           // Tamaño del buffer de salida
         mqtt.config.buffer.out_size = 1024;       // Tamaño del buffer de envío
-        mqtt.config.credentials.authentication.certificate = (const char *)client_crt;  // Certificado del cliente
-        mqtt.config.credentials.authentication.key = (const char *)client_key;   // Clave para mTLS
+        mqtt.config.credentials.authentication.certificate = (const char *)client1_crt;  // Certificado del cliente
+        mqtt.config.credentials.authentication.key = (const char *)client1_key;   // Clave para mTLS
         mqtt.config.credentials.username  = settings.mqtt_user;  // Usuario MQTT
         mqtt.config.credentials.client_id = mac_addr;    // ID (la MAC de la ESP32)
         mqtt.config.credentials.authentication.password = settings.mqtt_password;  // Contrasena de MQTT
@@ -128,8 +128,10 @@ esp_err_t mqtt_init(void) {
         mqtt.config.session.last_will.retain = true;
         mqtt.config.network.reconnect_timeout_ms = 5000;  // Esperar 5 seg entre intentos de reconexion
         mqtt.client = esp_mqtt_client_init(&mqtt.config);
-        if (!mqtt.client) return ESP_FAIL;
-
+        if (!mqtt.client) {
+            ESP_LOGI(TAG, "- ERROR -");
+            return ESP_FAIL;
+        }
         esp_mqtt_client_register_event(mqtt.client, ESP_EVENT_ANY_ID,
                                        mqtt_event_handler, mqtt.client);
         esp_mqtt_client_start(mqtt.client);

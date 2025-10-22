@@ -10,11 +10,13 @@
 #include <stdint.h>
 #include <ctype.h>
 #include "nvs_flash.h"
+#include "freertos/timers.h"
 
 
 static const char *TAG = "SETTINGS";
 settings_t settings;     // Configuracion global del dispositivo
 static char uart_buffer[SETTINGS_BUFFER_SIZE];   // Variables internas
+static TimerHandle_t one_shot_timer = NULL;
 
 
 
@@ -25,6 +27,37 @@ static char uart_buffer[SETTINGS_BUFFER_SIZE];   // Variables internas
 static void to_uppercase(char *str) {
     for (uint8_t i = 0; str[i] != '\0'; i++) {
         str[i] = (char)toupper((unsigned char)str[i]);
+    }
+}
+
+
+/**
+ * @brief Callback que setea el flag en true cuando se alcanzo el tiempo.
+ * @param xTimer variable timer configurada previamente.
+ */
+static void timeout_callback(TimerHandle_t xTimer) {
+    bool *flag_ptr = (bool *)pvTimerGetTimerID(xTimer);
+    *flag_ptr = true;
+}
+
+
+/**
+ * @brief Inicializa el timer que determina el margen de tiempo valido para dar una respuesta en
+ * la funcion setting_mode_change(). Son 20 segundos.
+ * @param timer_flag flag que indica cuando el timer llego al valor seteado. Cuando se le asigna true,
+ * se termino el tiempo.
+ */
+static void timeout_init(bool *timer_flag) {
+    one_shot_timer = xTimerCreate(
+        "OneShotTimer",
+        pdMS_TO_TICKS(20000), // 20 segundos
+        pdFALSE,             // Auto-reload = FALSE (una sola vez)
+        (void *)timer_flag,
+        timeout_callback
+    );
+
+    if (one_shot_timer != NULL) {
+        xTimerStart(one_shot_timer, 0);
     }
 }
 
@@ -55,45 +88,6 @@ static esp_err_t uart_config(void) {
         return ret;
     }
     return ESP_OK;
-}
-
-
-/**
- * @brief Tarea de configuracion del sistema a traves de UART
- */
-esp_err_t uart_init(void) {
-
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "Borrando NVS...");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "NVS inicializado correctamente");
-
-    ret = uart_config();
-    if (ret != ESP_OK) return ESP_FAIL;
-
-    // Cargar configuracion si existe
-    if (!setting_load_from_nvs()) {   // No existe
-        memset(&settings, 0, sizeof(settings_t));
-        bool flag = false;
-        while (!flag) {
-            flag = setting_mode_start();
-        }
-    }
-    show_config();
-    return ESP_OK;
-}
-
-
-/**
- * @brief Envía texto por UART.
- * @param text String para imprimir por UART.
- */
-static void uart_send_text(const char *text) {
-    uart_write_bytes(SETTINGS_UART_PORT_NUM, text, strlen(text));
 }
 
 
@@ -170,6 +164,114 @@ static void show_menu(void) {
 
 
 /**
+ * @brief Muestra el menu de consulta para cambiar o no una configuracion existente.
+ */
+static void show_menu_change_settings(void) {
+    uart_send_text("\r\n");
+    uart_send_text("| ========================================================== |\r\n");
+    uart_send_text("|      Se ha detectado una configuracion guardada en NVS     |\r\n");
+    uart_send_text("|     ¿Desea cambiar algun atributo de la configuracion?     |\r\n");
+    uart_send_text("|  Tiene 20 seg para responder. Por omision se considera 'n' |\r\n");
+    uart_send_text("| ========================================================== |\r\n");
+    uart_send_text(" > Ingrese y para cambiar la configuracion\r\n");
+    uart_send_text(" > Ingrese n para usar la configuracion actual\r\n");
+}
+
+
+/**
+ * @brief Verifica que todos los campos esten completos.
+ * @return bool  Devuelve true cuando la configuracion esta completa. Sino retorna false.
+ */
+static bool setting_is_device_configured(void) {
+    if (settings.wifi_ssid_len > 0 && settings.wifi_pass_len > 0
+        && strlen(settings.mqtt_uri) > 0 && strlen(settings.mqtt_user) > 0
+        && strlen(settings.mqtt_password) > 0 && strlen(settings.device_name) > 0
+        && settings.sample_rate > 0 && strlen(settings.aes_key) > 0) {
+        return true;
+        }
+    return false;
+}
+
+
+/**
+ * @brief Guardar en memoria no volatil (NVS) la configuracion.
+ * @return esp_err_t  Devuelve ESP_OK cuando el almacenamiento fue correcto.
+ */
+static esp_err_t setting_save_to_nvs(void) {
+    nvs_handle_t h;
+    esp_err_t ret = nvs_open("device_setting", NVS_READWRITE, &h);
+    if (ret != ESP_OK) return ret;
+
+    if ((ret = nvs_set_blob(h, "wifi_ssid", settings.wifi_ssid, settings.wifi_ssid_len)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_blob(h, "wifi_password", settings.wifi_password, settings.wifi_pass_len)) != ESP_OK) goto exit;
+
+    if ((ret = nvs_set_str(h, "mqtt_uri", settings.mqtt_uri)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "mqtt_user", settings.mqtt_user)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "mqtt_password", settings.mqtt_password)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "device_name", settings.device_name)) != ESP_OK) goto exit;
+
+    if ((ret = nvs_set_u32(h, "sample_rate", settings.sample_rate)) != ESP_OK) goto exit;
+
+    if ((ret = nvs_set_blob(h, "aes_key", settings.aes_key, AES_KEY_LEN)) != ESP_OK) goto exit;
+
+    ret = nvs_commit(h);
+
+    exit:
+        nvs_close(h);
+    return ret;
+}
+
+
+/**
+ * @brief Cargar configuracion desde la memoria no volatil (NVS).
+ * @return bool  Devuelve true cuando se ha cargado correctamente la configuracion.
+ * Sino retorna false.
+ */
+static bool setting_load_from_nvs(void) {
+    nvs_handle_t h;
+    esp_err_t ret = nvs_open("device_setting", NVS_READONLY, &h);
+    if (ret != ESP_OK) return false;
+
+    size_t size;
+
+    size = sizeof(settings.wifi_ssid);
+    ret = nvs_get_blob(h, "wifi_ssid", settings.wifi_ssid, &size);
+    if (ret != ESP_OK || size == 0) goto exit;
+    settings.wifi_ssid_len = size;
+
+    size = sizeof(settings.wifi_password);
+    ret = nvs_get_blob(h, "wifi_password", settings.wifi_password, &size);
+    if (ret != ESP_OK || size == 0) goto exit;
+    settings.wifi_pass_len = size;
+
+    size = sizeof(settings.mqtt_uri);
+    if (nvs_get_str(h, "mqtt_uri", settings.mqtt_uri, &size) != ESP_OK) goto exit;
+
+    size = sizeof(settings.mqtt_user);
+    if (nvs_get_str(h, "mqtt_user", settings.mqtt_user, &size) != ESP_OK) goto exit;
+
+    size = sizeof(settings.mqtt_password);
+    if (nvs_get_str(h, "mqtt_password", settings.mqtt_password, &size) != ESP_OK) goto exit;
+
+    size = sizeof(settings.device_name);
+    if (nvs_get_str(h, "device_name", settings.device_name, &size) != ESP_OK) goto exit;
+
+    if (nvs_get_u32(h, "sample_rate", &settings.sample_rate) != ESP_OK) goto exit;
+
+    size = sizeof(settings.aes_key);
+    ret = nvs_get_blob(h, "aes_key", settings.aes_key, &size);
+    if (ret != ESP_OK || size != AES_KEY_LEN) goto exit;
+
+    nvs_close(h);
+    return true;
+
+    exit:
+        nvs_close(h);
+    return false;
+}
+
+
+/**
  * @brief Procesa un comando recibido por parametro.
  * @param command String ingresado en UART que corresponde a un comando con su correspondiente parametro.
  * @return bool  Devuelve true unicamente cuando el comando ingresado fue EXIT. Esto finaliza la configuracion
@@ -177,7 +279,7 @@ static void show_menu(void) {
  */
 static bool process_command(const char *command) {
     char cmd[32];
-    char param[SETTINGS_MAX_STRING_LEN];
+    char param[100];
     char *endptr;
 
     // Parsear comando y parámetro
@@ -326,8 +428,8 @@ static bool process_command(const char *command) {
  * @brief Configuracion manual del sistema a traves de UART.
  * @return bool Devuelve true cuando el proceso termina con exito, sino retorna false.
  */
-bool setting_mode_start(void) {
-    char buffer_aux[SETTINGS_MAX_STRING_LEN];
+static bool setting_mode_start(void) {
+    char buffer_aux[100];
     char c;
     bool flag = false;
 
@@ -335,7 +437,7 @@ bool setting_mode_start(void) {
     strcpy(buffer_aux, "config>  ");
     uart_send_text(buffer_aux);
 
-    while (!flag) {
+    while (1) {
         int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, portMAX_DELAY);
 
         if (bytes > 0) {
@@ -363,94 +465,101 @@ bool setting_mode_start(void) {
 
 
 /**
- * @brief Guardar en memoria no volatil (NVS) la configuracion.
- * @return esp_err_t  Devuelve ESP_OK cuando el almacenamiento fue correcto.
+ * @brief Permite modificar las configuraciones preexistentes. Se debe responder en un lapso de
+ * 20 segundos, sino se considera que no se desea alterar ninguna configuracion
+ * @return bool Devuelve true cuando se ingresa 'y' porque se va a modificar, o false cuando se
+ * ingresa 'n' o se alcanzo el tiempo maximo y no se va a modificar ningun parametro.
  */
-esp_err_t setting_save_to_nvs(void) {
-    nvs_handle_t h;
-    esp_err_t ret = nvs_open("device_setting", NVS_READWRITE, &h);
-    if (ret != ESP_OK) return ret;
+static bool setting_mode_change(void) {
+    char buffer_aux[100];
+    char c, cmd[2];
+    bool flag = false;
 
-    if ((ret = nvs_set_blob(h, "wifi_ssid", settings.wifi_ssid, settings.wifi_ssid_len)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_blob(h, "wifi_password", settings.wifi_password, settings.wifi_pass_len)) != ESP_OK) goto exit;
+    timeout_init(&flag);
+    show_menu_change_settings();
+    strcpy(buffer_aux, "config>  ");
+    uart_send_text(buffer_aux);
 
-    if ((ret = nvs_set_str(h, "mqtt_uri", settings.mqtt_uri)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "mqtt_user", settings.mqtt_user)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "mqtt_password", settings.mqtt_password)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "device_name", settings.device_name)) != ESP_OK) goto exit;
+    while (1) {
+        if (flag) {
+            if (one_shot_timer != NULL) {
+                xTimerStop(one_shot_timer, 0);
+            }
+            return false;
+        }
 
-    if ((ret = nvs_set_u32(h, "sample_rate", settings.sample_rate)) != ESP_OK) goto exit;
+        int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, pdMS_TO_TICKS(100));
 
-    if ((ret = nvs_set_blob(h, "aes_key", settings.aes_key, AES_KEY_LEN)) != ESP_OK) goto exit;
-
-    ret = nvs_commit(h);
-
-    exit:
-        nvs_close(h);
-    return ret;
-}
-
-
-/**
- * @brief Cargar configuracion desde la memoria no volatil (NVS).
- * @return bool  Devuelve true cuando se ha cargado correctamente la configuracion.
- * Sino retorna false.
- */
-bool setting_load_from_nvs(void) {
-    nvs_handle_t h;
-    esp_err_t ret = nvs_open("device_setting", NVS_READONLY, &h);
-    if (ret != ESP_OK) return false;
-
-    size_t size;
-
-    size = sizeof(settings.wifi_ssid);
-    ret = nvs_get_blob(h, "wifi_ssid", settings.wifi_ssid, &size);
-    if (ret != ESP_OK || size == 0) goto exit;
-    settings.wifi_ssid_len = size;
-
-    size = sizeof(settings.wifi_password);
-    ret = nvs_get_blob(h, "wifi_password", settings.wifi_password, &size);
-    if (ret != ESP_OK || size == 0) goto exit;
-    settings.wifi_pass_len = size;
-
-    size = sizeof(settings.mqtt_uri);
-    if (nvs_get_str(h, "mqtt_uri", settings.mqtt_uri, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.mqtt_user);
-    if (nvs_get_str(h, "mqtt_user", settings.mqtt_user, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.mqtt_password);
-    if (nvs_get_str(h, "mqtt_password", settings.mqtt_password, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.device_name);
-    if (nvs_get_str(h, "device_name", settings.device_name, &size) != ESP_OK) goto exit;
-
-    if (nvs_get_u32(h, "sample_rate", &settings.sample_rate) != ESP_OK) goto exit;
-
-    size = sizeof(settings.aes_key);
-    ret = nvs_get_blob(h, "aes_key", settings.aes_key, &size);
-    if (ret != ESP_OK || size != AES_KEY_LEN) goto exit;
-
-    nvs_close(h);
-    return true;
-
-    exit:
-        nvs_close(h);
-    return false;
-}
-
-
-/**
- * @brief Verifica que todos los campos esten completos.
- * @return bool  Devuelve true cuando la configuracion esta completa. Sino retorna false.
- */
-bool setting_is_device_configured(void) {
-    if (settings.wifi_ssid_len > 0 && settings.wifi_pass_len > 0
-        && strlen(settings.mqtt_uri) > 0 && strlen(settings.mqtt_user) > 0
-        && strlen(settings.mqtt_password) > 0 && strlen(settings.device_name) > 0
-        && settings.sample_rate > 0 && strlen(settings.aes_key) > 0) {
-        return true;
+        if (bytes > 0) {
+            if (c == '\n') {
+                uart_send_text("\r\n");
+                int parsed = sscanf(uart_buffer, "%c", cmd);
+                if (parsed < 1) {
+                    uart_send_text("- ERROR: Comando invalido. Ingrese y o n -\r\n");
+                }
+                else {
+                    to_uppercase(cmd);
+                    if (strcmp(cmd, CMD_CHANGE) == 0) {
+                        memset(uart_buffer, 0, sizeof(uart_buffer));
+                        return true;
+                    }
+                    if (strcmp(cmd, CMD_NOT_CHANGE) == 0) {
+                        return false;
+                    }
+                    uart_send_text("- ERROR: Comando invalido. Ingrese y o n -\r\n");
+                }
+                memset(uart_buffer, 0, sizeof(uart_buffer));
+                uart_send_text("\r\n");
+                show_menu_change_settings();
+                uart_send_text("config>  ");
+            }
+            else if (c == '\r') {
+                continue;
+            }
+            else {
+                char tmp[2] = {c, '\0'};
+                strcat(uart_buffer, tmp);
+                uart_send_text(tmp);
+            }
+        }
     }
-    return false;
 }
 
+
+/**
+ * @brief Tarea de configuracion del sistema a traves de UART
+ * @return esp_err_t Devuelve ESP_OK si la configuracion se pudo aplicar correctamente
+ */
+esp_err_t uart_init(void) {
+
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "- WARNING: Borrando NVS -");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    ESP_LOGI(TAG, "- INFO: NVS inicializado correctamente -");
+
+    ret = uart_config();
+    if (ret != ESP_OK) return ESP_FAIL;
+
+    // Cargar configuracion si existe
+    if (!setting_load_from_nvs()) {   // No existe
+        memset(&settings, 0, sizeof(settings_t));
+        bool flag = false;
+        while (!flag) {
+            flag = setting_mode_start();
+        }
+    }
+    else {  // Si existe
+        if (setting_mode_change()) {  // Cambiar parametros de la configuracion
+            bool flag = false;
+            while (!flag) {
+                flag = setting_mode_start();
+            }
+        }
+    }
+    show_config();
+    return ESP_OK;
+}

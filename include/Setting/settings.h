@@ -2,13 +2,14 @@
 #define SETTINGS_H
 
 #include "esp_err.h"
-#include <stdbool.h>
+#include "driver/uart.h"
+#include "string.h"
 
 
 /* ---- Configuraciones del sistema ---- */
 #define SETTINGS_UART_PORT_NUM        UART_NUM_0
 #define SETTINGS_UART_BAUD_RATE       115200
-#define SETTINGS_MAX_STRING_LEN       100
+#define SETTINGS_MAX_STRING_LEN       30
 #define SETTINGS_BUFFER_SIZE          256
 #define AES_KEY_LEN                   32
 #define MQTTS_PREFIX                  "mqtts://"
@@ -26,6 +27,8 @@
 #define CMD_SET_AES_KEY            "SET_AES_KEY"
 #define CMD_SHOW_CONFIG            "SHOW"
 #define CMD_EXIT                   "EXIT"
+#define CMD_CHANGE                 "Y"
+#define CMD_NOT_CHANGE             "N"
 #define CMD_HELP                   "HELP"
 
 
@@ -42,10 +45,12 @@ dest[_len] = '\0';                       \
 
 /* ---- Estructura de configuracion ---- */
 typedef struct {
+    char mac_address[18];
     uint8_t wifi_ssid[32];
     uint8_t wifi_ssid_len;
     uint8_t wifi_password[64];
     uint8_t wifi_pass_len;
+    char wifi_ip[SETTINGS_MAX_STRING_LEN];
     char mqtt_uri[SETTINGS_MAX_STRING_LEN];
     char mqtt_user[SETTINGS_MAX_STRING_LEN];
     char mqtt_password[SETTINGS_MAX_STRING_LEN];
@@ -58,14 +63,17 @@ typedef struct {
 extern settings_t settings;
 
 
-/* ---- Funciones ---- */
+/* ---- Funcion de la API ---- */
 esp_err_t uart_init(void);
-void show_config(void);
-bool setting_mode_start(void);
-bool setting_is_device_configured(void);
-esp_err_t setting_save_to_nvs(void);
-bool setting_load_from_nvs(void);
-void show_startup_info(void);
+
+
+/**
+ * @brief Envía texto por UART.
+ * @param text String para imprimir por UART.
+ */
+static inline void uart_send_text(const char *text) {
+    uart_write_bytes(SETTINGS_UART_PORT_NUM, text, strlen(text));
+}
 
 
 #endif //SETTINGS_H

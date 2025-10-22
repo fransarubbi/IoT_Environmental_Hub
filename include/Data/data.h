@@ -1,5 +1,5 @@
-#ifndef SENSORS_H
-#define SENSORS_H
+#ifndef DATA_H
+#define DATA_H
 
 #define ID_KY037 0
 #define ID_DHT11 1
@@ -20,10 +20,11 @@ typedef struct {
     float nh3ppm;
     float c6h6pm;
     float no2ppm;
+    char time[50];
 } data_sensors_t;
 
 
 void data_json_encrypt_task(void *);
 
 
-#endif //SENSORS_H
+#endif //DATA_H

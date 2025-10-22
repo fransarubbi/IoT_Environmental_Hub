@@ -4,6 +4,7 @@
 #include "KY037/ky037.h"
 #include "Setting/settings.h"
 #include "MQTT/mqtt.h"
+#include "Time/time.h"
 #include "AES-CTR/aes-ctr.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -18,6 +19,8 @@ void data_json_encrypt_task(void *pvParameters) {
 
     while (1) {
         memset(&data, 0, sizeof(data));
+
+        get_time(data.time);
 
         esp_err_t ret = dht11_read_data();
         if (ret != ESP_OK) {
@@ -43,16 +46,26 @@ void data_json_encrypt_task(void *pvParameters) {
             xSemaphoreGive(xStatsMutex);
         }
 
-        char json[190];
+        char json[500];
         //char output_base64[256];
         //unsigned char iv_out[16];
         snprintf(json, sizeof(json),
-        "{\"Contador de pulsos de sonido\": %lu, \"Maxima duracion de pulso\": %lu, "
-        "\"Temperatura\": %u, \"Humedad\": %u, \"CO2 ppm:\" %.2f, \"CO ppm:\" %.2f,"
-        "\"NH3 ppm:\" %.2f, \"C6H6 ppm:\" %.2f, \"VOC ppm:\" %.2f}",
-        (unsigned long) data.ky037_counter, (unsigned long) data.ky037_max_duration,
-        data.dht11_temperature, data.dht11_humidity,
-        data.co2ppm, data.coppm, data.nh3ppm, data.c6h6pm, data.no2ppm);
+        "{\"Dispositivo\": %s, \n"
+        "\"IPv4\": %s, \n"
+        "\"WiFi SSID\": %s, \n"
+        "\"MAC\": %s, \n"
+        "\"Fecha\": %s, \n"
+        "\"Contador de pulsos de sonido\": %lu, \n"
+        "\"Maxima duracion de pulso\": %lu, \n"
+        "\"Temperatura\": %u, \n"
+        "\"Humedad\": %u, \n"
+        "\"CO2 ppm:\" %.2f, \n"
+        "\"CO ppm:\" %.2f, \n"
+        "\"NH3 ppm:\" %.2f, \n"
+        "\"C6H6 ppm:\" %.2f, \n"
+        "\"VOC ppm:\" %.2f}",
+        settings.device_name, settings.wifi_ip, (const char*)settings.wifi_ssid, settings.mac_address, data.time, (unsigned long) data.ky037_counter, (unsigned long) data.ky037_max_duration,
+        data.dht11_temperature, data.dht11_humidity, data.co2ppm, data.coppm, data.nh3ppm, data.c6h6pm, data.no2ppm);
         ESP_LOGI(TAG, "%s", json);
         //aes_ctr_encrypt_to_base64((const unsigned char *)json, sizeof(json), iv_out, output_base64, sizeof(output_base64));
         mqtt_publish("test/topic", json, sizeof(json), 2, 0);
