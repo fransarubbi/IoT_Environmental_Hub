@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "IoT_Environmental_Hub",
-    "project_version":    "e99053e-dirty",
+    "project_version":    "2a61bfe-dirty",
     "project_path":       "/home/franco/IoT_Environmental_Hub",
     "idf_path":           "/home/franco/.platformio/packages/framework-espidf@3.50401.0",
     "build_dir":          "/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s",
@@ -1225,7 +1225,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/mqtt/libmqtt.a",
-            "sources": [ "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/mqtt_client.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/lib/mqtt_msg.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/lib/mqtt_outbox.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/lib/platform_esp32_idf.c" ],
+            "sources": [ "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/mqtt_client.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/lib/mqtt_msg.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/lib/mqtt_outbox.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/lib/platform_esp32_idf.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/lib/mqtt5_msg.c", "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/mqtt5_client.c" ],
             "include_dirs": [ "/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mqtt/esp-mqtt/include" ]
         },
         "newlib": {
@@ -1450,7 +1450,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/esp-idf/src/libsrc.a",
-            "sources": [ "/home/franco/IoT_Environmental_Hub/src/main.c", "/home/franco/IoT_Environmental_Hub/src/settings.c", "/home/franco/IoT_Environmental_Hub/src/mqtt.c", "/home/franco/IoT_Environmental_Hub/src/mq135.c", "/home/franco/IoT_Environmental_Hub/src/ky037.c", "/home/franco/IoT_Environmental_Hub/src/dht11.c", "/home/franco/IoT_Environmental_Hub/src/data.c", "/home/franco/IoT_Environmental_Hub/src/aes-ctr.c" ],
+            "sources": [ "/home/franco/IoT_Environmental_Hub/src/main.c", "/home/franco/IoT_Environmental_Hub/src/settings.c", "/home/franco/IoT_Environmental_Hub/src/mqtt.c", "/home/franco/IoT_Environmental_Hub/src/mq135.c", "/home/franco/IoT_Environmental_Hub/src/ky037.c", "/home/franco/IoT_Environmental_Hub/src/dht11.c", "/home/franco/IoT_Environmental_Hub/src/data.c", "/home/franco/IoT_Environmental_Hub/src/aes-ctr.c", "/home/franco/IoT_Environmental_Hub/src/wifi.c", "/home/franco/IoT_Environmental_Hub/src/time.c" ],
             "include_dirs": [ "." ]
         },
         "tcp_transport": {
