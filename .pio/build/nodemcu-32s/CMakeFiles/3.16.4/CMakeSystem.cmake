@@ -1,6 +1,6 @@
-set(CMAKE_HOST_SYSTEM "Linux-6.16.11-200.fc42.x86_64")
+set(CMAKE_HOST_SYSTEM "Linux-6.17.4-200.fc42.x86_64")
 set(CMAKE_HOST_SYSTEM_NAME "Linux")
-set(CMAKE_HOST_SYSTEM_VERSION "6.16.11-200.fc42.x86_64")
+set(CMAKE_HOST_SYSTEM_VERSION "6.17.4-200.fc42.x86_64")
 set(CMAKE_HOST_SYSTEM_PROCESSOR "x86_64")
 
 include("/home/franco/.platformio/packages/framework-espidf@3.50401.0/tools/cmake/toolchain-esp32.cmake")

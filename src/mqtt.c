@@ -1,5 +1,6 @@
 #include "MQTT/mqtt.h"
 #include "Setting/settings.h"
+#include "Data/data.h"
 #include "esp_log.h"
 #include <esp_mac.h>
 #include "certs/ca_crt.h"
@@ -10,6 +11,8 @@
 static const char *TAG = "MQTT";
 static char mac_addr[18];
 mqtt_client_t mqtt;
+EventGroupHandle_t mqtt_event_group = NULL;
+
 
 
 /**
@@ -38,6 +41,8 @@ static esp_err_t get_mac_address(void) {
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
+            xEventGroupSetBits(mqtt_event_group, MQTT_CONNECTED_BIT);
+            xEventGroupClearBits(mqtt_event_group, MQTT_DISCONNECTED_BIT);
             ESP_LOGI(TAG, "- INFO: Conectado al broker -");
             // Suscribir / publicar iniciales
             esp_mqtt_client_subscribe(event->client, "/devices/esp32/cmd", 1);
@@ -45,11 +50,13 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             break;
 
         case MQTT_EVENT_DISCONNECTED:
+            xEventGroupClearBits(mqtt_event_group, MQTT_CONNECTED_BIT);
+            xEventGroupSetBits(mqtt_event_group, MQTT_DISCONNECTED_BIT);
             ESP_LOGW(TAG, "- WARNING: Desconectado del broker -");
             break;
 
         case MQTT_EVENT_PUBLISHED:
-            ESP_LOGI(TAG, "- INFO: Publicado msg_id=%d -", event->msg_id);
+            ESP_LOGI(TAG, "- INFO: Publicado msg_id = %d -", event->msg_id);
             break;
 
         case MQTT_EVENT_ERROR:
@@ -66,7 +73,6 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
         case MQTT_EVENT_DATA:
             ESP_LOGI(TAG, "- INFO: Tópico: %.*s -", event->topic_len, event->topic);
             ESP_LOGI(TAG, "- INFO: Datos: %.*s -", event->data_len, event->data);
-            // Aquí procesar comandos recibidos
             break;
 
         default:
@@ -97,6 +103,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
  * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
  */
 esp_err_t mqtt_init(void) {
+    mqtt_event_group = xEventGroupCreate();
     esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
     esp_err_t ret = get_mac_address();
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));

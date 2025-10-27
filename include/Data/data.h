@@ -1,9 +1,8 @@
 #ifndef DATA_H
 #define DATA_H
 
-#define ID_KY037 0
-#define ID_DHT11 1
-#define ID_MQ135 2
+#define JSON_MAX 550
+
 
 #include <stdint.h>
 #include "freertos/FreeRTOS.h"
@@ -18,13 +17,19 @@ typedef struct {
     float co2ppm;
     float coppm;
     float nh3ppm;
-    float c6h6pm;
+    float c6h6ppm;
     float no2ppm;
     char time[50];
 } data_sensors_t;
 
 
-void data_json_encrypt_task(void *);
+extern QueueHandle_t data_buffer;
+extern TaskHandle_t data_ct_handle;
+extern TaskHandle_t data_pt_handle;
+
+
+void data_collection_task(void *pvParameter);
+void data_publish_task(void *pvParameter);
 
 
 #endif //DATA_H
