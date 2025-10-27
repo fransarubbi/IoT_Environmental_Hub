@@ -23,17 +23,31 @@ static const char *TAG = "AES_CTR";
  * @param input_len Longitud de la cadena de entrada.
  * @param iv_out Buffer de salida (16 bytes) donde se genera y guarda el IV usado.
  * @param output_base64 Buffer de salida donde se almacena el texto cifrado en Base64.
- * @param output_base64_len Tamaño máximo del buffer de salida (incluye terminador '\0').
+ * @param output_base64_len Tamaño maximo del buffer de salida (incluye terminador '\0').
  */
-
-void aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
+uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
                                unsigned char *iv_out, char *output_base64, size_t output_base64_len) {
-    esp_log_level_set("AES", ESP_LOG_VERBOSE);
-    size_t nc_off = 0; // offset del keystream
+
+    size_t required_len = ((input_len + 2) / 3) * 4 + 1;
+    if (output_base64_len < required_len) {
+        ESP_LOGE(TAG, "Buffer insuficiente: necesitas %zu bytes, tienes %zu",
+                 required_len, output_base64_len);
+        return 0;
+    }
+
+    size_t nc_off = 0;
     unsigned char stream_block[16];
-    unsigned char ciphertext[256];
-    size_t ciphertext_len = 0;
-    size_t olen;
+    memset(stream_block, 0, sizeof(stream_block));
+    unsigned char *ciphertext = NULL;
+    size_t olen = 0;
+    int mbed_ret = 0;
+    uint8_t ok = 0;
+
+    ciphertext = (unsigned char*)malloc(input_len);
+    if (!ciphertext) {
+        ESP_LOGE(TAG, "Error: no hay memoria");
+        return 0;
+    }
 
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -41,43 +55,65 @@ void aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
     mbedtls_ctr_drbg_init(&ctr_drbg);
 
     const char *pers = "aes_ctr_iv";
-    int ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+    mbed_ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
                                 (const unsigned char *)pers, strlen(pers));
-    if (ret != 0) {
-        ESP_LOGE(TAG, "Error inicializando RNG (%d)", ret);
-        return;
+    if (mbed_ret != 0) {
+        ESP_LOGE(TAG, "Error inicializando RNG (-0x%04X)", -mbed_ret);
+        goto cleanup;
     }
 
-    // Se genera de forma aleatoria el IV
-    mbedtls_ctr_drbg_random(&ctr_drbg, iv_out, IV_LEN);
+    mbed_ret = mbedtls_ctr_drbg_random(&ctr_drbg, iv_out, IV_LEN);
+    if (mbed_ret != 0) {
+        ESP_LOGE(TAG, "Error generando IV (-0x%04X)", -mbed_ret);
+        goto cleanup;
+    }
 
-    // Inicializar AES-CTR
+    /* IMPORTANT: mbedtls_aes_crypt_ctr modifies the nonce_counter buffer.
+       Make a local copy so iv_out (the original IV) is preserved for transmission/logging. */
+    unsigned char iv_copy[IV_LEN];
+    memcpy(iv_copy, iv_out, IV_LEN);
+
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
 
-    // Se carga la clave secreta compartida (aes_key). 256 indica que se usa AES-256 (32 bytes de clave).
-    mbedtls_aes_setkey_enc(&aes, (unsigned char*)settings.aes_key, 256); // AES-256
-
-    // AES-CTR genera un keystream usando (clave + IV) y lo combina con el mensaje haciendo un XOR. Como resultado, sale el ciphertext
-    ret = mbedtls_aes_crypt_ctr(&aes, input_len, &nc_off, iv_out, stream_block, input, ciphertext);
-    if (ret != 0) {
-        ESP_LOGE(TAG, "Error cifrando (%d)", ret);
-        return;
+    mbed_ret = mbedtls_aes_setkey_enc(&aes, (const unsigned char*)settings.aes_key, 256);
+    if (mbed_ret != 0) {
+        ESP_LOGE(TAG, "Error configurando clave (-0x%04X)", -mbed_ret);
+        mbedtls_aes_free(&aes);
+        goto cleanup;
     }
-    ciphertext_len = input_len;
 
-    // Convierte los bytes cifrados en una cadena de texto ASCII para que se pueda enviar por MQTT
-    ret = mbedtls_base64_encode((unsigned char *)output_base64, output_base64_len,
-                                &olen, ciphertext, ciphertext_len);
-    if (ret != 0) {
-        ESP_LOGE(TAG, "Error base64 (%d)", ret);
-        return;
+    mbed_ret = mbedtls_aes_crypt_ctr(&aes, input_len, &nc_off, iv_copy,
+                                stream_block, input, ciphertext);
+    if (mbed_ret != 0) {
+        ESP_LOGE(TAG, "Error cifrando (-0x%04X)", -mbed_ret);
+        mbedtls_aes_free(&aes);
+        goto cleanup;
+    }
+
+    mbed_ret = mbedtls_base64_encode((unsigned char *)output_base64, output_base64_len,
+                                &olen, ciphertext, input_len);
+    if (mbed_ret != 0) {
+        ESP_LOGE(TAG, "Error base64 (-0x%04X), necesitas %zu bytes", -mbed_ret, required_len);
+        mbedtls_aes_free(&aes);
+        goto cleanup;
     }
 
     output_base64[olen] = '\0';
+    ESP_LOGI(TAG, "Cifrado exitoso: %zu bytes → %zu bytes Base64", input_len, olen);
 
-    // Liberar
     mbedtls_aes_free(&aes);
+    ok = 1; // éxito
+
+cleanup:
+    if (*ciphertext) {
+        mbedtls_platform_zeroize(ciphertext, input_len);
+        free(ciphertext);
+    }
+    /* limpiar datos temporales sensibles */
+    mbedtls_platform_zeroize(&stream_block, sizeof(stream_block));
+    mbedtls_platform_zeroize(&iv_copy, sizeof(iv_copy));
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
+    return ok;
 }

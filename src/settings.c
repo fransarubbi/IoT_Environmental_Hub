@@ -107,6 +107,7 @@ static void show_help(void) {
     uart_send_text("| SET_DEVICE_NAME <name>    - Configura nombre del dispositivo       |\r\n");
     uart_send_text("| SET_SAMPLE <rate>         - Configura frecuencia de envio de datos |\r\n");
     uart_send_text("| SET_AES_KEY <key>         - Configura clave de cifrado de AES-CTR  |\r\n");
+    uart_send_text("| SET_MQTT_TOPIC <topic>    - Configura el topico de publicacion     |\r\n");
     uart_send_text("| SHOW                      - Muestra configuracion actual           |\r\n");
     uart_send_text("| EXIT                      - Salir                                  |\r\n");
     uart_send_text("| HELP                      - Muestra mensaje de ayuda               |\r\n");
@@ -134,6 +135,8 @@ void show_config(void) {
     sprintf(temp_buffer, "| MQTT User:        %s\r\n", settings.mqtt_user);
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| MQTT Password:    %s\r\n", strlen(settings.mqtt_password) > 0 ? "**configurado**" : "no configurado");
+    uart_send_text(temp_buffer);
+    sprintf(temp_buffer, "| MQTT Topico:      %s\r\n", settings.topic_mqtt);
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| Device Name:      %s\r\n", settings.device_name);
     uart_send_text(temp_buffer);
@@ -186,7 +189,8 @@ static bool setting_is_device_configured(void) {
     if (settings.wifi_ssid_len > 0 && settings.wifi_pass_len > 0
         && strlen(settings.mqtt_uri) > 0 && strlen(settings.mqtt_user) > 0
         && strlen(settings.mqtt_password) > 0 && strlen(settings.device_name) > 0
-        && settings.sample_rate > 0 && strlen(settings.aes_key) > 0) {
+        && settings.sample_rate > 0 && strlen(settings.aes_key) > 0
+        && strlen(settings.topic_mqtt) > 0) {
         return true;
         }
     return false;
@@ -208,6 +212,7 @@ static esp_err_t setting_save_to_nvs(void) {
     if ((ret = nvs_set_str(h, "mqtt_uri", settings.mqtt_uri)) != ESP_OK) goto exit;
     if ((ret = nvs_set_str(h, "mqtt_user", settings.mqtt_user)) != ESP_OK) goto exit;
     if ((ret = nvs_set_str(h, "mqtt_password", settings.mqtt_password)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "mqtt_topic", settings.topic_mqtt)) != ESP_OK) goto exit;
     if ((ret = nvs_set_str(h, "device_name", settings.device_name)) != ESP_OK) goto exit;
 
     if ((ret = nvs_set_u32(h, "sample_rate", settings.sample_rate)) != ESP_OK) goto exit;
@@ -252,6 +257,9 @@ static bool setting_load_from_nvs(void) {
 
     size = sizeof(settings.mqtt_password);
     if (nvs_get_str(h, "mqtt_password", settings.mqtt_password, &size) != ESP_OK) goto exit;
+
+    size = sizeof(settings.topic_mqtt);
+    if (nvs_get_str(h, "mqtt_topic", settings.topic_mqtt, &size) != ESP_OK) goto exit;
 
     size = sizeof(settings.device_name);
     if (nvs_get_str(h, "device_name", settings.device_name, &size) != ESP_OK) goto exit;
@@ -357,6 +365,16 @@ static bool process_command(const char *command) {
         }
         SAFE_STRCPY(settings.mqtt_password, param);
         uart_send_text("- INFO: Password MQTT configurado correctamente -\r\n");
+        return false;
+    }
+
+    if (strcmp(cmd, CMD_SET_MQTT_TOPIC) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <topic> -\r\n");
+            return false;
+        }
+        SAFE_STRCPY(settings.topic_mqtt, param);
+        uart_send_text("- INFO: Topico MQTT configurado correctamente -\r\n");
         return false;
     }
 

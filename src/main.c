@@ -11,26 +11,33 @@
 #include "Time/time.h"
 
 
+QueueHandle_t data_buffer = NULL;
+TaskHandle_t data_ct_handle = NULL;
+TaskHandle_t data_pt_handle = NULL;
+
 
 void app_main(void) {
 
-    esp_err_t retUART = uart_init();
-    if (retUART != ESP_OK) return;
+    data_buffer = xQueueCreate(100, sizeof(char[JSON_MAX]));
+    esp_err_t retMQ135 = ESP_FAIL;
+    esp_err_t retDHT11 = ESP_FAIL;
+    esp_err_t retKY037 = ESP_FAIL;
 
-    esp_err_t retWiFi = wifi_init();
-    if (retWiFi != ESP_OK) return;
+    if (uart_init() != ESP_OK) return;
+    if (wifi_init() != ESP_OK) return;
+    if (time_init() != ESP_OK) return;
+    if (mqtt_init() != ESP_OK) return;
 
-    esp_err_t retTime = time_init();
-    if (retTime != ESP_OK) return;
-
-    esp_err_t retMQTT = mqtt_init();
-    if (retMQTT != ESP_OK) return;
-
-    esp_err_t retMQ135 = mq135_init();
-    esp_err_t retDHT11 = dht11_init();
-    esp_err_t retKY037 = ky037_init();
-    if (retMQ135 == ESP_OK && retDHT11 == ESP_OK && retKY037 == ESP_OK) {
-        //vTaskDelay(pdMS_TO_TICKS(240000));   // 4 minutos de estabilizacion del mq135
-        xTaskCreate(data_json_encrypt_task, "data_json_encrypt_task", 4096, NULL, 6, NULL);
+    while (1) {
+        if (retMQ135 != ESP_OK) retMQ135 = mq135_init();
+        if (retDHT11 != ESP_OK) retDHT11 = dht11_init();
+        if (retKY037 != ESP_OK) retKY037 = ky037_init();
+        if (retMQ135 == ESP_OK && retDHT11 == ESP_OK && retKY037 == ESP_OK) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));  // 1 seg para evitar consumir CPU entre los intentos de inicializacion
     }
+    //vTaskDelay(pdMS_TO_TICKS(240000));   // 4 minutos de estabilizacion del mq135
+    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", 3800, NULL, 5, &data_ct_handle, 0);
+    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", 4096, NULL, 6, &data_pt_handle, 1);
 }

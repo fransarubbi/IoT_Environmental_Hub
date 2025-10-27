@@ -1,6 +1,9 @@
 #ifndef MQTT_CLIENT_H
 #define MQTT_CLIENT_H
 
+#define MQTT_CONNECTED_BIT    BIT0
+#define MQTT_DISCONNECTED_BIT BIT1
+
 #include "esp_err.h"
 #include "mqtt_client.h"
 
@@ -12,6 +15,7 @@ typedef struct {
 
 
 extern mqtt_client_t mqtt;
+extern EventGroupHandle_t mqtt_event_group;
 
 
 esp_err_t mqtt_init(void);

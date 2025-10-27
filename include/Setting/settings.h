@@ -25,6 +25,7 @@
 #define CMD_SET_DEVICE_NAME        "SET_DEVICE_NAME"
 #define CMD_SET_SAMPLE             "SET_SAMPLE"
 #define CMD_SET_AES_KEY            "SET_AES_KEY"
+#define CMD_SET_MQTT_TOPIC         "SET_MQTT_TOPIC"
 #define CMD_SHOW_CONFIG            "SHOW"
 #define CMD_EXIT                   "EXIT"
 #define CMD_CHANGE                 "Y"
@@ -57,6 +58,7 @@ typedef struct {
     char device_name[SETTINGS_MAX_STRING_LEN];
     uint32_t sample_rate;
     char aes_key[AES_KEY_LEN];
+    char topic_mqtt[40];
 } settings_t;
 
 
