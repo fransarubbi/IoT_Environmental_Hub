@@ -30,7 +30,7 @@ uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
 
     size_t required_len = ((input_len + 2) / 3) * 4 + 1;
     if (output_base64_len < required_len) {
-        ESP_LOGE(TAG, "Buffer insuficiente: necesitas %zu bytes, tienes %zu",
+        ESP_LOGE(TAG, "- ERROR: Buffer insuficiente, necesitas %zu bytes, tienes %zu",
                  required_len, output_base64_len);
         return 0;
     }
@@ -45,7 +45,7 @@ uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
 
     ciphertext = (unsigned char*)malloc(input_len);
     if (!ciphertext) {
-        ESP_LOGE(TAG, "Error: no hay memoria");
+        ESP_LOGE(TAG, "- ERROR: No hay memoria -");
         return 0;
     }
 
@@ -58,18 +58,16 @@ uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
     mbed_ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
                                 (const unsigned char *)pers, strlen(pers));
     if (mbed_ret != 0) {
-        ESP_LOGE(TAG, "Error inicializando RNG (-0x%04X)", -mbed_ret);
+        ESP_LOGE(TAG, "- ERROR: Error inicializando RNG (-0x%04X) -", -mbed_ret);
         goto cleanup;
     }
 
     mbed_ret = mbedtls_ctr_drbg_random(&ctr_drbg, iv_out, IV_LEN);
     if (mbed_ret != 0) {
-        ESP_LOGE(TAG, "Error generando IV (-0x%04X)", -mbed_ret);
+        ESP_LOGE(TAG, "- ERROR: Error generando IV (-0x%04X) -", -mbed_ret);
         goto cleanup;
     }
 
-    /* IMPORTANT: mbedtls_aes_crypt_ctr modifies the nonce_counter buffer.
-       Make a local copy so iv_out (the original IV) is preserved for transmission/logging. */
     unsigned char iv_copy[IV_LEN];
     memcpy(iv_copy, iv_out, IV_LEN);
 
@@ -78,7 +76,7 @@ uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
 
     mbed_ret = mbedtls_aes_setkey_enc(&aes, (const unsigned char*)settings.aes_key, 256);
     if (mbed_ret != 0) {
-        ESP_LOGE(TAG, "Error configurando clave (-0x%04X)", -mbed_ret);
+        ESP_LOGE(TAG, "- ERROR: Error configurando clave (-0x%04X) -", -mbed_ret);
         mbedtls_aes_free(&aes);
         goto cleanup;
     }
@@ -86,7 +84,7 @@ uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
     mbed_ret = mbedtls_aes_crypt_ctr(&aes, input_len, &nc_off, iv_copy,
                                 stream_block, input, ciphertext);
     if (mbed_ret != 0) {
-        ESP_LOGE(TAG, "Error cifrando (-0x%04X)", -mbed_ret);
+        ESP_LOGE(TAG, "- ERROR: Error cifrando (-0x%04X) -", -mbed_ret);
         mbedtls_aes_free(&aes);
         goto cleanup;
     }
@@ -94,13 +92,13 @@ uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
     mbed_ret = mbedtls_base64_encode((unsigned char *)output_base64, output_base64_len,
                                 &olen, ciphertext, input_len);
     if (mbed_ret != 0) {
-        ESP_LOGE(TAG, "Error base64 (-0x%04X), necesitas %zu bytes", -mbed_ret, required_len);
+        ESP_LOGE(TAG, "- ERROR: Error base64 (-0x%04X), necesitas %zu bytes -", -mbed_ret, required_len);
         mbedtls_aes_free(&aes);
         goto cleanup;
     }
 
     output_base64[olen] = '\0';
-    ESP_LOGI(TAG, "Cifrado exitoso: %zu bytes → %zu bytes Base64", input_len, olen);
+    ESP_LOGI(TAG, "- OK: Cifrado exitoso: %zu bytes → %zu bytes Base64 -", input_len, olen);
 
     mbedtls_aes_free(&aes);
     ok = 1; // éxito

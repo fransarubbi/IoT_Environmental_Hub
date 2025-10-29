@@ -1,8 +1,8 @@
 #ifndef DATA_H
 #define DATA_H
 
-#define JSON_MAX 550
-
+#define JSON_MAX 600
+#define QUEUE_LENGTH 100
 
 #include <stdint.h>
 #include "freertos/FreeRTOS.h"
@@ -30,6 +30,7 @@ extern TaskHandle_t data_pt_handle;
 
 void data_collection_task(void *pvParameter);
 void data_publish_task(void *pvParameter);
+void stack_monitor_task(void *pvParameter);
 
 
 #endif //DATA_H

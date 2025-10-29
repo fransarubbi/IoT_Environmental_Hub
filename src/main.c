@@ -14,11 +14,12 @@
 QueueHandle_t data_buffer = NULL;
 TaskHandle_t data_ct_handle = NULL;
 TaskHandle_t data_pt_handle = NULL;
+TaskHandle_t xStatsTaskHandle = NULL;
 
 
 void app_main(void) {
 
-    data_buffer = xQueueCreate(100, sizeof(char[JSON_MAX]));
+    data_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
     esp_err_t retMQ135 = ESP_FAIL;
     esp_err_t retDHT11 = ESP_FAIL;
     esp_err_t retKY037 = ESP_FAIL;
@@ -38,6 +39,7 @@ void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(1000));  // 1 seg para evitar consumir CPU entre los intentos de inicializacion
     }
     //vTaskDelay(pdMS_TO_TICKS(240000));   // 4 minutos de estabilizacion del mq135
-    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", 3800, NULL, 5, &data_ct_handle, 0);
-    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", 4096, NULL, 6, &data_pt_handle, 1);
+    xTaskCreate(stack_monitor_task, "StackMonitor", 2048, NULL, 1, NULL);
+    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", 4000, NULL, 5, &data_ct_handle, 0);
+    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", 3000, NULL, 6, &data_pt_handle, 1);
 }

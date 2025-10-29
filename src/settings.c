@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include "nvs_flash.h"
 #include "freertos/timers.h"
+#include "cJSON.h"
 
 
 static const char *TAG = "SETTINGS";
@@ -124,9 +125,9 @@ static void show_help(void) {
 void show_config(void) {
     char temp_buffer[128];
 
-    uart_send_text("\r\n|========================================|\r\n");
-    uart_send_text("|========= CONFIGURACION ACTUAL =========|\r\n");
-    sprintf(temp_buffer,"| WiFi SSID:        %s\r\n", (const char*)settings.wifi_ssid);
+    uart_send_text("\r\n|============================================|\r\n");
+    uart_send_text("|=========== CONFIGURACION ACTUAL ===========|\r\n");
+    sprintf(temp_buffer, "| WiFi SSID:        %s\r\n", (const char*)settings.wifi_ssid);
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| WiFi Password:    %s\r\n", settings.wifi_pass_len > 0 ? "**configurado**" : "no configurado");
     uart_send_text(temp_buffer);
@@ -144,7 +145,9 @@ void show_config(void) {
     uart_send_text(temp_buffer);
     sprintf(temp_buffer,"| AES Key:           %s\r\n", strlen(settings.aes_key) > 0 ? "**configurado**" : "no configurado");
     uart_send_text(temp_buffer);
-    uart_send_text("|========================================|\r\n\r\n");
+    sprintf(temp_buffer,"| Topic:             %s\r\n", settings.topic_mqtt);
+    uart_send_text(temp_buffer);
+    uart_send_text("|============================================|\r\n\r\n");
 }
 
 
@@ -190,7 +193,7 @@ static bool setting_is_device_configured(void) {
         && strlen(settings.mqtt_uri) > 0 && strlen(settings.mqtt_user) > 0
         && strlen(settings.mqtt_password) > 0 && strlen(settings.device_name) > 0
         && settings.sample_rate > 0 && strlen(settings.aes_key) > 0
-        && strlen(settings.topic_mqtt) > 0) {
+        && strlen(settings.topic_mqtt) > 0 && strlen(settings.topic_mqtt) > 0) {
         return true;
         }
     return false;
@@ -214,6 +217,7 @@ static esp_err_t setting_save_to_nvs(void) {
     if ((ret = nvs_set_str(h, "mqtt_password", settings.mqtt_password)) != ESP_OK) goto exit;
     if ((ret = nvs_set_str(h, "mqtt_topic", settings.topic_mqtt)) != ESP_OK) goto exit;
     if ((ret = nvs_set_str(h, "device_name", settings.device_name)) != ESP_OK) goto exit;
+    if ((ret = nvs_set_str(h, "topic", settings.topic_mqtt)) != ESP_OK) goto exit;
 
     if ((ret = nvs_set_u32(h, "sample_rate", settings.sample_rate)) != ESP_OK) goto exit;
 
@@ -263,6 +267,9 @@ static bool setting_load_from_nvs(void) {
 
     size = sizeof(settings.device_name);
     if (nvs_get_str(h, "device_name", settings.device_name, &size) != ESP_OK) goto exit;
+
+    size = sizeof(settings.topic_mqtt);
+    if (nvs_get_str(h, "topic", settings.topic_mqtt, &size) != ESP_OK) goto exit;
 
     if (nvs_get_u32(h, "sample_rate", &settings.sample_rate) != ESP_OK) goto exit;
 
@@ -439,6 +446,67 @@ static bool process_command(const char *command) {
         uart_send_text("- ERROR: Comando desconocido. Use HELP para ver comandos disponibles -\r\n");
     }
     return false;
+}
+
+
+/**
+ * @brief Procesar comando recibido por MQTT desde el broker para modificar la configuracion del sistema.
+ *
+ * @param data Mensaje JSON.
+ * @param data_len Longitud del mensaje JSON.
+ */
+void process_json(const char *data, int data_len) {
+    char device_name[SETTINGS_MAX_STRING_LEN] = {0};
+    bool flag_all = false;
+
+    char *json_str = malloc(data_len + 1);
+    if (!json_str) {
+        ESP_LOGE(TAG, "- ERROR: No hay memoria para copiar JSON -");
+        return;
+    }
+
+    memcpy(json_str, data, data_len);
+    json_str[data_len] = '\0';
+
+    cJSON *root = cJSON_Parse(json_str);
+    if (!root) {
+        ESP_LOGE(TAG, "- ERROR: Formato JSON invalido -");
+        free(json_str);
+        return;
+    }
+
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, root) {
+        const char *key = item->string;
+
+        if (cJSON_IsString(item)) {
+            const char *value = item->valuestring;
+            if (strcmp(key, "Dispositivo") == 0) {
+                if (strcmp(value, "all") == 0) {
+                    flag_all = true;
+                } else {
+                    strncpy(device_name, value, sizeof(device_name) - 1);
+                }
+            }
+
+            else if (strcmp(key, "Topic") == 0) {
+                if (flag_all || strcmp(settings.device_name, device_name) == 0) {
+                    strncpy(settings.topic_mqtt, value, 39);
+                    settings.topic_mqtt[39] = '\0';
+                }
+            }
+        }
+        else if (cJSON_IsNumber(item)) {
+            if (strcmp(key, "Sample") == 0) {
+                if (flag_all || strcmp(settings.device_name, device_name) == 0) {
+                    settings.sample_rate = item->valueint;
+                }
+            }
+        }
+    }
+
+    cJSON_Delete(root);
+    free(json_str);
 }
 
 

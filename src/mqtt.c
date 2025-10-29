@@ -44,8 +44,10 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             xEventGroupSetBits(mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupClearBits(mqtt_event_group, MQTT_DISCONNECTED_BIT);
             ESP_LOGI(TAG, "- INFO: Conectado al broker -");
-            // Suscribir / publicar iniciales
             esp_mqtt_client_subscribe(event->client, "/devices/esp32/cmd", 1);
+            esp_mqtt_client_subscribe(event->client, "/devices/config/sample", 1);
+            esp_mqtt_client_subscribe(event->client, "/devices/config/name", 1);
+            esp_mqtt_client_subscribe(event->client, "/devices/config/topic", 1);
             esp_mqtt_client_publish(event->client, "/devices/esp32/status", "online", 0, 1, true);
             break;
 
@@ -70,11 +72,25 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             ESP_LOGI(TAG, "- INFO: SUBSCRIBED -");
             break;
 
-        case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "- INFO: Tópico: %.*s -", event->topic_len, event->topic);
-            ESP_LOGI(TAG, "- INFO: Datos: %.*s -", event->data_len, event->data);
-            break;
+        case MQTT_EVENT_DATA: {
+            char msg[event->data_len + 1];
+            memcpy(msg, event->data, event->data_len);
+            msg[event->data_len] = '\0';
 
+            if (event->topic_len == strlen("/devices/config/sample") &&
+                strncmp(event->topic, "/devices/config/sample", event->topic_len) == 0) {
+                process_json(msg, event->data_len);
+                }
+            else if (event->topic_len == strlen("/devices/config/name") &&
+                     strncmp(event->topic, "/devices/config/name", event->topic_len) == 0) {
+                process_json(msg, event->data_len);
+                     }
+            else if (event->topic_len == strlen("/devices/config/topic") &&
+                     strncmp(event->topic, "/devices/config/topic", event->topic_len) == 0) {
+                process_json(msg, event->data_len);
+                     }
+            break;
+        }
         default:
             break;
     }

@@ -67,6 +67,7 @@ extern settings_t settings;
 
 /* ---- Funcion de la API ---- */
 esp_err_t uart_init(void);
+void process_json(const char *, int);
 
 
 /**

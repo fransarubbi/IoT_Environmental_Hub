@@ -1,6 +1,7 @@
 #ifndef KY037_H
 #define KY037_H
 
+#include <esp_timer.h>
 #include "esp_err.h"
 #include "driver/gpio.h"
 
@@ -22,8 +23,19 @@ typedef struct {
     uint32_t max_duration;    // Duración máxima en milisegundos
 } ky037_t;
 
+
 extern ky037_stats_t ky037_stats;
 extern SemaphoreHandle_t xStatsMutex;
+extern TaskHandle_t xStatsTaskHandle;
+
+
+/**
+ * @brief Obtiene el tiempo actual en milisegundos
+ */
+static inline uint32_t get_time_ms(void) {
+    return (uint32_t)(esp_timer_get_time() / 1000);  // /1000 para convertir de micro seg a ms
+}
+
 
 esp_err_t ky037_init(void);
 // Declaraciones de tareas (para uso interno)

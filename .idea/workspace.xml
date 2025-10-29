@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="BackendCodeEditorMiscSettings">
-    <option name="/Default/Environment/Hierarchy/GeneratedFilesCacheKey/Timestamp/@EntryValue" value="3" type="long" />
+    <option name="/Default/Environment/Hierarchy/GeneratedFilesCacheKey/Timestamp/@EntryValue" value="4" type="long" />
     <option name="/Default/Housekeeping/FeatureSuggestion/FeatureSuggestionManager/DisabledSuggesters/=SwitchToGoToActionSuggester/@EntryIndexedValue" value="true" type="bool" />
     <option name="/Default/Housekeeping/GlobalSettingsUpgraded/IsUpgraded/@EntryValue" value="true" type="bool" />
     <option name="/Default/Housekeeping/LiveTemplatesHousekeeping/HotspotSessionHintIsShown/@EntryValue" value="true" type="bool" />
@@ -27,42 +27,198 @@
     <list default="true" id="134f3a1e-47ad-4c6e-a9e8-c3f2ac10e001" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.sconsign313.dblite" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/.sconsign313.dblite" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/3.16.4/CMakeSystem.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/3.16.4/CMakeSystem.cmake" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/CMakeOutput.log" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/CMakeOutput.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/HEAD" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/HEAD" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/head-ref" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/CMakeFiles/git-data/head-ref" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/IoT_Environmental_Hub.map" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/IoT_Environmental_Hub.map" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.bin" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.elf" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader.elf" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/3.16.4/CMakeSystem.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/3.16.4/CMakeSystem.cmake" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/CMakeOutput.log" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/CMakeFiles/CMakeOutput.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/bootloader/subproject/main/bootloader_start.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/bootloader/subproject/main/bootloader_start.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/build.ninja" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/build.ninja" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/config/sdkconfig.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/config/sdkconfig.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/config/sdkconfig.h" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/config/sdkconfig.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/config/sdkconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/config/sdkconfig.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp-idf/main/libmain.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp-idf/main/libmain.a" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp_bootloader_format/esp_bootloader_desc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/bootloader/esp_bootloader_format/esp_bootloader_desc.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/build.ninja" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/build.ninja" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/compile_commands.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/compile_commands.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/config/sdkconfig.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/config/sdkconfig.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/config/sdkconfig.h" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/config/sdkconfig.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/config/sdkconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/config/sdkconfig.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/argtable3/argtable3.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/argtable3/argtable3.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/commands.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/commands.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/esp_console_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/esp_console_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/esp_console_repl_chip.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/esp_console_repl_chip.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/linenoise/linenoise.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/console/linenoise/linenoise.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/cxx/cxx_exception_stubs.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/cxx/cxx_exception_stubs.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/adc_legacy.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/adc_legacy.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/dac_common_legacy.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/dac_common_legacy.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/mcpwm_legacy.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/mcpwm_legacy.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/pcnt_legacy.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/pcnt_legacy.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/rmt_legacy.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/rmt_legacy.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/timer_legacy.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/driver/deprecated/timer_legacy.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/efuse/src/esp_efuse_api.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/efuse/src/esp_efuse_api.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/console/libconsole.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/console/libconsole.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/cxx/libcxx.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/cxx/libcxx.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/driver/libdriver.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/driver/libdriver.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/efuse/libefuse.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/efuse/libefuse.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_adc/libesp_adc.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_adc/libesp_adc.a" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_app_format/libesp_app_format.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_app_format/libesp_app_format.a" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_bootloader_format/libesp_bootloader_format.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_gpio/libesp_driver_gpio.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_gpio/libesp_driver_gpio.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_gptimer/libesp_driver_gptimer.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_gptimer/libesp_driver_gptimer.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_i2c/libesp_driver_i2c.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_i2c/libesp_driver_i2c.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_i2s/libesp_driver_i2s.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_i2s/libesp_driver_i2s.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_ledc/libesp_driver_ledc.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_ledc/libesp_driver_ledc.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_mcpwm/libesp_driver_mcpwm.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_mcpwm/libesp_driver_mcpwm.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_pcnt/libesp_driver_pcnt.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_pcnt/libesp_driver_pcnt.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_rmt/libesp_driver_rmt.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_rmt/libesp_driver_rmt.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_sdm/libesp_driver_sdm.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_sdm/libesp_driver_sdm.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_sdspi/libesp_driver_sdspi.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_sdspi/libesp_driver_sdspi.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_spi/libesp_driver_spi.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_spi/libesp_driver_spi.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_uart/libesp_driver_uart.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_driver_uart/libesp_driver_uart.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_event/libesp_event.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_event/libesp_event.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_gdbstub/libesp_gdbstub.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_gdbstub/libesp_gdbstub.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_hid/libesp_hid.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_hid/libesp_hid.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_http_server/libesp_http_server.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_http_server/libesp_http_server.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_hw_support/libesp_hw_support.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_hw_support/libesp_hw_support.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_lcd/libesp_lcd.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_lcd/libesp_lcd.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_mm/libesp_mm.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_mm/libesp_mm.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_partition/libesp_partition.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_partition/libesp_partition.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_phy/libesp_phy.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_phy/libesp_phy.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_pm/libesp_pm.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_pm/libesp_pm.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_security/libesp_security.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_security/libesp_security.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_system/libesp_system.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_system/libesp_system.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_timer/libesp_timer.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_timer/libesp_timer.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_wifi/libesp_wifi.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/esp_wifi/libesp_wifi.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/fatfs/libfatfs.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/fatfs/libfatfs.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/freertos/libfreertos.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/freertos/libfreertos.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/log/liblog.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/log/liblog.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/lwip/liblwip.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/lwip/liblwip.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/mbedtls/mbedtls/library/libmbedcrypto.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/mbedtls/mbedtls/library/libmbedcrypto.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/newlib/libnewlib.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/newlib/libnewlib.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/nvs_flash/libnvs_flash.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/nvs_flash/libnvs_flash.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/perfmon/libperfmon.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/perfmon/libperfmon.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/pthread/libpthread.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/pthread/libpthread.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/rt/librt.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/rt/librt.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/sdmmc/libsdmmc.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/sdmmc/libsdmmc.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/spi_flash/libspi_flash.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/spi_flash/libspi_flash.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/unity/libunity.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/unity/libunity.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/vfs/libvfs.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/vfs/libvfs.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/wear_levelling/libwear_levelling.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/wear_levelling/libwear_levelling.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/wpa_supplicant/libwpa_supplicant.a" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp-idf/wpa_supplicant/libwpa_supplicant.a" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_adc/adc_oneshot.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_adc/adc_oneshot.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_app_format/esp_app_desc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_app_format/esp_app_desc.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_bootloader_format/esp_bootloader_desc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_bootloader_format/esp_bootloader_desc.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_gpio/src/gpio.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_gpio/src/gpio.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_gptimer/src/gptimer_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_gptimer/src/gptimer_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2c/i2c_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2c/i2c_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2c/i2c_master.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2c/i2c_master.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_pdm.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_pdm.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_platform.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_platform.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_std.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_i2s/i2s_std.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_ledc/src/ledc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_ledc/src/ledc.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_mcpwm/src/mcpwm_com.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_mcpwm/src/mcpwm_com.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_pcnt/src/pulse_cnt.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_pcnt/src/pulse_cnt.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_rmt/src/rmt_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_rmt/src/rmt_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_sdm/src/sdm.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_sdm/src/sdm.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_sdspi/src/sdspi_transaction.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_sdspi/src/sdspi_transaction.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_spi/src/gpspi/spi_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_spi/src/gpspi/spi_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_uart/src/uart.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_uart/src/uart.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_uart/src/uart_vfs.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_driver_uart/src/uart_vfs.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_event/esp_event.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_event/esp_event.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_gdbstub/src/gdbstub.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_gdbstub/src/gdbstub.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hid/src/esp_hid_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hid/src/esp_hid_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hid/src/esp_hidh.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hid/src/esp_hidh.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_http_server/src/httpd_txrx.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_http_server/src/httpd_txrx.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/adc_share_hw_ctrl.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/adc_share_hw_ctrl.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/intr_alloc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/intr_alloc.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/periph_ctrl.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/periph_ctrl.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/sleep_modes.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/sleep_modes.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/spi_bus_lock.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_hw_support/spi_bus_lock.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_lcd/i80/esp_lcd_panel_io_i2s.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_lcd/i80/esp_lcd_panel_io_i2s.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_mm/esp_mmu_map.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_mm/esp_mmu_map.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_partition/partition.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_partition/partition.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_phy/src/btbb_init.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_phy/src/btbb_init.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_phy/src/phy_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_phy/src/phy_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_phy/src/phy_init.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_phy/src/phy_init.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_pm/pm_locks.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_pm/pm_locks.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_security/src/esp_crypto_lock.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_security/src/esp_crypto_lock.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_system/esp_ipc.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_system/esp_ipc.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_system/port/arch/xtensa/expression_with_stack.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_system/port/arch/xtensa/expression_with_stack.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_timer/src/esp_timer.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_timer/src/esp_timer.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_wifi/esp32/esp_adapter.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/esp_wifi/esp32/esp_adapter.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/fatfs/vfs/vfs_fat.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/fatfs/vfs/vfs_fat.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.bin" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.elf" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/firmware.elf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/event_groups.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/event_groups.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/portable/xtensa/port.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/portable/xtensa/port.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/queue.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/queue.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/stream_buffer.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/stream_buffer.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/tasks.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/tasks.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/timers.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/FreeRTOS-Kernel/timers.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/esp_additions/idf_additions.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/esp_additions/idf_additions.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/esp_additions/idf_additions_event_groups.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/esp_additions/idf_additions_event_groups.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/port_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/freertos/port_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/log/src/log_timestamp_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/log/src/log_timestamp_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/lwip/lwip/src/core/pbuf.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/lwip/lwip/src/core/pbuf.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/bignum.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/bignum.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/ctr_drbg.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/ctr_drbg.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/entropy.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/entropy.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/hmac_drbg.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/hmac_drbg.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/md.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/md.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/pkparse.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/pkparse.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/psa_its_file.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/mbedtls/mbedtls/library/psa_its_file.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/flockfile.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/flockfile.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/heap.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/heap.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/locks.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/locks.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/newlib_init.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/newlib_init.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/port/esp_time_impl.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/port/esp_time_impl.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/reent_init.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/reent_init.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/syscalls.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/syscalls.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/time.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/newlib/time.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_api.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_api.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_cxx_api.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_cxx_api.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_encrypted_partition.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_encrypted_partition.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_handle_locked.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_handle_locked.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_handle_simple.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_handle_simple.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_item_hash_list.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_item_hash_list.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_page.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_page.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_pagemanager.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_pagemanager.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_partition_manager.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_partition_manager.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_platform.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_platform.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_storage.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_storage.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_types.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/nvs_flash/src/nvs_types.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/perfmon/xtensa_perfmon_apis.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/perfmon/xtensa_perfmon_apis.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/project_description.json" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/project_description.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/pthread/pthread.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/pthread/pthread.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/pthread/pthread_cond_var.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/pthread/pthread_cond_var.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/rt/FreeRTOS_POSIX_mqueue.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/rt/FreeRTOS_POSIX_mqueue.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/sdmmc/sdmmc_common.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/sdmmc/sdmmc_common.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/sdmmc/sdmmc_io.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/sdmmc/sdmmc_io.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/sections.ld" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/sections.ld" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/spi_flash/flash_mmap.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/spi_flash/flash_mmap.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/data.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/data.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/ky037.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/ky037.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/main.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/main.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/mqtt.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/mqtt.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/settings.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/src/settings.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/unity/unity_utils_freertos.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/unity/unity_utils_freertos.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/unity/unity_utils_memory.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/unity/unity_utils_memory.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/vfs/vfs.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/vfs/vfs.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/vfs/vfs_eventfd.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/vfs/vfs_eventfd.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/wear_levelling/wear_levelling.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/wear_levelling/wear_levelling.cpp.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/wpa_supplicant/src/eap_peer/eap_fast.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/wpa_supplicant/src/eap_peer/eap_fast.c.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.pio/build/nodemcu-32s/wpa_supplicant/src/eap_peer/eap_fast_pac.c.o" beforeDir="false" afterPath="$PROJECT_DIR$/.pio/build/nodemcu-32s/wpa_supplicant/src/eap_peer/eap_fast_pac.c.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/AES-CTR/aes-ctr.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/AES-CTR/aes-ctr.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/Data/data.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Data/data.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/MQTT/mqtt.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/MQTT/mqtt.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/KY037/ky037.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/KY037/ky037.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/include/Setting/settings.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/Setting/settings.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sdkconfig.nodemcu-32s" beforeDir="false" afterPath="$PROJECT_DIR$/sdkconfig.nodemcu-32s" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/aes-ctr.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/aes-ctr.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/certs/ca.crt" beforeDir="false" afterPath="$PROJECT_DIR$/src/certs/ca.crt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/certs/ca_crt.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/certs/ca_crt.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/certs/client.crt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/certs/client.key" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/certs/client_crt.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/certs/client_key.h" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/data.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/data.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ky037.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/ky037.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/mqtt.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/mqtt.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/settings.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/settings.c" afterDir="false" />
@@ -165,7 +321,7 @@
     "cidr.known.project.marker": "true",
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultAutoModeForALLUsers.v1": "true",
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "WiFi",
+    "git-widget-placeholder": "master",
     "junie.onboarding.icon.badge.shown": "true",
     "last_opened_file_path": "/home/franco/IoT_Environmental_Hub",
     "node.js.detected.package.eslint": "true",
@@ -196,9 +352,9 @@
     </key>
   </component>
   <component name="RunManager">
-    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
       <method v="2">
-        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
       </method>
     </configuration>
     <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="IoT_Environmental_Hub" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
@@ -240,6 +396,7 @@
       <workItem from="1761181106610" duration="17000" />
       <workItem from="1761351834014" duration="20408000" />
       <workItem from="1761446413602" duration="13768000" />
+      <workItem from="1761666400104" duration="31007000" />
     </task>
     <servers />
   </component>

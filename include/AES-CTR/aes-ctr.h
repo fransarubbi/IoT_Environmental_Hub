@@ -2,6 +2,7 @@
 #define AES_CTR_H
 
 #define IV_LEN 16   // Initialization Vector
+#define IV_HEX_LEN 33   // 16*2 + 1 ( por agregar \0)
 
 #include <string.h>
 #include <stdio.h>

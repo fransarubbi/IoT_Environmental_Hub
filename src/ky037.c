@@ -13,21 +13,12 @@ static const char *TAG = "KY037";
 
 
 ky037_stats_t ky037_stats;                // Estructura de estadisticas
-static TaskHandle_t xStatsTaskHandle = NULL;     // Handle de la tarea que procesa eventos (notificaciones desde ISR)
-static TaskHandle_t xGetStatsTaskHandle = NULL;  // Handle de la tarea que consolida estadísticas periódicamente
 SemaphoreHandle_t xStatsMutex = NULL;     // Mutex para proteger acceso concurrente a ky037_stats
 
 // Variables para ISR
 static volatile uint32_t isr_init_high_time = 0;     // Guarda el tiempo de inicio del pulso alto
 static volatile bool isr_service_installed = false;  // Flag que indica si ya se instalo el servicio de ISR del driver GPIO
 
-
-/**
- * @brief Obtiene el tiempo actual en milisegundos
- */
-static uint32_t get_time_ms(void) {
-    return (uint32_t)(esp_timer_get_time() / 1000);  // /1000 para convertir de micro seg a ms
-}
 
 
 /**
@@ -103,13 +94,12 @@ esp_err_t ky037_init(void) {
     memset(&ky037_stats, 0, sizeof(ky037_stats_t));
 
     isr_init_high_time = 0;
-    BaseType_t task_result;
 
     // Crear tarea vStatsTask
-    task_result = xTaskCreate(
+    BaseType_t task_result = xTaskCreate(
         vStatsTask,
         "ky037_stats",
-        2048,
+        600,
         NULL,
         5,
         &xStatsTaskHandle
@@ -121,15 +111,14 @@ esp_err_t ky037_init(void) {
         vTaskDelete(NULL);  // Finaliza esta tarea en caso de error
     }
 
-    // Instalar servicio ISR si aún no está instalado
+    // Instalar servicio ISR si aún no esta instalado
     if (!isr_service_installed) {
         ret = gpio_install_isr_service(0);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "- ERROR: Error instalando servicio ISR: %s -", esp_err_to_name(ret));
             vTaskDelete(xStatsTaskHandle);
-            vTaskDelete(xGetStatsTaskHandle);
             vSemaphoreDelete(xStatsMutex);
-            vTaskDelete(NULL);
+            return ret;
         }
         isr_service_installed = true;
     }
@@ -137,11 +126,10 @@ esp_err_t ky037_init(void) {
     // Añadir handler ISR para el pin KY037
     ret = gpio_isr_handler_add(KY037_PIN, gpio_isr_handler, NULL);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error añadiendo ISR handler: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "- ERROR: Error añadiendo ISR handler: %s -", esp_err_to_name(ret));
         vTaskDelete(xStatsTaskHandle);
-        vTaskDelete(xGetStatsTaskHandle);
         vSemaphoreDelete(xStatsMutex);
-        vTaskDelete(NULL);
+        return ret;
     }
 
     return ESP_OK;

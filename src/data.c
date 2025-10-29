@@ -14,6 +14,39 @@
 static const char *TAG = "JSON";
 
 
+/**
+ * @brief Tarea que monitoriza el uso de recursos.
+ * @param pvParameter
+ */
+void stack_monitor_task(void *pvParameter) {
+    while (1) {
+        multi_heap_info_t info;
+        UBaseType_t hwm1 = uxTaskGetStackHighWaterMark(data_ct_handle);
+        UBaseType_t hwm2 = uxTaskGetStackHighWaterMark(data_pt_handle);
+        UBaseType_t hwm3 = uxTaskGetStackHighWaterMark(xStatsTaskHandle);
+        UBaseType_t hwm_monitor = uxTaskGetStackHighWaterMark(NULL);
+        heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+        ESP_LOGI("MEM",
+                 "\n============ Diagnostico de Memoria ============\n"
+                 "| Heap libre actual: %lu words\n"
+                 "| Heap libre minimo historico: %lu words\n"
+                 "| Bloque libre mas grande: %u words\n"
+                 "| Heap interno libre: %u words\n"
+                 "| Stack libre minimo historico Collector: %u words\n"
+                 "| Stack libre minimo historico Publisher: %u words\n"
+                 "| Stack libre minimo historico Microfono: %u words\n"
+                 "| Stack libre minimo historico Monitor: %u words\n"
+                 "===================================================\n",
+                 esp_get_free_heap_size()/4,
+                 esp_get_minimum_free_heap_size()/4,
+                 heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4,
+                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4,
+                 hwm1, hwm2, hwm3, hwm_monitor);
+
+        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * 30000));
+    }
+}
+
 
 /**
  * @brief  Convierte el IV binario a string hexadecimal sin espacios.
@@ -23,8 +56,12 @@ static const char *TAG = "JSON";
  * @param iv_len  Longitud del vector.
  */
 void iv_to_string(const unsigned char *iv, char *iv_str, size_t iv_len) {
-    for (size_t i = 0; i < iv_len; i++) {
-        sprintf(&iv_str[i * 2], "%02x", iv[i]);
+    static const char hex[] = "0123456789abcdef";
+
+    for (size_t i = 0; i < iv_len; ++i) {
+        uint8_t b = iv[i];
+        iv_str[i * 2]     = hex[(b >> 4) & 0x0F]; // nibble alto
+        iv_str[i * 2 + 1] = hex[b & 0x0F];        // nibble bajo
     }
     iv_str[iv_len * 2] = '\0';
 }
@@ -144,39 +181,34 @@ static void get_formated_data(data_sensors_t *data, bool *flag_errors) {
  */
 void data_collection_task(void *pvParameter) {
     data_sensors_t data;
+    char iv_str[IV_HEX_LEN];
+    unsigned char iv_out[IV_LEN];
     bool flag_errors = false;
-    char json[JSON_MAX];
-    char output_base64[JSON_MAX];
-    char iv_str[33];
-    unsigned char iv_out[16];
+
+    char *output_base64 = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
 
     while (1) {
+        char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
+
+        if (!json || !output_base64) {
+            ESP_LOGE(TAG, "- ERROR: No hay memoria para buffers JSON -");
+            esp_restart();
+        }
+        memset(json, 0, JSON_MAX);
+        memset(output_base64, 0, JSON_MAX);
+
         get_formated_data(&data, &flag_errors);
         generate_json_data(json, JSON_MAX, &settings, &data, flag_errors);
-        ESP_LOGI(TAG, "%s", json);
 
-        aes_ctr_encrypt_to_base64((const unsigned char *)json,
-            strlen(json),
-            iv_out,
-            output_base64,
-            sizeof(output_base64));
+        aes_ctr_encrypt_to_base64((const unsigned char*)json, strlen(json),
+                                  iv_out, output_base64, JSON_MAX);
 
-        //ESP_LOGI("TEXT", "%s", output_base64);
-        //ESP_LOG_BUFFER_HEX("IV", iv_out, 16);
-        //ESP_LOG_BUFFER_HEX("KEY", settings.aes_key, 32);
+        iv_to_string(iv_out, iv_str, IV_LEN);
+        memset(json, 0, JSON_MAX);
+        generate_encrypted_message(json, output_base64, iv_str, JSON_MAX);
+        xQueueSend(data_buffer, &json, portMAX_DELAY);
 
-        memset(json, 0, sizeof(json));
-        iv_to_string(iv_out, iv_str, 16);
-        generate_encrypted_message(json, output_base64, iv_str, 600);
-        ESP_LOGI(TAG, "%s", json);
-        xQueueSend(data_buffer, json, portMAX_DELAY);
-
-
-        UBaseType_t hwm_words = uxTaskGetStackHighWaterMark(NULL);
-        size_t hwm_bytes = hwm_words * sizeof(StackType_t);
-        ESP_LOGI(TAG, "Stack high water mark: %u words (~%u bytes)", (unsigned)hwm_words, (unsigned)hwm_bytes);
-
-        vTaskDelay(pdMS_TO_TICKS(5000));  // settings.sample_rate * 60000
+        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * 60000));
     }
 }
 
@@ -188,26 +220,19 @@ void data_collection_task(void *pvParameter) {
  * @param pvParameter
  */
 void data_publish_task(void *pvParameter) {
-    char json[JSON_MAX];
+    char *json = NULL;
 
     while (1) {
-        // Espera datos del buffer
-        if (xQueueReceive(data_buffer, json, portMAX_DELAY)) {
+        if (xQueueReceive(data_buffer, &json, portMAX_DELAY)) {
             xEventGroupWaitBits(
                 mqtt_event_group,
                 MQTT_CONNECTED_BIT,
                 pdFALSE,  // No limpiar el bit
                 pdTRUE,   // Esperar todos los bits
-                portMAX_DELAY  // O pdMS_TO_TICKS(30000) para timeout
+                portMAX_DELAY
             );
-
-            /*
-            UBaseType_t hwm_words = uxTaskGetStackHighWaterMark(NULL);
-            size_t hwm_bytes = hwm_words * sizeof(StackType_t);
-            ESP_LOGI(TAG, "Stack high water mark: %u words (~%u bytes)", (unsigned)hwm_words, (unsigned)hwm_bytes);
-            */
-
             mqtt_publish(settings.topic_mqtt, json, strlen(json), 2, 0);
+            heap_caps_free(json);
         }
     }
 }
