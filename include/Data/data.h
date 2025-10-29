@@ -3,6 +3,14 @@
 
 #define JSON_MAX 600
 #define QUEUE_LENGTH 100
+#define MS_TO_MIN 60000
+#define STACK_COLLECTOR 4000
+#define STACK_PUBLISHER 3000
+#define STACK_MONITOR 3000
+#define STACK_MIC 1000
+#define WAIT 1000
+#define TIME_SETUP 240000
+
 
 #include <stdint.h>
 #include "freertos/FreeRTOS.h"
@@ -24,6 +32,7 @@ typedef struct {
 
 
 extern QueueHandle_t data_buffer;
+extern QueueHandle_t system_buffer;
 extern TaskHandle_t data_ct_handle;
 extern TaskHandle_t data_pt_handle;
 

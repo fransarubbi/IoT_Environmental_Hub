@@ -19,31 +19,47 @@ static const char *TAG = "JSON";
  * @param pvParameter
  */
 void stack_monitor_task(void *pvParameter) {
+    multi_heap_info_t info;
+
     while (1) {
-        multi_heap_info_t info;
+        char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
+        if (!json) {
+            ESP_LOGE(TAG, "- ERROR: No hay memoria para buffers JSON -");
+            esp_restart();
+        }
+        memset(json, 0, JSON_MAX);
         UBaseType_t hwm1 = uxTaskGetStackHighWaterMark(data_ct_handle);
         UBaseType_t hwm2 = uxTaskGetStackHighWaterMark(data_pt_handle);
         UBaseType_t hwm3 = uxTaskGetStackHighWaterMark(xStatsTaskHandle);
         UBaseType_t hwm_monitor = uxTaskGetStackHighWaterMark(NULL);
+        uint64_t uptime_ms = esp_timer_get_time() / 1000ULL;
+        uint32_t hours = uptime_ms / 3600000ULL;
+        uint32_t minutes = (uptime_ms % 3600000ULL) / 60000ULL;
+        uint32_t seconds = (uptime_ms % 60000ULL) / 1000ULL;
         heap_caps_get_info(&info, MALLOC_CAP_8BIT);
-        ESP_LOGI("MEM",
-                 "\n============ Diagnostico de Memoria ============\n"
-                 "| Heap libre actual: %lu words\n"
-                 "| Heap libre minimo historico: %lu words\n"
-                 "| Bloque libre mas grande: %u words\n"
-                 "| Heap interno libre: %u words\n"
-                 "| Stack libre minimo historico Collector: %u words\n"
-                 "| Stack libre minimo historico Publisher: %u words\n"
-                 "| Stack libre minimo historico Microfono: %u words\n"
-                 "| Stack libre minimo historico Monitor: %u words\n"
-                 "===================================================\n",
-                 esp_get_free_heap_size()/4,
-                 esp_get_minimum_free_heap_size()/4,
-                 heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4,
-                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4,
-                 hwm1, hwm2, hwm3, hwm_monitor);
 
-        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * 30000));
+        snprintf(json, JSON_MAX,
+                "{\n"
+                "  \"MAC\": \"%s\",\n"
+                "  \"Heap libre actual\": %lu,\n"
+                "  \"Heap libre minimo historico\": %lu,\n"
+                "  \"Bloque libre mas grande\": %u,\n"
+                "  \"Heap interno libre\": %u,\n"
+                "  \"Stack libre minimo historico Collector\": %u,\n"
+                "  \"Stack libre minimo historico Publisher\": %u,\n"
+                "  \"Stack libre minimo historico Microfono\": %u,\n"
+                "  \"Stack libre minimo historico Monitor\": %u,\n"
+                "  \"Tiempo activo (hh:mm:ss)\": %02lu:%02lu:%02lu,\n"
+                "}",
+                settings.mac_address,
+                esp_get_free_heap_size()/4,
+                esp_get_minimum_free_heap_size()/4,
+                heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4,
+                heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4,
+                hwm1, hwm2, hwm3, hwm_monitor, hours, minutes, seconds);
+        xQueueSend(system_buffer, &json, portMAX_DELAY);
+
+        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * 2 * MS_TO_MIN));
     }
 }
 
@@ -208,7 +224,7 @@ void data_collection_task(void *pvParameter) {
         generate_encrypted_message(json, output_base64, iv_str, JSON_MAX);
         xQueueSend(data_buffer, &json, portMAX_DELAY);
 
-        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * 60000));
+        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * MS_TO_MIN));
     }
 }
 
@@ -221,9 +237,10 @@ void data_collection_task(void *pvParameter) {
  */
 void data_publish_task(void *pvParameter) {
     char *json = NULL;
+    char *json_info = NULL;
 
     while (1) {
-        if (xQueueReceive(data_buffer, &json, portMAX_DELAY)) {
+        if (xQueueReceive(data_buffer, &json, pdMS_TO_TICKS(100))) {
             xEventGroupWaitBits(
                 mqtt_event_group,
                 MQTT_CONNECTED_BIT,
@@ -233,6 +250,17 @@ void data_publish_task(void *pvParameter) {
             );
             mqtt_publish(settings.topic_mqtt, json, strlen(json), 2, 0);
             heap_caps_free(json);
+        }
+        if (xQueueReceive(system_buffer, &json_info, 0)) {
+            xEventGroupWaitBits(
+                mqtt_event_group,
+                MQTT_CONNECTED_BIT,
+                pdFALSE,  // No limpiar el bit
+                pdTRUE,   // Esperar todos los bits
+                portMAX_DELAY
+            );
+            mqtt_publish("/devices/esp32/system_status", json_info, strlen(json_info), 2, 0);
+            heap_caps_free(json_info);
         }
     }
 }

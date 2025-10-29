@@ -12,6 +12,7 @@
 
 
 QueueHandle_t data_buffer = NULL;
+QueueHandle_t system_buffer = NULL;
 TaskHandle_t data_ct_handle = NULL;
 TaskHandle_t data_pt_handle = NULL;
 TaskHandle_t xStatsTaskHandle = NULL;
@@ -20,6 +21,8 @@ TaskHandle_t xStatsTaskHandle = NULL;
 void app_main(void) {
 
     data_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
+    system_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
+
     esp_err_t retMQ135 = ESP_FAIL;
     esp_err_t retDHT11 = ESP_FAIL;
     esp_err_t retKY037 = ESP_FAIL;
@@ -30,16 +33,18 @@ void app_main(void) {
     if (mqtt_init() != ESP_OK) return;
 
     while (1) {
+
         if (retMQ135 != ESP_OK) retMQ135 = mq135_init();
         if (retDHT11 != ESP_OK) retDHT11 = dht11_init();
         if (retKY037 != ESP_OK) retKY037 = ky037_init();
+
         if (retMQ135 == ESP_OK && retDHT11 == ESP_OK && retKY037 == ESP_OK) {
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));  // 1 seg para evitar consumir CPU entre los intentos de inicializacion
+        vTaskDelay(pdMS_TO_TICKS(WAIT));  // 1 seg para evitar consumir CPU entre los intentos de inicializacion
     }
-    //vTaskDelay(pdMS_TO_TICKS(240000));   // 4 minutos de estabilizacion del mq135
-    xTaskCreate(stack_monitor_task, "StackMonitor", 2048, NULL, 1, NULL);
-    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", 4000, NULL, 5, &data_ct_handle, 0);
-    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", 3000, NULL, 6, &data_pt_handle, 1);
+    //vTaskDelay(pdMS_TO_TICKS(TIME_SETUP));   // 4 minutos de estabilizacion del mq135
+    xTaskCreate(stack_monitor_task, "StackMonitor", STACK_MONITOR, NULL, 1, NULL);
+    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", STACK_COLLECTOR, NULL, 5, &data_ct_handle, 0);
+    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", STACK_PUBLISHER, NULL, 6, &data_pt_handle, 1);
 }

@@ -99,7 +99,7 @@ esp_err_t ky037_init(void) {
     BaseType_t task_result = xTaskCreate(
         vStatsTask,
         "ky037_stats",
-        600,
+        STACK_MIC,
         NULL,
         5,
         &xStatsTaskHandle
