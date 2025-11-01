@@ -23,10 +23,6 @@ typedef struct {
     uint8_t dht11_temperature;      // Parte entera de temperatura
     uint8_t dht11_humidity;         // Parte entera de humedad
     float co2ppm;
-    float coppm;
-    float nh3ppm;
-    float c6h6ppm;
-    float no2ppm;
     char time[50];
 } data_sensors_t;
 

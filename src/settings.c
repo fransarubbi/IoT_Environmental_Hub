@@ -489,6 +489,13 @@ void process_json(const char *data, int data_len) {
                 }
             }
 
+            else if (strcmp(key, "Name") == 0) {
+                if (strcmp(settings.device_name, device_name) == 0) {
+                    strcpy(settings.device_name, value);
+                }
+            }
+
+
             else if (strcmp(key, "Topic") == 0) {
                 if (flag_all || strcmp(settings.device_name, device_name) == 0) {
                     strncpy(settings.topic_mqtt, value, 39);

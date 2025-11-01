@@ -126,10 +126,6 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
         "  \"Temperatura\": %u,\n"
         "  \"Humedad\": %u,\n"
         "  \"CO2 ppm\": %.2f,\n"
-        "  \"CO ppm\": %.2f,\n"
-        "  \"NH3 ppm\": %.2f,\n"
-        "  \"C6H6 ppm\": %.2f,\n"
-        "  \"NO2 ppm\": %.2f,\n"
         "  \"Sample min\": %lu\n"
         "}",
         config->device_name,
@@ -142,10 +138,6 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
         (!errors) ? data->dht11_temperature : 0,
         (!errors) ? data->dht11_humidity : 0,
         data->co2ppm,
-        data->coppm,
-        data->nh3ppm,
-        data->c6h6ppm,
-        data->no2ppm,
         config->sample_rate
     );
 }
@@ -172,11 +164,7 @@ static void get_formated_data(data_sensors_t *data, bool *flag_errors) {
         data->dht11_humidity = dht11_data.humidity;
     }
 
-    data->co2ppm = mq135_get_corrected_ppm((float)data->dht11_temperature, (float)data->dht11_humidity, &co2);
-    data->coppm = mq135_get_corrected_ppm((float)data->dht11_temperature, (float)data->dht11_humidity, &co);
-    data->nh3ppm = mq135_get_corrected_ppm((float)data->dht11_temperature, (float)data->dht11_humidity, &nh3);
-    data->c6h6ppm = mq135_get_corrected_ppm((float)data->dht11_temperature, (float)data->dht11_humidity, &c6h6);
-    data->no2ppm = mq135_get_corrected_ppm((float)data->dht11_temperature, (float)data->dht11_humidity, &voc);
+    data->co2ppm = mq135_read_ppm((float)data->dht11_temperature, (float)data->dht11_humidity);
 
     if (xSemaphoreTake(xStatsMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         data->ky037_counter = ky037_stats.counter;

@@ -44,11 +44,9 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             xEventGroupSetBits(mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupClearBits(mqtt_event_group, MQTT_DISCONNECTED_BIT);
             ESP_LOGI(TAG, "- INFO: Conectado al broker -");
-            esp_mqtt_client_subscribe(event->client, "/devices/esp32/cmd", 1);
             esp_mqtt_client_subscribe(event->client, "/devices/config/sample", 1);
             esp_mqtt_client_subscribe(event->client, "/devices/config/name", 1);
             esp_mqtt_client_subscribe(event->client, "/devices/config/topic", 1);
-            esp_mqtt_client_publish(event->client, "/devices/esp32/status", "online", 0, 1, true);
             break;
 
         case MQTT_EVENT_DISCONNECTED:
@@ -76,6 +74,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             char msg[event->data_len + 1];
             memcpy(msg, event->data, event->data_len);
             msg[event->data_len] = '\0';
+            ESP_LOGI("MQTT", "Recibido: %s \n", msg);
 
             if (event->topic_len == strlen("/devices/config/sample") &&
                 strncmp(event->topic, "/devices/config/sample", event->topic_len) == 0) {
