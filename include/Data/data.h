@@ -6,15 +6,19 @@
 #define MS_TO_MIN 60000
 #define STACK_COLLECTOR 4000
 #define STACK_PUBLISHER 3000
-#define STACK_MONITOR 3000
+#define STACK_MONITOR 4000
 #define STACK_MIC 1000
 #define WAIT 1000
 #define TIME_SETUP 240000
+
+#define ALL_DATA_READY    DHT11_DATA_READY
+//#define ALL_DATA_READY    (DHT11_DATA_READY | MQ135_DATA_READY | MIC_DATA_READY)
 
 
 #include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "DHT11/dht11.h"
 
 
 typedef struct {
@@ -31,6 +35,7 @@ extern QueueHandle_t data_buffer;
 extern QueueHandle_t system_buffer;
 extern TaskHandle_t data_ct_handle;
 extern TaskHandle_t data_pt_handle;
+extern EventGroupHandle_t collector_events;
 
 
 void data_collection_task(void *pvParameter);

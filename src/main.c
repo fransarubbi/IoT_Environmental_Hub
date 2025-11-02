@@ -13,15 +13,19 @@
 
 QueueHandle_t data_buffer = NULL;
 QueueHandle_t system_buffer = NULL;
+QueueHandle_t dht11_buffer = NULL;
 TaskHandle_t data_ct_handle = NULL;
 TaskHandle_t data_pt_handle = NULL;
 TaskHandle_t xStatsTaskHandle = NULL;
+TaskHandle_t dht11_handle = NULL;
+EventGroupHandle_t collector_events = NULL;
 
 
 void app_main(void) {
 
     data_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
     system_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
+    dht11_buffer = xQueueCreate(QUEUE_DHT11, sizeof(dht11_data_t));
 
     esp_err_t retMQ135 = ESP_FAIL;
     esp_err_t retDHT11 = ESP_FAIL;
@@ -44,7 +48,12 @@ void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(WAIT));  // 1 seg para evitar consumir CPU entre los intentos de inicializacion
     }
     //vTaskDelay(pdMS_TO_TICKS(TIME_SETUP));   // 4 minutos de estabilizacion del mq135
-    xTaskCreate(stack_monitor_task, "StackMonitor", STACK_MONITOR, NULL, 1, NULL);
-    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", STACK_COLLECTOR, NULL, 5, &data_ct_handle, 0);
-    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", STACK_PUBLISHER, NULL, 6, &data_pt_handle, 1);
+
+    collector_events = xEventGroupCreate();
+    if (!collector_events) return;
+
+    xTaskCreatePinnedToCore(dht11_task, "DHT11Task", STACK_DHT11, NULL, 3, &dht11_handle, 1);
+    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", STACK_COLLECTOR, NULL, 4, &data_ct_handle, 1);
+    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", STACK_PUBLISHER, NULL, 4, &data_pt_handle, 0);
+    xTaskCreatePinnedToCore(stack_monitor_task, "StackMonitor", STACK_MONITOR, NULL, 3, NULL, 0);
 }
