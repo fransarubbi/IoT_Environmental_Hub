@@ -7,7 +7,19 @@
 #define DHT11_START_SIGNAL_HIGH    40       // 30 micro seg señal alta de inicio
 #define DHT11_DELAY 10000    // 10 seg
 #define DHT11_JSON_ALERT 100
-#define STACK_DHT11 2000
+#define STACK_DHT11 8000
+
+
+#define DHT11_RMT_CHANNEL          RMT_CHANNEL_0   // Canal RMT
+#define DHT11_START_SIGNAL_LOW     20000           // 20 ms señal baja de inicio
+#define RMT_CLK_RES_HZ             1000000         // Reloj del RMT
+#define RMT_BUFFER_SIZE            128             // Tamaño del buffer RMT
+#define RMT_TIMEOUT                100             // Timeout de recepcion
+#define DHT11_DURATION0_MIN        50              // 50 micro seg bit de inicio min
+#define DHT11_DURATION0_MAX        60              // 60 micro seg bit de inicio max
+#define DHT11_DURATION1_MIN        20              // Filtrar menores de 20
+#define DHT11_DURATION1_BIT1       65              // 65 micro seg para bit 1
+
 
 #define DHT11_DATA_READY  (1 << 0)
 #define MQ135_DATA_READY  (1 << 1)
