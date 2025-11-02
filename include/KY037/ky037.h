@@ -7,6 +7,7 @@
 
 
 #define KY037_PIN GPIO_NUM_5
+#define KY037_DATA_READY (1 << 2)
 
 
 /* ----- Estructura para estadísticas internas (usada por la ISR) ----- */
@@ -25,8 +26,8 @@ typedef struct {
 
 
 extern ky037_stats_t ky037_stats;
-extern SemaphoreHandle_t xStatsMutex;
 extern TaskHandle_t xStatsTaskHandle;
+extern QueueHandle_t ky037_buffer;
 
 
 /**

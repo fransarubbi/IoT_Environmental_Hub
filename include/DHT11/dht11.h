@@ -7,13 +7,10 @@
 #define DHT11_START_SIGNAL_HIGH    40       // 30 micro seg señal alta de inicio
 #define DHT11_DELAY 10000    // 10 seg
 #define DHT11_JSON_ALERT 100
-#define QUEUE_DHT11 5
 #define STACK_DHT11 2000
 
 #define DHT11_DATA_READY  (1 << 0)
 #define MQ135_DATA_READY  (1 << 1)
-#define MIC_DATA_READY    (1 << 2)
-
 
 
 #include <esp_err.h>

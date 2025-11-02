@@ -1,19 +1,19 @@
 #include "Data/data.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/semphr.h"
 #include "KY037/ky037.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include <string.h>
 
+#include "Setting/settings.h"
+
 
 static const char *TAG = "KY037";
 
 
-ky037_stats_t ky037_stats;                // Estructura de estadisticas
-SemaphoreHandle_t xStatsMutex = NULL;     // Mutex para proteger acceso concurrente a ky037_stats
+ky037_stats_t ky037_stats;    // Estructura de estadisticas
 
 // Variables para ISR
 static volatile uint32_t isr_init_high_time = 0;     // Guarda el tiempo de inicio del pulso alto
@@ -39,27 +39,48 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
  * @brief Tarea que procesa las interrupciones del sensor y calcula estadisticas
  */
 void vStatsTask(void *pvParameters) {
-    while (1) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);   // Espera indefinidamente una notificacion de la ISR
-        uint32_t current_time = get_time_ms();
-        int gpio_level = gpio_get_level(KY037_PIN);
+    const TickType_t period_ticks = pdMS_TO_TICKS(settings.sample_rate * MS_TO_MIN);
+    TickType_t last_wake_time = xTaskGetTickCount();
 
-        // Tomar mutex para acceso seguro a variables compartidas
-        if (xSemaphoreTake(xStatsMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            if (gpio_level == 1) {    // Flanco de subida - inicio de detección
+    while (1) {
+        // Calcular tiempo restante hasta el proximo envío
+        TickType_t now = xTaskGetTickCount();
+        TickType_t elapsed = now - last_wake_time;
+        TickType_t remaining = (elapsed < period_ticks) ? (period_ticks - elapsed) : 0;
+
+        // Esperar notificación ISR con timeout del tiempo restante
+        if (ulTaskNotifyTake(pdTRUE, remaining) > 0) {
+            // --- Procesamiento de ISR ---
+            int gpio_level = gpio_get_level(KY037_PIN);
+            uint32_t current_time = get_time_ms();
+
+            if (gpio_level == 1) {
                 isr_init_high_time = current_time;
             }
-            else {
-                if (isr_init_high_time > 0) {     // Flanco de bajada - fin de detección
-                    uint32_t duration = current_time - isr_init_high_time;
-                    ky037_stats.counter++;
-                    if (duration > ky037_stats.max_duration) {
-                        ky037_stats.max_duration = duration;
-                    }
-                    isr_init_high_time = 0;    // Reset
+            else if (isr_init_high_time > 0) {
+                uint32_t duration = current_time - isr_init_high_time;
+                ky037_stats.counter++;
+                if (duration > ky037_stats.max_duration) {
+                    ky037_stats.max_duration = duration;
                 }
+                isr_init_high_time = 0;
             }
-            xSemaphoreGive(xStatsMutex);
+        }
+
+        // Verificar si cumplio el periodo (tolerancia de 1 tick)
+        now = xTaskGetTickCount();
+        if ((now - last_wake_time) >= period_ticks) {
+            // Enviar datos
+            ky037_stats_t ky037 = ky037_stats;
+            xQueueSend(ky037_buffer, &ky037, portMAX_DELAY);
+            xEventGroupSetBits(collector_events, KY037_DATA_READY);
+
+            // Resetear estadisticas
+            ky037_stats.counter = 0;
+            ky037_stats.max_duration = 0;
+
+            // Actualizar referencia temporal
+            last_wake_time += period_ticks;
         }
     }
 }
@@ -85,31 +106,9 @@ esp_err_t ky037_init(void) {
         return ret;
     }
 
-    xStatsMutex = xSemaphoreCreateMutex();
-    if (xStatsMutex == NULL) {
-        ESP_LOGE(TAG, "- ERROR: Error creando semaforo -");
-        return ESP_ERR_NO_MEM;
-    }
-
     memset(&ky037_stats, 0, sizeof(ky037_stats_t));
 
     isr_init_high_time = 0;
-
-    // Crear tarea vStatsTask
-    BaseType_t task_result = xTaskCreate(
-        vStatsTask,
-        "ky037_stats",
-        STACK_MIC,
-        NULL,
-        5,
-        &xStatsTaskHandle
-    );
-
-    if (task_result != pdPASS) {
-        ESP_LOGE(TAG, "- ERROR: Error creando tarea vStatsTask -");
-        vSemaphoreDelete(xStatsMutex);
-        vTaskDelete(NULL);  // Finaliza esta tarea en caso de error
-    }
 
     // Instalar servicio ISR si aún no esta instalado
     if (!isr_service_installed) {
@@ -117,7 +116,6 @@ esp_err_t ky037_init(void) {
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "- ERROR: Error instalando servicio ISR: %s -", esp_err_to_name(ret));
             vTaskDelete(xStatsTaskHandle);
-            vSemaphoreDelete(xStatsMutex);
             return ret;
         }
         isr_service_installed = true;
@@ -128,7 +126,6 @@ esp_err_t ky037_init(void) {
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "- ERROR: Error añadiendo ISR handler: %s -", esp_err_to_name(ret));
         vTaskDelete(xStatsTaskHandle);
-        vSemaphoreDelete(xStatsMutex);
         return ret;
     }
 

@@ -14,6 +14,7 @@
 QueueHandle_t data_buffer = NULL;
 QueueHandle_t system_buffer = NULL;
 QueueHandle_t dht11_buffer = NULL;
+QueueHandle_t ky037_buffer = NULL;
 TaskHandle_t data_ct_handle = NULL;
 TaskHandle_t data_pt_handle = NULL;
 TaskHandle_t xStatsTaskHandle = NULL;
@@ -25,7 +26,8 @@ void app_main(void) {
 
     data_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
     system_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
-    dht11_buffer = xQueueCreate(QUEUE_DHT11, sizeof(dht11_data_t));
+    dht11_buffer = xQueueCreate(QUEUE, sizeof(dht11_data_t));
+    ky037_buffer = xQueueCreate(QUEUE, sizeof(ky037_stats_t));
 
     esp_err_t retMQ135 = ESP_FAIL;
     esp_err_t retDHT11 = ESP_FAIL;
@@ -52,7 +54,8 @@ void app_main(void) {
     collector_events = xEventGroupCreate();
     if (!collector_events) return;
 
-    xTaskCreatePinnedToCore(dht11_task, "DHT11Task", STACK_DHT11, NULL, 3, &dht11_handle, 1);
+    xTaskCreatePinnedToCore(dht11_task, "DHT11Task", STACK_DHT11, NULL, 3, &dht11_handle, 0);
+    xTaskCreatePinnedToCore(vStatsTask,"ky037_stats",STACK_MIC, NULL,3, &xStatsTaskHandle, 1);
     xTaskCreatePinnedToCore(data_collection_task, "DataCollector", STACK_COLLECTOR, NULL, 4, &data_ct_handle, 1);
     xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", STACK_PUBLISHER, NULL, 4, &data_pt_handle, 0);
     xTaskCreatePinnedToCore(stack_monitor_task, "StackMonitor", STACK_MONITOR, NULL, 3, NULL, 0);

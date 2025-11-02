@@ -12,6 +12,8 @@
 
 
 static const char *TAG = "JSON";
+static data_sensors_t data;
+
 
 
 /**
@@ -115,7 +117,7 @@ static void generate_encrypted_message(char *json_message, const char *encrypted
  * @param data  Estructura con las lecturas de los sensores.
  * @param errors  Flag de errores para la temperatura/humedad.
  */
-static void generate_json_data(char *output_buffer, size_t buffer_size, const settings_t *config, const data_sensors_t *data) {
+static void generate_json_data(char *output_buffer, size_t buffer_size, const settings_t *config) {
 
     snprintf(output_buffer, buffer_size,
         "{\n"
@@ -135,14 +137,15 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
         config->wifi_ip,
         (const char*)config->wifi_ssid,
         config->mac_address,
-        data->time,
-        (unsigned long)data->ky037_counter,
-        (unsigned long)data->ky037_max_duration,
-        data->dht11_temperature,
-        data->dht11_humidity,
-        data->co2ppm,
+        data.time,
+        (unsigned long)data.ky037_counter,
+        (unsigned long)data.ky037_max_duration,
+        data.dht11_temperature,
+        data.dht11_humidity,
+        data.co2ppm,
         config->sample_rate
     );
+    ESP_LOGI(TAG, "%s", output_buffer);
 }
 
 
@@ -152,21 +155,21 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
  * @param data Puntero de tipo data_sensors_t que recibe la informacion. Para no generar una
  * copia de este campo, se usa un puntero y de esa forma buscar mas eficiencia.
  */
-static void get_formated_data(data_sensors_t *data) {
-    memset(data, 0, sizeof(*data));
-    get_time(data->time);
+static void get_formated_data(dht11_data_t *dht11, ky037_stats_t *ky037) {
+    memset(&data, 0, sizeof(data));
+    get_time(data.time);
 
-    data->co2ppm = mq135_read_ppm((float)data->dht11_temperature, (float)data->dht11_humidity);
-
-    if (xSemaphoreTake(xStatsMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-        data->ky037_counter = ky037_stats.counter;
-        data->ky037_max_duration = ky037_stats.max_duration;
-        // Reset estadisticas para el siguiente período
-        ky037_stats.counter = 0;
-        ky037_stats.max_duration = 0;
-        xSemaphoreGive(xStatsMutex);
+    if (xQueueReceive(dht11_buffer, dht11, 0)) {
+        data.dht11_temperature = dht11->temperature;
+        data.dht11_humidity = dht11->humidity;
     }
 
+    if (xQueueReceive(ky037_buffer, ky037, 0)) {
+        data.ky037_counter = ky037->counter;
+        data.ky037_max_duration = ky037->max_duration;
+    }
+
+    data.co2ppm = mq135_read_ppm((float)data.dht11_temperature, (float)data.dht11_humidity);
 }
 
 
@@ -176,10 +179,10 @@ static void get_formated_data(data_sensors_t *data) {
  * @param pvParameter
  */
 void data_collection_task(void *pvParameter) {
-    data_sensors_t data;
     char iv_str[IV_HEX_LEN];
     unsigned char iv_out[IV_LEN];
     dht11_data_t dht11;
+    ky037_stats_t ky037;
 
     char *output_base64 = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
 
@@ -202,14 +205,8 @@ void data_collection_task(void *pvParameter) {
         memset(json, 0, JSON_MAX);
         memset(output_base64, 0, JSON_MAX);
 
-        get_formated_data(&data);
-
-        if (xQueueReceive(dht11_buffer, &dht11, 0)) {
-            data.dht11_temperature = dht11.temperature;
-            data.dht11_humidity = dht11.humidity;
-        }
-
-        generate_json_data(json, JSON_MAX, &settings, &data);
+        get_formated_data(&dht11, &ky037);
+        generate_json_data(json, JSON_MAX, &settings);
 
         aes_ctr_encrypt_to_base64((const unsigned char*)json, strlen(json),
                                   iv_out, output_base64, JSON_MAX);
@@ -241,7 +238,7 @@ void data_publish_task(void *pvParameter) {
                 pdTRUE,   // Esperar todos los bits
                 portMAX_DELAY
             );
-            mqtt_publish(settings.topic_mqtt, json, strlen(json), 2, 0);
+            mqtt_publish(settings.topic_mqtt, json, (int)strlen(json), 2, 0);
             heap_caps_free(json);
         }
         if (xQueueReceive(system_buffer, &json_info, 0)) {
@@ -252,7 +249,7 @@ void data_publish_task(void *pvParameter) {
                 pdTRUE,   // Esperar todos los bits
                 portMAX_DELAY
             );
-            mqtt_publish("/devices/esp32/system_status", json_info, strlen(json_info), 2, 0);
+            mqtt_publish("/devices/esp32/system_status", json_info, (int)strlen(json_info), 2, 0);
             heap_caps_free(json_info);
         }
     }
