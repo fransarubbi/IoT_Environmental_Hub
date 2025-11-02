@@ -20,6 +20,7 @@ static const char *TAG = "JSON";
  */
 void stack_monitor_task(void *pvParameter) {
     multi_heap_info_t info;
+    TickType_t last_wake_time = xTaskGetTickCount();
 
     while (1) {
         char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
@@ -31,6 +32,7 @@ void stack_monitor_task(void *pvParameter) {
         UBaseType_t hwm1 = uxTaskGetStackHighWaterMark(data_ct_handle);
         UBaseType_t hwm2 = uxTaskGetStackHighWaterMark(data_pt_handle);
         UBaseType_t hwm3 = uxTaskGetStackHighWaterMark(xStatsTaskHandle);
+        UBaseType_t hwm4 = uxTaskGetStackHighWaterMark(dht11_handle);
         UBaseType_t hwm_monitor = uxTaskGetStackHighWaterMark(NULL);
         uint64_t uptime_ms = esp_timer_get_time() / 1000ULL;
         uint32_t hours = uptime_ms / 3600000ULL;
@@ -48,6 +50,7 @@ void stack_monitor_task(void *pvParameter) {
                 "  \"Stack libre minimo historico Collector\": %u,\n"
                 "  \"Stack libre minimo historico Publisher\": %u,\n"
                 "  \"Stack libre minimo historico Microfono\": %u,\n"
+                "  \"Stack libre minimo historico DHT11\": %u,\n"
                 "  \"Stack libre minimo historico Monitor\": %u,\n"
                 "  \"Tiempo activo (hh:mm:ss)\": %02lu:%02lu:%02lu,\n"
                 "}",
@@ -56,10 +59,10 @@ void stack_monitor_task(void *pvParameter) {
                 esp_get_minimum_free_heap_size()/4,
                 heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4,
                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4,
-                hwm1, hwm2, hwm3, hwm_monitor, hours, minutes, seconds);
+                hwm1, hwm2, hwm3, hwm4, hwm_monitor, hours, minutes, seconds);
         xQueueSend(system_buffer, &json, portMAX_DELAY);
 
-        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * 2 * MS_TO_MIN));
+        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(settings.sample_rate * 2 * MS_TO_MIN));
     }
 }
 
@@ -112,7 +115,7 @@ static void generate_encrypted_message(char *json_message, const char *encrypted
  * @param data  Estructura con las lecturas de los sensores.
  * @param errors  Flag de errores para la temperatura/humedad.
  */
-static void generate_json_data(char *output_buffer, size_t buffer_size, const settings_t *config, const data_sensors_t *data, bool errors) {
+static void generate_json_data(char *output_buffer, size_t buffer_size, const settings_t *config, const data_sensors_t *data) {
 
     snprintf(output_buffer, buffer_size,
         "{\n"
@@ -135,8 +138,8 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
         data->time,
         (unsigned long)data->ky037_counter,
         (unsigned long)data->ky037_max_duration,
-        (!errors) ? data->dht11_temperature : 0,
-        (!errors) ? data->dht11_humidity : 0,
+        data->dht11_temperature,
+        data->dht11_humidity,
         data->co2ppm,
         config->sample_rate
     );
@@ -148,21 +151,10 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
  *
  * @param data Puntero de tipo data_sensors_t que recibe la informacion. Para no generar una
  * copia de este campo, se usa un puntero y de esa forma buscar mas eficiencia.
- * @param flag_errors Flag para saber si la lectura del sensor DHT11 fue correcta o no.
  */
-static void get_formated_data(data_sensors_t *data, bool *flag_errors) {
+static void get_formated_data(data_sensors_t *data) {
     memset(data, 0, sizeof(*data));
     get_time(data->time);
-
-    esp_err_t ret = dht11_read_data();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: No se pudieron leer los datos -");
-        *flag_errors = true;
-    }
-    else {
-        data->dht11_temperature = dht11_data.temperature;
-        data->dht11_humidity = dht11_data.humidity;
-    }
 
     data->co2ppm = mq135_read_ppm((float)data->dht11_temperature, (float)data->dht11_humidity);
 
@@ -187,11 +179,20 @@ void data_collection_task(void *pvParameter) {
     data_sensors_t data;
     char iv_str[IV_HEX_LEN];
     unsigned char iv_out[IV_LEN];
-    bool flag_errors = false;
+    dht11_data_t dht11;
 
     char *output_base64 = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
 
     while (1) {
+
+        xEventGroupWaitBits(
+            collector_events,
+            ALL_DATA_READY,
+            pdTRUE,  // Limpiar bits después de leer
+            pdTRUE,  // Esperar TODOS los bits
+            pdMS_TO_TICKS(portMAX_DELAY)
+        );
+
         char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
 
         if (!json || !output_base64) {
@@ -201,8 +202,14 @@ void data_collection_task(void *pvParameter) {
         memset(json, 0, JSON_MAX);
         memset(output_base64, 0, JSON_MAX);
 
-        get_formated_data(&data, &flag_errors);
-        generate_json_data(json, JSON_MAX, &settings, &data, flag_errors);
+        get_formated_data(&data);
+
+        if (xQueueReceive(dht11_buffer, &dht11, 0)) {
+            data.dht11_temperature = dht11.temperature;
+            data.dht11_humidity = dht11.humidity;
+        }
+
+        generate_json_data(json, JSON_MAX, &settings, &data);
 
         aes_ctr_encrypt_to_base64((const unsigned char*)json, strlen(json),
                                   iv_out, output_base64, JSON_MAX);
@@ -211,8 +218,6 @@ void data_collection_task(void *pvParameter) {
         memset(json, 0, JSON_MAX);
         generate_encrypted_message(json, output_base64, iv_str, JSON_MAX);
         xQueueSend(data_buffer, &json, portMAX_DELAY);
-
-        vTaskDelay(pdMS_TO_TICKS(settings.sample_rate * MS_TO_MIN));
     }
 }
 
