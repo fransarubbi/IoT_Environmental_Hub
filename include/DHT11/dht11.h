@@ -21,6 +21,13 @@
 #define DHT11_DURATION1_BIT1       65              // 65 micro seg para bit 1
 
 
+#define ALFA_TEMP                  0.1f          // Factor de suavizado para la temperatura (0.1 = lento)
+#define BETA_ERROR                 0.05f         // Factor de suavizado para el error (0.05 = muy lento)
+#define K_SENSIBILIDAD             2.0f          // 2 "sigmas". Más alto = menos sensible
+#define UMBRAL_MINIMO_ABS          1.0f          // Umbral de 1.0°C para disparar si o si
+#define HYSTERESIS                 0.8f          // Necesita bajar al 80% del umbral para desactivar
+
+
 #define DHT11_DATA_READY  (1 << 0)
 #define MQ135_DATA_READY  (1 << 1)
 
@@ -42,7 +49,7 @@ typedef struct {
 
 extern TaskHandle_t dht11_handle;
 extern QueueHandle_t dht11_buffer;
-typedef enum{INIT, GET_DATA, DELTA, ALERT} state_dht11_t;
+typedef enum{INIT, NORMAL, ALERT} state_dht11_t;
 
 
 /* ===== API ===== */

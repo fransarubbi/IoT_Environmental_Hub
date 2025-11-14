@@ -1,4 +1,4 @@
-# Install script for directory: /home/franco/.platformio/packages/framework-espidf@3.50401.0/components/wpa_supplicant
+# Install script for directory: /home/franco/.platformio/packages/framework-espidf/components/wpa_supplicant
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

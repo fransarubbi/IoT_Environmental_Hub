@@ -1,9 +1,9 @@
-set(CMAKE_HOST_SYSTEM "Linux-6.17.4-200.fc42.x86_64")
+set(CMAKE_HOST_SYSTEM "Linux-6.17.7-300.fc43.x86_64")
 set(CMAKE_HOST_SYSTEM_NAME "Linux")
-set(CMAKE_HOST_SYSTEM_VERSION "6.17.4-200.fc42.x86_64")
+set(CMAKE_HOST_SYSTEM_VERSION "6.17.7-300.fc43.x86_64")
 set(CMAKE_HOST_SYSTEM_PROCESSOR "x86_64")
 
-include("/home/franco/.platformio/packages/framework-espidf@3.50401.0/tools/cmake/toolchain-esp32.cmake")
+include("/home/franco/.platformio/packages/framework-espidf/tools/cmake/toolchain-esp32.cmake")
 
 set(CMAKE_SYSTEM "Generic")
 set(CMAKE_SYSTEM_NAME "Generic")

@@ -1,1 +1,1 @@
-/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/mbedtls/mbedtls/library/error.c
+/home/franco/.platformio/packages/framework-espidf/components/mbedtls/mbedtls/library/error.c

@@ -52,7 +52,7 @@ rule C_COMPILER____idf_xtensa
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_xtensa
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -71,7 +71,7 @@ rule C_COMPILER____idf_soc
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_soc
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -90,7 +90,7 @@ rule C_COMPILER____idf_micro-ecc
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_micro-ecc
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -109,7 +109,7 @@ rule C_COMPILER____idf_hal
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_hal
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -128,7 +128,7 @@ rule C_COMPILER____idf_spi_flash
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_spi_flash
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -147,7 +147,7 @@ rule C_COMPILER____idf_esp_bootloader_format
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_esp_bootloader_format
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -166,7 +166,7 @@ rule C_COMPILER____idf_bootloader_support
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_bootloader_support
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -185,7 +185,7 @@ rule C_COMPILER____idf_efuse
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_efuse
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -204,7 +204,7 @@ rule C_COMPILER____idf_esp_system
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_esp_system
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -223,7 +223,7 @@ rule C_COMPILER____idf_esp_hw_support
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_esp_hw_support
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -242,7 +242,7 @@ rule C_COMPILER____idf_esp_common
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_esp_common
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -271,7 +271,7 @@ rule C_COMPILER____idf_esp_rom
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_esp_rom
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -290,7 +290,7 @@ rule C_COMPILER____idf_log
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_log
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -309,7 +309,7 @@ rule C_COMPILER____idf_main
 # Rule for linking C static library.
 
 rule C_STATIC_LIBRARY_LINKER____idf_main
-  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
+  command = $PRE_LINK && /home/franco/.platformio/packages/tool-cmake/bin/cmake -E remove $TARGET_FILE && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ar qc $TARGET_FILE $LINK_FLAGS $in && /home/franco/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-ranlib $TARGET_FILE && $POST_BUILD
   description = Linking C static library $TARGET_FILE
   restat = $RESTAT
 
@@ -318,7 +318,7 @@ rule C_STATIC_LIBRARY_LINKER____idf_main
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -S/home/franco/.platformio/packages/framework-espidf@3.50401.0/components/bootloader/subproject -B/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader
+  command = /home/franco/.platformio/packages/tool-cmake/bin/cmake -S/home/franco/.platformio/packages/framework-espidf/components/bootloader/subproject -B/home/franco/IoT_Environmental_Hub/.pio/build/nodemcu-32s/bootloader
   description = Re-running CMake...
   generator = 1
 
@@ -327,7 +327,7 @@ rule RERUN_CMAKE
 # Rule for cleaning additional files.
 
 rule CLEAN_ADDITIONAL
-  command = /home/franco/.platformio/packages/tool-cmake@3.16.4/bin/cmake -P CMakeFiles/clean_additional.cmake
+  command = /home/franco/.platformio/packages/tool-cmake/bin/cmake -P CMakeFiles/clean_additional.cmake
   description = Cleaning additional files...
 
 

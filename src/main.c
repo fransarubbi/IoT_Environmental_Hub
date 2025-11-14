@@ -21,6 +21,18 @@ TaskHandle_t xStatsTaskHandle = NULL;
 TaskHandle_t dht11_handle = NULL;
 EventGroupHandle_t collector_events = NULL;
 
+static StackType_t dht11_stack[STACK_DHT11];
+static StaticTask_t dht11_tcb;
+static StackType_t ky037_stack[STACK_MIC];
+static StaticTask_t ky037_tcb;
+static StackType_t data_ct_stack[STACK_COLLECTOR];
+static StaticTask_t data_ct_tcb;
+static StackType_t data_pt_stack[STACK_PUBLISHER];
+static StaticTask_t data_pt_tcb;
+static StackType_t monitor_stack[STACK_MONITOR];
+static StaticTask_t monitor_tcb;
+
+
 
 void app_main(void) {
 
@@ -54,9 +66,9 @@ void app_main(void) {
     collector_events = xEventGroupCreate();
     if (!collector_events) return;
 
-    xTaskCreatePinnedToCore(dht11_task, "DHT11Task", STACK_DHT11, NULL, 3, &dht11_handle, 0);
-    xTaskCreatePinnedToCore(vStatsTask,"ky037_stats",STACK_MIC, NULL,3, &xStatsTaskHandle, 1);
-    xTaskCreatePinnedToCore(data_collection_task, "DataCollector", STACK_COLLECTOR, NULL, 4, &data_ct_handle, 1);
-    xTaskCreatePinnedToCore(data_publish_task, "DataPublisher", STACK_PUBLISHER, NULL, 4, &data_pt_handle, 0);
-    xTaskCreatePinnedToCore(stack_monitor_task, "StackMonitor", STACK_MONITOR, NULL, 3, NULL, 0);
+    dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11Task", STACK_DHT11, NULL, 3, dht11_stack, &dht11_tcb, 0);
+    xStatsTaskHandle = xTaskCreateStaticPinnedToCore(vStatsTask, "ky037_stats", STACK_MIC, NULL, 3, ky037_stack, &ky037_tcb, 1);
+    data_ct_handle = xTaskCreateStaticPinnedToCore(data_collection_task, "DataCollector", STACK_COLLECTOR, NULL, 4, data_ct_stack, &data_ct_tcb, 1);
+    data_pt_handle = xTaskCreateStaticPinnedToCore(data_publish_task, "DataPublisher", STACK_PUBLISHER, NULL, 4, data_pt_stack, &data_pt_tcb, 0);
+    xTaskCreateStaticPinnedToCore(stack_monitor_task, "StackMonitor", STACK_MONITOR, NULL, 3, monitor_stack, &monitor_tcb, 0);
 }

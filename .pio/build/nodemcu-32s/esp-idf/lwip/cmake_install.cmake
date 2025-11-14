@@ -1,4 +1,4 @@
-# Install script for directory: /home/franco/.platformio/packages/framework-espidf@3.50401.0/components/lwip
+# Install script for directory: /home/franco/.platformio/packages/framework-espidf/components/lwip
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

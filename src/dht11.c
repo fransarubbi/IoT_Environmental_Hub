@@ -3,6 +3,7 @@
 #include "DHT11/dht11.h"
 #include "MQTT/mqtt.h"
 #include <esp_timer.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "driver/gpio.h"
@@ -330,26 +331,23 @@ static void generate_json(char *output_buffer, size_t buffer_size, uint8_t temp_
  * @brief Tarea que monitorea temperatura DHT11 y detecta cambios bruscos
  *
  * Implementa una máquina de estados que detecta incrementos rapidos de temperatura
- * (≥2°C iniciales, ≥3°C confirmacion) y publica alertas MQTT.
+ * y publica alertas MQTT, tanto cuando se genera el aumento como cuando se estabiliza de nuevo
  *
  * Estados:
  * - INIT: Inicializacion, lee temperatura base.
- * - GET_DATA: Monitoreo normal, detecta primera subida ≥2°C.
- * - DELTA: Verificacion, confirma si es anomalia real o fluctuacion.
- * - ALERT: Alerta activa, publica alarma (solo una vez) hasta que baje.
+ * - NORMAL: Monitoreo normal, cuando se detecta el aumento de temperatura se emite la alerta.
+ * - ALERT: Permanece en este estado hasta que la temperatura se estabilice, luego emite una alerta.
  *
  * @param pvParameter Parámetro de la tarea (no usado).
  */
 void dht11_task(void *pvParameter) {
     static state_dht11_t state_dht11 = INIT;
-    static uint8_t old_temp = 0;
-    static uint8_t backup_temp = 0;
-    static bool alert_sent = false;         // Prevenir spam de alertas
-    static uint32_t readings_in_alert = 0;  // Contador para timeout
     static uint32_t counter = 0;
+    static float ema_temp = 20.0f;            // Media movil de la temperatura
+    static float ema_error = 0.0f;            // Media movil del error (ruido normal)
+    static float temp_before_alert = 0.0f;
+    static dht11_data_t dht11;
     char json[DHT11_JSON_ALERT];
-    dht11_data_t dht11;
-    int8_t delta_temp;
 
     TickType_t last_wake_time = xTaskGetTickCount();
 
@@ -374,81 +372,39 @@ void dht11_task(void *pvParameter) {
                 dht11.temperature = 0;
                 dht11.humidity = 0;
             }
+            float temp_actual = dht11_data.temperature;
+            float error_actual = temp_actual - ema_temp;
+            float error_abs = fabsf(error_actual);
+            float umbral_alerta_dinamico = (K_SENSIBILIDAD * ema_error) + UMBRAL_MINIMO_ABS;
 
-            switch (state_dht11) {  // ===== MAQUINA DE ESTADOS =====
-            case INIT:
-                old_temp = dht11_data.temperature;
-                backup_temp = old_temp;
-                state_dht11 = GET_DATA;
-                break;
+            switch (state_dht11) {
+            case INIT: ema_temp = dht11_data.temperature;
+                       ema_error = 0.0f;
+                       state_dht11 = NORMAL;
+                       break;
 
-            case GET_DATA:
-                delta_temp = (int8_t)(dht11_data.temperature - old_temp);
-                backup_temp = old_temp;
-                old_temp = dht11_data.temperature;
-
-                if (delta_temp >= 2) {
-                    state_dht11 = DELTA;
-                    alert_sent = false;  // Resetear flag de alerta
-                }
-                break;
-
-            case DELTA:
-                delta_temp = (int8_t)(dht11_data.temperature - old_temp);
-                old_temp = dht11_data.temperature;
-
-                // Caso 1: Sigue subiendo rapidamente → ALERT
-                if (delta_temp >= 3) {
-                    state_dht11 = ALERT;
-                    readings_in_alert = 0;
-                }
-                else {   // Caso 2: Se estabilizo o bajo
-                    // Comparar con temperatura de inicio (backup_temp)
-                    int8_t total_delta = (int8_t)(dht11_data.temperature - backup_temp);
-
-                    if (total_delta <= 2) {
-                        // Falsa alarma, volver a monitoreo normal
-                        state_dht11 = GET_DATA;
-                    }
-                }
-                break;
+            case NORMAL: if (error_abs > umbral_alerta_dinamico) {
+                            state_dht11 = ALERT;
+                            temp_before_alert = ema_temp;   // Guardamos la "normalidad" previa
+                            generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_before_alert, (uint8_t)temp_actual);
+                            mqtt_publish("/dht11/alert/on_alert", json, (int)strlen(json), 2, 0);
+                        } else {
+                            ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+                        }
+                        ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * ema_temp);
+                        break;
 
             case ALERT:
-                delta_temp = (int8_t)(dht11_data.temperature - old_temp);
+                    if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
+                        state_dht11 = NORMAL;
 
-                if (!alert_sent) {
-                    generate_json(json, DHT11_JSON_ALERT, backup_temp, dht11_data.temperature);
-                    if (mqtt_publish("/dht11/alert", json, (int)strlen(json), 2, 0) == ESP_OK) {
-                        alert_sent = true;
-                    }
-                }
+                        generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_actual, (uint8_t)ema_temp);
+                        mqtt_publish("/dht11/alert/off_alert", json, (int)strlen(json), 2, 0);
 
-                old_temp = dht11_data.temperature;
-                readings_in_alert++;
-
-                // Caso 1: Temperatura empieza a bajar
-                if (delta_temp < 0) {
-                    state_dht11 = DELTA;
-                    readings_in_alert = 0;
-                }
-                // Caso 2: Temperatura se estabilizo (sin subir mas)
-                else if (delta_temp == 0 && readings_in_alert >= 5) {
-                    // Después de 5 lecturas estables, considerar que se controlo
-                    int8_t total_delta = (int8_t)(dht11_data.temperature - backup_temp);
-                    if (total_delta <= 3) {
-                        state_dht11 = GET_DATA;
-                        readings_in_alert = 0;
+                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
                     }
-                }
-                // Caso 3: Sigue subiendo
-                else if (delta_temp > 0) {
-                    // Reenviar alerta cada 10 lecturas si sigue subiendo
-                    if (readings_in_alert % 10 == 0) {
-                        generate_json(json, DHT11_JSON_ALERT, backup_temp, dht11_data.temperature);
-                        mqtt_publish("/dht11/alert", json, (int)strlen(json), 2, 0);
-                    }
-                }
-                break;
+                    ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * ema_temp);
+                    break;
             }
         }
 
