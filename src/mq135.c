@@ -8,15 +8,19 @@
  * el ADC del ESP32 con corrección de temperatura y humedad.
  */
 
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "MQ135/mq135.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "esp_log.h"
 #include <math.h>
 #include <string.h>
+#include "Data/data.h"
+#include "Setting/settings.h"
+#include "MQTT/mqtt.h"
 
 
 static const char *TAG = "MQ135_CO2";
@@ -86,7 +90,7 @@ static uint16_t ema_filter(const uint16_t new_sample) {
 static float mq135_get_resistance(void) {
     if (!adc1_handle || !cali_handle) return -1.0f;
 
-    uint32_t adc_sum = 0;
+    int adc_sum = 0;
     uint16_t valid_samples = 0;
 
     for (uint16_t i = 0; i < MQ135_NUMBER_OF_SAMPLES; i++) {
@@ -102,7 +106,7 @@ static float mq135_get_resistance(void) {
 
     if (valid_samples == 0) return -1.0f;
 
-    uint16_t adc_avg = adc_sum / valid_samples;
+    int adc_avg = adc_sum / valid_samples;
     int voltage_mv = 0;
     if (adc_cali_raw_to_voltage(cali_handle, adc_avg, &voltage_mv) != ESP_OK) {
         return -1.0f;
@@ -292,4 +296,96 @@ void mq135_print_diagnostics(float temperature_c, float humidity_percent) {
     float rs_corr = mq135_get_corrected_resistance(temperature_c, humidity_percent);
     ESP_LOGI(TAG, "- INFO: Rs raw: %.3f Ω, Rs corregida: %.3f Ω -", rs_raw, rs_corr);
     ESP_LOGI(TAG, "- INFO: R0 runtime: %.3f Ω (macro por defecto: %.3f Ω) -", runtime_R0, (double)CO2_R0_DEFAULT);
+}
+
+
+/**
+ * @brief Funcion que genera un JSON con la temperatura inicial y la actual.
+ *
+ * Genera el JSON que sera enviado en caso de una alerta por aumento brusco de ppm.
+ *
+ * @param output_buffer String formateado en JSON.
+ * @param buffer_size Tamaño del string.
+ * @param alert Estructura con los valores iniciales y actuales.
+ */
+static void generate_json(char *output_buffer, size_t buffer_size, mq135_alert_t alert) {
+
+    snprintf(output_buffer, buffer_size,
+        "{\n"
+        "  \"co2 ppm inicial\": %f,\n"
+        "  \"co2 ppm actual\": %f,\n"
+        "}",
+        alert.co2ppm_i,
+        alert.co2ppm_a
+    );
+}
+
+
+void mq135_task(void *pvParameters) {
+    static state_mq135_t state_mq135 = INIT_MQ135;
+    static uint32_t counter = 0;
+    static float ema_ppm = 440.0f;            // Media movil de la temperatura
+    static float ema_error = 0.0f;            // Media movil del error (ruido normal)
+    static mq135_data_t mq135;
+    static mq135_alert_t alert;
+    static dht11_data_t dht11;
+    char json[MQ135_JSON_ALERT];
+
+    TickType_t last_wake_time = xTaskGetTickCount();
+
+    while (1) {
+        uint32_t slices = (settings.sample_rate * 60)/(DHT11_DELAY/1000);
+        counter++;
+
+        if (xQueueReceive(dht11_to_mq135, &dht11, portMAX_DELAY)) {
+            mq135.co2ppm = mq135_read_ppm((float)dht11.temperature, (float)dht11.humidity);
+        }
+
+        if (counter >= slices) {
+            counter = 0;
+            xQueueSend(mq135_buffer, &mq135, portMAX_DELAY);
+            xEventGroupSetBits(collector_events, MQ135_DATA_READY);
+        }
+        else {
+            float ppm_actual = mq135.co2ppm = mq135_read_ppm((float)dht11.temperature, (float)dht11.humidity);
+            float error_actual = ppm_actual - ema_ppm;
+            float error_abs = fabsf(error_actual);
+            float umbral_alerta_dinamico = (K_SENSIBILIDAD * ema_error) + UMBRAL_MINIMO_ABS;
+
+            switch (state_mq135) {
+            case INIT_MQ135:
+                    ema_ppm = mq135.co2ppm;
+                    ema_error = 0.0f;
+                    state_mq135 = NORMAL_MQ135;
+                    break;
+
+            case NORMAL_MQ135:
+                    if (error_abs > umbral_alerta_dinamico) {
+                        state_mq135 = ALERT_MQ135;
+                        alert.co2ppm_i = ema_ppm;
+                        alert.co2ppm_a = ppm_actual;
+                        generate_json(json, DHT11_JSON_ALERT, alert);
+                        mqtt_publish("/mq135/alert/on_alert", json, (int)strlen(json), 2, 0);
+                    } else {
+                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+                    }
+                    ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * ema_ppm);
+                    break;
+
+            case ALERT_MQ135:
+                    if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
+                        state_mq135 = NORMAL_MQ135;
+
+                        generate_json(json, DHT11_JSON_ALERT, alert);
+                        mqtt_publish("/mq135/alert/off_alert", json, (int)strlen(json), 2, 0);
+
+                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+                    }
+                    ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * ema_ppm);
+                    break;
+            }
+        }
+
+        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(MQ135_DELAY));
+    }
 }

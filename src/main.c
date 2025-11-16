@@ -15,16 +15,21 @@ QueueHandle_t data_buffer = NULL;
 QueueHandle_t system_buffer = NULL;
 QueueHandle_t dht11_buffer = NULL;
 QueueHandle_t ky037_buffer = NULL;
+QueueHandle_t mq135_buffer = NULL;
+QueueHandle_t dht11_to_mq135 = NULL;
 TaskHandle_t data_ct_handle = NULL;
 TaskHandle_t data_pt_handle = NULL;
 TaskHandle_t xStatsTaskHandle = NULL;
 TaskHandle_t dht11_handle = NULL;
+TaskHandle_t mq135_handle = NULL;
 EventGroupHandle_t collector_events = NULL;
 
 static StackType_t dht11_stack[STACK_DHT11];
 static StaticTask_t dht11_tcb;
 static StackType_t ky037_stack[STACK_MIC];
 static StaticTask_t ky037_tcb;
+static StackType_t mq135_stack[STACK_MQ135];
+static StaticTask_t mq135_tcb;
 static StackType_t data_ct_stack[STACK_COLLECTOR];
 static StaticTask_t data_ct_tcb;
 static StackType_t data_pt_stack[STACK_PUBLISHER];
@@ -40,6 +45,8 @@ void app_main(void) {
     system_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
     dht11_buffer = xQueueCreate(QUEUE, sizeof(dht11_data_t));
     ky037_buffer = xQueueCreate(QUEUE, sizeof(ky037_stats_t));
+    mq135_buffer = xQueueCreate(QUEUE, sizeof(mq135_data_t));
+    dht11_to_mq135 = xQueueCreate(QUEUE, sizeof(dht11_data_t));
 
     esp_err_t retMQ135 = ESP_FAIL;
     esp_err_t retDHT11 = ESP_FAIL;
@@ -67,7 +74,8 @@ void app_main(void) {
     if (!collector_events) return;
 
     dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11Task", STACK_DHT11, NULL, 3, dht11_stack, &dht11_tcb, 0);
-    xStatsTaskHandle = xTaskCreateStaticPinnedToCore(vStatsTask, "ky037_stats", STACK_MIC, NULL, 3, ky037_stack, &ky037_tcb, 1);
+    xStatsTaskHandle = xTaskCreateStaticPinnedToCore(vStatsTask, "KY037Task", STACK_MIC, NULL, 3, ky037_stack, &ky037_tcb, 1);
+    mq135_handle = xTaskCreateStaticPinnedToCore(mq135_task, "MQ135Task", STACK_MQ135, NULL, 3, mq135_stack, &mq135_tcb, 0);
     data_ct_handle = xTaskCreateStaticPinnedToCore(data_collection_task, "DataCollector", STACK_COLLECTOR, NULL, 4, data_ct_stack, &data_ct_tcb, 1);
     data_pt_handle = xTaskCreateStaticPinnedToCore(data_publish_task, "DataPublisher", STACK_PUBLISHER, NULL, 4, data_pt_stack, &data_pt_tcb, 0);
     xTaskCreateStaticPinnedToCore(stack_monitor_task, "StackMonitor", STACK_MONITOR, NULL, 3, monitor_stack, &monitor_tcb, 0);

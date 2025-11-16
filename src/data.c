@@ -35,6 +35,7 @@ void stack_monitor_task(void *pvParameter) {
         UBaseType_t hwm2 = uxTaskGetStackHighWaterMark(data_pt_handle);
         UBaseType_t hwm3 = uxTaskGetStackHighWaterMark(xStatsTaskHandle);
         UBaseType_t hwm4 = uxTaskGetStackHighWaterMark(dht11_handle);
+        UBaseType_t hwm5 = uxTaskGetStackHighWaterMark(mq135_handle);
         UBaseType_t hwm_monitor = uxTaskGetStackHighWaterMark(NULL);
         uint64_t uptime_ms = esp_timer_get_time() / 1000ULL;
         uint32_t hours = uptime_ms / 3600000ULL;
@@ -53,6 +54,7 @@ void stack_monitor_task(void *pvParameter) {
                 "  \"Stack libre minimo historico Publisher\": %u,\n"
                 "  \"Stack libre minimo historico Microfono\": %u,\n"
                 "  \"Stack libre minimo historico DHT11\": %u,\n"
+                "  \"Stack libre minimo historico MQ135\": %u,\n"
                 "  \"Stack libre minimo historico Monitor\": %u,\n"
                 "  \"Tiempo activo (hh:mm:ss)\": %02lu:%02lu:%02lu,\n"
                 "}",
@@ -61,7 +63,7 @@ void stack_monitor_task(void *pvParameter) {
                 esp_get_minimum_free_heap_size()/4,
                 heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4,
                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4,
-                hwm1, hwm2, hwm3, hwm4, hwm_monitor, hours, minutes, seconds);
+                hwm1, hwm2, hwm3, hwm4, hwm5, hwm_monitor, hours, minutes, seconds);
         xQueueSend(system_buffer, &json, portMAX_DELAY);
 
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(settings.sample_rate * 2 * MS_TO_MIN));
@@ -155,7 +157,7 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
  * @param data Puntero de tipo data_sensors_t que recibe la informacion. Para no generar una
  * copia de este campo, se usa un puntero y de esa forma buscar mas eficiencia.
  */
-static void get_formated_data(dht11_data_t *dht11, ky037_stats_t *ky037) {
+static void get_formated_data(dht11_data_t *dht11, ky037_stats_t *ky037, mq135_data_t *mq135) {
     memset(&data, 0, sizeof(data));
     get_time(data.time);
 
@@ -169,7 +171,9 @@ static void get_formated_data(dht11_data_t *dht11, ky037_stats_t *ky037) {
         data.ky037_max_duration = ky037->max_duration;
     }
 
-    data.co2ppm = mq135_read_ppm((float)data.dht11_temperature, (float)data.dht11_humidity);
+    if (xQueueReceive(mq135_buffer, mq135, 0)) {
+        data.co2ppm = mq135->co2ppm;
+    }
 }
 
 
@@ -183,6 +187,7 @@ void data_collection_task(void *pvParameter) {
     unsigned char iv_out[IV_LEN];
     dht11_data_t dht11;
     ky037_stats_t ky037;
+    mq135_data_t mq135;
 
     char *output_base64 = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
 
@@ -191,8 +196,8 @@ void data_collection_task(void *pvParameter) {
         xEventGroupWaitBits(
             collector_events,
             ALL_DATA_READY,
-            pdTRUE,  // Limpiar bits después de leer
-            pdTRUE,  // Esperar TODOS los bits
+            pdTRUE,  // Limpiar bits despues de leer
+            pdTRUE,  // Esperar todos los bits
             pdMS_TO_TICKS(portMAX_DELAY)
         );
 
@@ -205,7 +210,7 @@ void data_collection_task(void *pvParameter) {
         memset(json, 0, JSON_MAX);
         memset(output_base64, 0, JSON_MAX);
 
-        get_formated_data(&dht11, &ky037);
+        get_formated_data(&dht11, &ky037, &mq135);
         generate_json_data(json, JSON_MAX, &settings);
 
         aes_ctr_encrypt_to_base64((const unsigned char*)json, strlen(json),

@@ -12,8 +12,7 @@
 #define WAIT 1000
 #define TIME_SETUP 240000
 
-#define ALL_DATA_READY    (DHT11_DATA_READY | KY037_DATA_READY)
-//#define ALL_DATA_READY    (DHT11_DATA_READY | MQ135_DATA_READY | MIC_DATA_READY)
+#define ALL_DATA_READY    (DHT11_DATA_READY | KY037_DATA_READY | MQ135_DATA_READY)
 
 
 #include <stdint.h>
@@ -21,6 +20,7 @@
 #include "freertos/queue.h"
 #include "DHT11/dht11.h"
 #include "KY037/ky037.h"
+#include "MQ135/mq135.h"
 
 
 typedef struct {
