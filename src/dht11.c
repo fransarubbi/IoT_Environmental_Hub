@@ -1,7 +1,8 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "Data/data.h"
 #include "DHT11/dht11.h"
 #include "MQTT/mqtt.h"
+#include "Setting/settings.h"
+#include "System/system.h"
 #include <esp_timer.h>
 #include <math.h>
 #include <stdint.h>
@@ -10,8 +11,6 @@
 #include "esp_log.h"
 #include "esp32/rom/ets_sys.h"
 #include <string.h>
-#include "Setting/settings.h"
-#include "Data/data.h"
 #include <driver/rmt_rx.h>
 
 
@@ -341,7 +340,7 @@ static void generate_json(char *output_buffer, size_t buffer_size, uint8_t temp_
  * @param pvParameter Parámetro de la tarea (no usado).
  */
 void dht11_task(void *pvParameter) {
-    static state_dht11_t state_dht11 = INIT;
+    static state_dht11_t state_dht11 = INIT_DHT11;
     static uint32_t counter = 0;
     static float ema_temp = 20.0f;            // Media movil de la temperatura
     static float ema_error = 0.0f;            // Media movil del error (ruido normal)
@@ -364,8 +363,8 @@ void dht11_task(void *pvParameter) {
             }
             dht11.temperature = dht11_data.temperature;
             dht11.humidity = dht11_data.humidity;
-            xQueueSend(dht11_buffer, &dht11, portMAX_DELAY);
-            xEventGroupSetBits(collector_events, DHT11_DATA_READY);
+            xQueueSend(queues.dht11_buffer, &dht11, portMAX_DELAY);
+            xEventGroupSetBits(event_group.collector_events, DHT11_DATA_READY);
         }
         else {
             if (dht11_read_data() != ESP_OK) {
@@ -378,25 +377,27 @@ void dht11_task(void *pvParameter) {
             float umbral_alerta_dinamico = (K_SENSIBILIDAD * ema_error) + UMBRAL_MINIMO_ABS;
 
             switch (state_dht11) {
-            case INIT: ema_temp = dht11_data.temperature;
-                       ema_error = 0.0f;
-                       state_dht11 = NORMAL;
-                       break;
+            case INIT_DHT11:
+                    ema_temp = dht11_data.temperature;
+                    ema_error = 0.0f;
+                    state_dht11 = NORMAL_DHT11;
+                    break;
 
-            case NORMAL: if (error_abs > umbral_alerta_dinamico) {
-                            state_dht11 = ALERT;
-                            temp_before_alert = ema_temp;   // Guardamos la "normalidad" previa
-                            generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_before_alert, (uint8_t)temp_actual);
-                            mqtt_publish("/dht11/alert/on_alert", json, (int)strlen(json), 2, 0);
-                        } else {
-                            ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
-                        }
-                        ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * ema_temp);
-                        break;
+            case NORMAL_DHT11:
+                    if (error_abs > umbral_alerta_dinamico) {
+                        state_dht11 = ALERT_DHT11;
+                        temp_before_alert = ema_temp;   // Guardamos la "normalidad" previa
+                        generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_before_alert, (uint8_t)temp_actual);
+                        mqtt_publish("/dht11/alert/on_alert", json, (int)strlen(json), 2, 0);
+                    } else {
+                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+                    }
+                    ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * ema_temp);
+                    break;
 
-            case ALERT:
+            case ALERT_DHT11:
                     if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
-                        state_dht11 = NORMAL;
+                        state_dht11 = NORMAL_DHT11;
 
                         generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_actual, (uint8_t)ema_temp);
                         mqtt_publish("/dht11/alert/off_alert", json, (int)strlen(json), 2, 0);
@@ -408,6 +409,7 @@ void dht11_task(void *pvParameter) {
             }
         }
 
+        xQueueSend(queues.dht11_to_mq135, &dht11, portMAX_DELAY);
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(DHT11_DELAY));
     }
 }

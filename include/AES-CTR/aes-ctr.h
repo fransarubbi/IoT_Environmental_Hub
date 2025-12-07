@@ -4,9 +4,6 @@
 #define IV_LEN 16   // Initialization Vector
 #define IV_HEX_LEN 33   // 16*2 + 1 ( por agregar \0)
 
-#include <string.h>
-#include <stdio.h>
-
 
 uint8_t aes_ctr_encrypt_to_base64(const unsigned char *input, size_t input_len,
                                       unsigned char *iv_out, char *output_base64, size_t output_base64_len);

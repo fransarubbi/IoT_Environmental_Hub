@@ -3,7 +3,7 @@
 
 #include "esp_err.h"
 #include "driver/uart.h"
-#include "string.h"
+#include <string.h>
 
 
 /* ---- Configuraciones del sistema ---- */

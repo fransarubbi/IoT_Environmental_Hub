@@ -27,13 +27,9 @@
 #define UMBRAL_MINIMO_ABS          1.0f          // Umbral de 1.0°C para disparar si o si
 #define HYSTERESIS                 0.8f          // Necesita bajar al 80% del umbral para desactivar
 
-
 #define DHT11_DATA_READY  (1 << 0)
-#define MQ135_DATA_READY  (1 << 1)
-
 
 #include <esp_err.h>
-#include <stdint.h>
 #include <freertos/task.h>
 
 
@@ -47,9 +43,7 @@ typedef struct {
 } dht11_data_t;
 
 
-extern TaskHandle_t dht11_handle;
-extern QueueHandle_t dht11_buffer;
-typedef enum{INIT, NORMAL, ALERT} state_dht11_t;
+typedef enum {INIT_DHT11, NORMAL_DHT11, ALERT_DHT11} state_dht11_t;
 
 
 /* ===== API ===== */

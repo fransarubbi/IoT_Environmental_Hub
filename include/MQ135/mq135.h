@@ -2,6 +2,8 @@
 #define MQ135_H
 
 
+#include <freertos/queue.h>
+#include <freertos/task.h>
 #include "esp_err.h"
 
 
@@ -25,9 +27,30 @@
 #define EMA_ALPHA_Q15 1638
 #define EMA_2_15 32768
 
+#define MQ135_JSON_ALERT 100
+#define MQ135_DELAY 10000
+#define MQ135_DATA_READY  (1 << 1)
+
+#define STACK_MQ135 8000
 
 
-/* ----- API publica minima ----- */
+/* ===== Estructura de datos ===== */
+typedef struct {
+    float co2ppm;
+} mq135_data_t;
+
+typedef struct {
+    float co2ppm_i;
+    float co2ppm_a;
+} mq135_alert_t;
+
+
+
+typedef enum{INIT_MQ135, NORMAL_MQ135, ALERT_MQ135} state_mq135_t;
+
+
+/* ----- API publica ----- */
+void mq135_task(void *);
 esp_err_t mq135_init(void);
 float mq135_read_ppm(float temperature_c, float humidity_percent);
 void mq135_print_diagnostics(float temperature_c, float humidity_percent);

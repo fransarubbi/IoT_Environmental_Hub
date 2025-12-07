@@ -6,10 +6,13 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
+#include "System/system.h"
 
-static EventGroupHandle_t s_wifi_event_group;
+static wifi_ap_record_t ap_info;
+
 static const char *TAG = "wifi";
 static int s_retry_num = 0;
+
 
 
 void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -25,20 +28,20 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base,
         }
         else {
             ESP_LOGE(TAG, "Fallo al conectar al AP tras %d intentos", WIFI_MAX_RETRY);
-            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            xEventGroupSetBits(event_group.wifi_event_group, WIFI_FAIL_BIT);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "- INFO: IP asignada: " IPSTR, IP2STR(&event->ip_info.ip));
         snprintf(settings.wifi_ip, 30, IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
-        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        xEventGroupSetBits(event_group.wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
 
 
 static esp_err_t wifi_wait_for_connection() {
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+    EventBits_t bits = xEventGroupWaitBits(event_group.wifi_event_group,
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                            pdFALSE,
                                            pdFALSE,
@@ -58,8 +61,6 @@ static esp_err_t wifi_wait_for_connection() {
 
 
 esp_err_t wifi_init(void) {
-
-    s_wifi_event_group = xEventGroupCreate();
 
     esp_err_t ret = esp_netif_init();
     if (ret != ESP_OK) return ret;
@@ -116,5 +117,16 @@ esp_err_t wifi_init(void) {
 }
 
 
+void get_stats_wifi(wifi_stats_t *wifi_stats) {
+    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+    if (err == ESP_OK) {
+        wifi_stats->rssi = ap_info.rssi;
+        memcpy(wifi_stats->ssid, ap_info.ssid, sizeof(wifi_stats->ssid));
+    }
+    else {
+        wifi_stats->rssi = -127;
+        memset(wifi_stats->ssid, 0, sizeof(wifi_stats->ssid));
+    }
+}
 
 
