@@ -30,7 +30,6 @@
 #define DHT11_DATA_READY  (1 << 0)
 
 #include <esp_err.h>
-#include <stdint.h>
 #include <freertos/task.h>
 
 
@@ -44,10 +43,7 @@ typedef struct {
 } dht11_data_t;
 
 
-extern TaskHandle_t dht11_handle;
-extern QueueHandle_t dht11_buffer;
-extern QueueHandle_t dht11_to_mq135;
-typedef enum{INIT_DHT11, NORMAL_DHT11, ALERT_DHT11} state_dht11_t;
+typedef enum {INIT_DHT11, NORMAL_DHT11, ALERT_DHT11} state_dht11_t;
 
 
 /* ===== API ===== */

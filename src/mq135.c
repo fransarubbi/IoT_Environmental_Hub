@@ -8,19 +8,20 @@
  * el ADC del ESP32 con corrección de temperatura y humedad.
  */
 
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "Data/data.h"
 #include "MQ135/mq135.h"
+#include "MQTT/mqtt.h"
+#include "DHT11/dht11.h"
+#include "Setting/settings.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_log.h"
 #include <math.h>
 #include <string.h>
-#include "Data/data.h"
-#include "Setting/settings.h"
-#include "MQTT/mqtt.h"
+
+#include "System/system.h"
+
 
 
 static const char *TAG = "MQ135_CO2";
@@ -337,14 +338,14 @@ void mq135_task(void *pvParameters) {
         uint32_t slices = (settings.sample_rate * 60)/(DHT11_DELAY/1000);
         counter++;
 
-        if (xQueueReceive(dht11_to_mq135, &dht11, portMAX_DELAY)) {
+        if (xQueueReceive(queues.dht11_to_mq135, &dht11, portMAX_DELAY)) {
             mq135.co2ppm = mq135_read_ppm((float)dht11.temperature, (float)dht11.humidity);
         }
 
         if (counter >= slices) {
             counter = 0;
-            xQueueSend(mq135_buffer, &mq135, portMAX_DELAY);
-            xEventGroupSetBits(collector_events, MQ135_DATA_READY);
+            xQueueSend(queues.mq135_buffer, &mq135, portMAX_DELAY);
+            xEventGroupSetBits(event_group.collector_events, MQ135_DATA_READY);
         }
         else {
             float ppm_actual = mq135.co2ppm = mq135_read_ppm((float)dht11.temperature, (float)dht11.humidity);

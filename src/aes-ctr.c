@@ -1,15 +1,12 @@
 #define MBEDTLS_CONFIG_FILE "mbedtls/esp_config.h"
-#include "AES-CTR/aes-ctr.h"
-#include "Setting/settings.h"
-#include <stdio.h>
-#include <string.h>
-#include "esp_log.h"
 #include "mbedtls/platform.h"
 #include "mbedtls/aes.h"
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/base64.h"
-
+#include "esp_log.h"
+#include "AES-CTR/aes-ctr.h"
+#include "Setting/settings.h"
 
 
 static const char *TAG = "AES_CTR";

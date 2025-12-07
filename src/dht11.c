@@ -1,7 +1,8 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "Data/data.h"
 #include "DHT11/dht11.h"
 #include "MQTT/mqtt.h"
+#include "Setting/settings.h"
+#include "System/system.h"
 #include <esp_timer.h>
 #include <math.h>
 #include <stdint.h>
@@ -10,8 +11,6 @@
 #include "esp_log.h"
 #include "esp32/rom/ets_sys.h"
 #include <string.h>
-#include "Setting/settings.h"
-#include "Data/data.h"
 #include <driver/rmt_rx.h>
 
 
@@ -364,8 +363,8 @@ void dht11_task(void *pvParameter) {
             }
             dht11.temperature = dht11_data.temperature;
             dht11.humidity = dht11_data.humidity;
-            xQueueSend(dht11_buffer, &dht11, portMAX_DELAY);
-            xEventGroupSetBits(collector_events, DHT11_DATA_READY);
+            xQueueSend(queues.dht11_buffer, &dht11, portMAX_DELAY);
+            xEventGroupSetBits(event_group.collector_events, DHT11_DATA_READY);
         }
         else {
             if (dht11_read_data() != ESP_OK) {
@@ -410,7 +409,7 @@ void dht11_task(void *pvParameter) {
             }
         }
 
-        xQueueSend(dht11_to_mq135, &dht11, portMAX_DELAY);
+        xQueueSend(queues.dht11_to_mq135, &dht11, portMAX_DELAY);
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(DHT11_DELAY));
     }
 }

@@ -1,14 +1,12 @@
 #include "Data/data.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "KY037/ky037.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
-#include "esp_timer.h"
 #include <string.h>
 
 #include "Setting/settings.h"
-
+#include "System/system.h"
 
 static const char *TAG = "KY037";
 
@@ -26,8 +24,8 @@ static volatile bool isr_service_installed = false;  // Flag que indica si ya se
  */
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    if (xStatsTaskHandle != NULL) {   // Solo notificar si la tarea existe
-        vTaskNotifyGiveFromISR(xStatsTaskHandle, &xHigherPriorityTaskWoken);  // Despertar a la tarea para que atienda la interrupcion
+    if (task_handle.ky037_handle != NULL) {   // Solo notificar si la tarea existe
+        vTaskNotifyGiveFromISR(task_handle.ky037_handle, &xHigherPriorityTaskWoken);  // Despertar a la tarea para que atienda la interrupcion
         if (xHigherPriorityTaskWoken) {   // Si la tarea que estaba ejecutandose es de menor prioridad, minimizar la latencia del context switching
             portYIELD_FROM_ISR();
         }
@@ -72,8 +70,8 @@ void vStatsTask(void *pvParameters) {
         if ((now - last_wake_time) >= period_ticks) {
             // Enviar datos
             ky037_stats_t ky037 = ky037_stats;
-            xQueueSend(ky037_buffer, &ky037, portMAX_DELAY);
-            xEventGroupSetBits(collector_events, KY037_DATA_READY);
+            xQueueSend(queues.ky037_buffer, &ky037, portMAX_DELAY);
+            xEventGroupSetBits(event_group.collector_events, KY037_DATA_READY);
 
             // Resetear estadisticas
             ky037_stats.counter = 0;
@@ -115,7 +113,7 @@ esp_err_t ky037_init(void) {
         ret = gpio_install_isr_service(0);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "- ERROR: Error instalando servicio ISR: %s -", esp_err_to_name(ret));
-            vTaskDelete(xStatsTaskHandle);
+            vTaskDelete(task_handle.ky037_handle);
             return ret;
         }
         isr_service_installed = true;
@@ -125,7 +123,7 @@ esp_err_t ky037_init(void) {
     ret = gpio_isr_handler_add(KY037_PIN, gpio_isr_handler, NULL);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "- ERROR: Error añadiendo ISR handler: %s -", esp_err_to_name(ret));
-        vTaskDelete(xStatsTaskHandle);
+        vTaskDelete(task_handle.ky037_handle);
         return ret;
     }
 

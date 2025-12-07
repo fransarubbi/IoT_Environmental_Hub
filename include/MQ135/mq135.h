@@ -45,8 +45,7 @@ typedef struct {
 } mq135_alert_t;
 
 
-extern TaskHandle_t mq135_handle;
-extern QueueHandle_t mq135_buffer;
+
 typedef enum{INIT_MQ135, NORMAL_MQ135, ALERT_MQ135} state_mq135_t;
 
 

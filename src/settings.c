@@ -1,16 +1,15 @@
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
 #include "Setting/settings.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "nvs.h"
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "freertos/FreeRTOS.h"
 #include <errno.h>
 #include <stdint.h>
 #include <ctype.h>
 #include "nvs_flash.h"
-#include "freertos/timers.h"
 #include "cJSON.h"
 
 

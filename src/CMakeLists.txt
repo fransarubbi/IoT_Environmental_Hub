@@ -10,6 +10,8 @@ idf_component_register(
         "aes-ctr.c"
         "wifi.c"
         "time.c"
+        "monitor.c"
+        "system.c"
         INCLUDE_DIRS
         "."
         REQUIRES

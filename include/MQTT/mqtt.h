@@ -15,7 +15,6 @@ typedef struct {
 
 
 extern mqtt_client_t mqtt;
-extern EventGroupHandle_t mqtt_event_group;
 
 
 esp_err_t mqtt_init(void);

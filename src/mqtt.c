@@ -1,17 +1,17 @@
+#include "Data/data.h"
 #include "MQTT/mqtt.h"
 #include "Setting/settings.h"
-#include "Data/data.h"
 #include "esp_log.h"
 #include <esp_mac.h>
 #include "certs/ca_crt.h"
 #include "certs/client1_crt.h"
 #include "certs/client1_key.h"
+#include "System/system.h"
 
 
 static const char *TAG = "MQTT";
 static char mac_addr[18];
 mqtt_client_t mqtt;
-EventGroupHandle_t mqtt_event_group = NULL;
 
 
 
@@ -41,8 +41,8 @@ static esp_err_t get_mac_address(void) {
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
-            xEventGroupSetBits(mqtt_event_group, MQTT_CONNECTED_BIT);
-            xEventGroupClearBits(mqtt_event_group, MQTT_DISCONNECTED_BIT);
+            xEventGroupSetBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
+            xEventGroupClearBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
             ESP_LOGI(TAG, "- INFO: Conectado al broker -");
             esp_mqtt_client_subscribe(event->client, "/devices/config/sample", 1);
             esp_mqtt_client_subscribe(event->client, "/devices/config/name", 1);
@@ -50,8 +50,8 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             break;
 
         case MQTT_EVENT_DISCONNECTED:
-            xEventGroupClearBits(mqtt_event_group, MQTT_CONNECTED_BIT);
-            xEventGroupSetBits(mqtt_event_group, MQTT_DISCONNECTED_BIT);
+            xEventGroupClearBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
+            xEventGroupSetBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
             ESP_LOGW(TAG, "- WARNING: Desconectado del broker -");
             break;
 
@@ -118,7 +118,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
  * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
  */
 esp_err_t mqtt_init(void) {
-    mqtt_event_group = xEventGroupCreate();
     esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
     esp_err_t ret = get_mac_address();
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));

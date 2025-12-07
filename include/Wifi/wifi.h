@@ -8,7 +8,15 @@
 
 #include "esp_err.h"
 
+
+typedef struct {
+    uint8_t ssid[33];
+    int8_t  rssi;
+} wifi_stats_t;
+
+
 esp_err_t wifi_init(void);
+void get_stats_wifi(wifi_stats_t *);
 
 
 #endif //WIFI_H

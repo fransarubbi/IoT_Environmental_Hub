@@ -6,69 +6,12 @@
 #include "MQTT/mqtt.h"
 #include "Time/time.h"
 #include "AES-CTR/aes-ctr.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 #include "esp_log.h"
 
+#include "System/system.h"
 
 static const char *TAG = "JSON";
 static data_sensors_t data;
-
-
-
-/**
- * @brief Tarea que monitoriza el uso de recursos.
- * @param pvParameter
- */
-void stack_monitor_task(void *pvParameter) {
-    multi_heap_info_t info;
-    TickType_t last_wake_time = xTaskGetTickCount();
-
-    while (1) {
-        char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
-        if (!json) {
-            ESP_LOGE(TAG, "- ERROR: No hay memoria para buffers JSON -");
-            esp_restart();
-        }
-        memset(json, 0, JSON_MAX);
-        UBaseType_t hwm1 = uxTaskGetStackHighWaterMark(data_ct_handle);
-        UBaseType_t hwm2 = uxTaskGetStackHighWaterMark(data_pt_handle);
-        UBaseType_t hwm3 = uxTaskGetStackHighWaterMark(xStatsTaskHandle);
-        UBaseType_t hwm4 = uxTaskGetStackHighWaterMark(dht11_handle);
-        UBaseType_t hwm5 = uxTaskGetStackHighWaterMark(mq135_handle);
-        UBaseType_t hwm_monitor = uxTaskGetStackHighWaterMark(NULL);
-        uint64_t uptime_ms = esp_timer_get_time() / 1000ULL;
-        uint32_t hours = uptime_ms / 3600000ULL;
-        uint32_t minutes = (uptime_ms % 3600000ULL) / 60000ULL;
-        uint32_t seconds = (uptime_ms % 60000ULL) / 1000ULL;
-        heap_caps_get_info(&info, MALLOC_CAP_8BIT);
-
-        snprintf(json, JSON_MAX,
-                "{\n"
-                "  \"MAC\": \"%s\",\n"
-                "  \"Heap libre actual\": %lu,\n"
-                "  \"Heap libre minimo historico\": %lu,\n"
-                "  \"Bloque libre mas grande\": %u,\n"
-                "  \"Heap interno libre\": %u,\n"
-                "  \"Stack libre minimo historico Collector\": %u,\n"
-                "  \"Stack libre minimo historico Publisher\": %u,\n"
-                "  \"Stack libre minimo historico Microfono\": %u,\n"
-                "  \"Stack libre minimo historico DHT11\": %u,\n"
-                "  \"Stack libre minimo historico MQ135\": %u,\n"
-                "  \"Stack libre minimo historico Monitor\": %u,\n"
-                "  \"Tiempo activo (hh:mm:ss)\": %02lu:%02lu:%02lu,\n"
-                "}",
-                settings.mac_address,
-                esp_get_free_heap_size()/4,
-                esp_get_minimum_free_heap_size()/4,
-                heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4,
-                heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4,
-                hwm1, hwm2, hwm3, hwm4, hwm5, hwm_monitor, hours, minutes, seconds);
-        xQueueSend(system_buffer, &json, portMAX_DELAY);
-
-        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(settings.sample_rate * 2 * MS_TO_MIN));
-    }
-}
 
 
 /**
@@ -161,17 +104,17 @@ static void get_formated_data(dht11_data_t *dht11, ky037_stats_t *ky037, mq135_d
     memset(&data, 0, sizeof(data));
     get_time(data.time);
 
-    if (xQueueReceive(dht11_buffer, dht11, 0)) {
+    if (xQueueReceive(queues.data_buffer, dht11, 0)) {
         data.dht11_temperature = dht11->temperature;
         data.dht11_humidity = dht11->humidity;
     }
 
-    if (xQueueReceive(ky037_buffer, ky037, 0)) {
+    if (xQueueReceive(queues.ky037_buffer, ky037, 0)) {
         data.ky037_counter = ky037->counter;
         data.ky037_max_duration = ky037->max_duration;
     }
 
-    if (xQueueReceive(mq135_buffer, mq135, 0)) {
+    if (xQueueReceive(queues.mq135_buffer, mq135, 0)) {
         data.co2ppm = mq135->co2ppm;
     }
 }
@@ -194,7 +137,7 @@ void data_collection_task(void *pvParameter) {
     while (1) {
 
         xEventGroupWaitBits(
-            collector_events,
+            event_group.collector_events,
             ALL_DATA_READY,
             pdTRUE,  // Limpiar bits despues de leer
             pdTRUE,  // Esperar todos los bits
@@ -219,7 +162,7 @@ void data_collection_task(void *pvParameter) {
         iv_to_string(iv_out, iv_str, IV_LEN);
         memset(json, 0, JSON_MAX);
         generate_encrypted_message(json, output_base64, iv_str, JSON_MAX);
-        xQueueSend(data_buffer, &json, portMAX_DELAY);
+        xQueueSend(queues.data_buffer, &json, portMAX_DELAY);
     }
 }
 
@@ -235,9 +178,9 @@ void data_publish_task(void *pvParameter) {
     char *json_info = NULL;
 
     while (1) {
-        if (xQueueReceive(data_buffer, &json, pdMS_TO_TICKS(100))) {
+        if (xQueueReceive(queues.data_buffer, &json, pdMS_TO_TICKS(100))) {
             xEventGroupWaitBits(
-                mqtt_event_group,
+                event_group.mqtt_event_group,
                 MQTT_CONNECTED_BIT,
                 pdFALSE,  // No limpiar el bit
                 pdTRUE,   // Esperar todos los bits
@@ -246,9 +189,9 @@ void data_publish_task(void *pvParameter) {
             mqtt_publish(settings.topic_mqtt, json, (int)strlen(json), 2, 0);
             heap_caps_free(json);
         }
-        if (xQueueReceive(system_buffer, &json_info, 0)) {
+        if (xQueueReceive(queues.monitor_buffer, &json_info, 0)) {
             xEventGroupWaitBits(
-                mqtt_event_group,
+                event_group.mqtt_event_group,
                 MQTT_CONNECTED_BIT,
                 pdFALSE,  // No limpiar el bit
                 pdTRUE,   // Esperar todos los bits

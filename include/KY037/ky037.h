@@ -3,7 +3,6 @@
 
 #include <esp_timer.h>
 #include "esp_err.h"
-#include "driver/gpio.h"
 
 
 #define KY037_PIN GPIO_NUM_5
@@ -26,8 +25,6 @@ typedef struct {
 
 
 extern ky037_stats_t ky037_stats;
-extern TaskHandle_t xStatsTaskHandle;
-extern QueueHandle_t ky037_buffer;
 
 
 /**
