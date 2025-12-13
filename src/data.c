@@ -99,9 +99,13 @@ void data_collection_task(void *pvParameter) {
             pdMS_TO_TICKS(portMAX_DELAY)
         );
         char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
-        get_formated_data(&dht11, &ky037, &mq135);
-        generate_json_data(json, JSON_MAX, &settings);
-        xQueueSend(queues.data_buffer, &json, portMAX_DELAY);
+        if (json) {
+            get_formated_data(&dht11, &ky037, &mq135);
+            generate_json_data(json, JSON_MAX, &settings);
+            if (xQueueSend(queues.data_buffer, &json, pdMS_TO_TICKS(100)) != pdTRUE) {
+                free(json);
+            }
+        }
     }
 }
 

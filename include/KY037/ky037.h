@@ -37,7 +37,6 @@ static inline uint32_t get_time_ms(void) {
 
 esp_err_t ky037_init(void);
 // Declaraciones de tareas (para uso interno)
-void vStatsTask(void *pvParameters);
 void ky037_task(void *);
 
 

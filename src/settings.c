@@ -25,6 +25,15 @@ static TimerHandle_t one_shot_timer = NULL;
 
 
 /**
+ * @brief Envía texto por UART.
+ * @param text String para imprimir por UART.
+ */
+static inline void uart_send_text(const char *text) {
+    uart_write_bytes(SETTINGS_UART_PORT_NUM, text, strlen(text));
+}
+
+
+/**
  * @brief Convierte el string a mayusculas
  * @param str string que se quiere modificar
  */
@@ -117,28 +126,31 @@ static esp_err_t uart_config(void) {
  */
 static void show_help(void) {
     uart_send_text("\r\n\n");
-    uart_send_text("| ============================================================================== |\r\n");
-    uart_send_text("| ------------- Puede usar mayusculas o minusculas, es indistinto! ------------- |\r\n");
-    uart_send_text("| ============================ COMANDOS DISPONIBLES ============================ |\r\n");
-    uart_send_text("| WIFI_SSID <ssid>            - Configura SSID WiFi                              |\r\n");
-    uart_send_text("| WIFI_PASS <password>        - Configura password WiFi                          |\r\n");
-    uart_send_text("| MQTT_URI <uri>              - Configura uri MQTT                               |\r\n");
-    uart_send_text("| MQTT_USER <user>            - Configura usuario MQTT                           |\r\n");
-    uart_send_text("| MQTT_PASS <pass>            - Configura password MQTT                          |\r\n");
-    uart_send_text("| MQTT_TOPIC_DATA <topic>     - Configura el topico de publicacion de datos      |\r\n");
-    uart_send_text("| MQTT_TOPIC_ALERT <topic>    - Configura el topico de publicacion de alertas    |\r\n");
-    uart_send_text("| MQTT_TOPIC_MONITOR <topic>  - Configura el topico de publicacion de monitoreo  |\r\n");
-    uart_send_text("| DEVICE_NAME <name>          - Configura nombre del dispositivo                 |\r\n");
-    uart_send_text("| SAMPLE <rate>               - Configura frecuencia de envio de datos           |\r\n");
-    uart_send_text("| ENERGY_MODE <energy>        - Configura modo de energia                        |\r\n");
-    uart_send_text("| SHOW                        - Muestra configuracion actual                     |\r\n");
-    uart_send_text("| EXIT                        - Salir                                            |\r\n");
-    uart_send_text("| HELP                        - Muestra mensaje de ayuda                         |\r\n");
-    uart_send_text("| ============================================================================== |\r\n");
-    uart_send_text("| Info: SET_SAMPLE setea cada cuantos minutos se envian los datos                |\r\n");
-    uart_send_text("| Info: SET_ENERGY_MODE [0 = Bajo consumo, 1 = Alto consumo]                     |\r\n");
-    uart_send_text("| Info: Debe ingresar mqtts:// obligatoriamente en la uri de MQTT                |\r\n");
-    uart_send_text("| ============================================================================== |\r\n\r\n");
+    uart_send_text("| ============================================================================================= |\r\n");
+    uart_send_text("| --------------------- Puede usar mayusculas o minusculas, es indistinto! -------------------- |\r\n");
+    uart_send_text("| ==================================== COMANDOS DISPONIBLES =================================== |\r\n");
+    uart_send_text("| WIFI_SSID <ssid>                    - Configura SSID WiFi                                     |\r\n");
+    uart_send_text("| WIFI_PASS <password>                - Configura password WiFi                                 |\r\n");
+    uart_send_text("| MQTT_URI <uri>                      - Configura uri MQTT                                      |\r\n");
+    uart_send_text("| MQTT_USER <user>                    - Configura usuario MQTT                                  |\r\n");
+    uart_send_text("| MQTT_PASS <pass>                    - Configura password MQTT                                 |\r\n");
+    uart_send_text("| MQTT_TOPIC_DATA <topic>             - Configura el topico de publicacion de datos             |\r\n");
+    uart_send_text("| MQTT_TOPIC_ALERT <topic>            - Configura el topico de publicacion de alertas           |\r\n");
+    uart_send_text("| MQTT_TOPIC_MONITOR <topic>          - Configura el topico de publicacion de monitoreo         |\r\n");
+    uart_send_text("| MQTT_TOPIC_SETTINGS <topic>         - Configura el topico de pub/esc de la configuracion      |\r\n");
+    uart_send_text("| MQTT_TOPIC_HANDSHAKE <topic>        - Configura el topico de escucha de confirmaciones        |\r\n");
+    uart_send_text("| DEVICE_NAME <name>                  - Configura nombre del dispositivo                        |\r\n");
+    uart_send_text("| SAMPLE <rate>                       - Configura frecuencia de envio de datos                  |\r\n");
+    uart_send_text("| ENERGY_MODE <energy>                - Configura modo de energia                               |\r\n");
+    uart_send_text("| SHOW                                - Muestra configuracion actual                            |\r\n");
+    uart_send_text("| EXIT                                - Salir                                                   |\r\n");
+    uart_send_text("| HELP                                - Muestra mensaje de ayuda                                |\r\n");
+    uart_send_text("| ============================================================================================= |\r\n");
+    uart_send_text("| Info: SET_SAMPLE setea cada cuantos minutos se envian los datos                               |\r\n");
+    uart_send_text("| Info: SET_ENERGY_MODE [0 = Bajo consumo, 1 = Alto consumo]                                    |\r\n");
+    uart_send_text("| Info: MQTT_TOPIC_SETTINGS sirve como topico de cliente y servidor en simultaneo               |\r\n");
+    uart_send_text("| Info: Debe ingresar mqtts:// obligatoriamente en la uri de MQTT                               |\r\n");
+    uart_send_text("| ============================================================================================= |\r\n\r\n");
 }
 
 
@@ -165,6 +177,10 @@ void show_config(void) {
     sprintf(temp_buffer, "| MQTT Topico Alerta:  %s\r\n", settings.mqtt.topic_alert);
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| MQTT Topico Monitor: %s\r\n", settings.mqtt.topic_monitor);
+    uart_send_text(temp_buffer);
+    sprintf(temp_buffer, "| MQTT Topico Configuracion: %s\r\n", settings.mqtt.topic_settings);
+    uart_send_text(temp_buffer);
+    sprintf(temp_buffer, "| MQTT Topico Handshake: %s\r\n", settings.mqtt.topic_handshake);
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| Device Name:      %s\r\n", settings.node.device_name);
     uart_send_text(temp_buffer);
@@ -219,7 +235,8 @@ static bool setting_is_device_configured(void) {
         && strlen(settings.mqtt.password) > 0 && strlen(settings.node.device_name) > 0
         && settings.node.sample_rate > 0 && strlen(settings.mqtt.topic_data) > 0
         && strlen(settings.mqtt.topic_alert) > 0 && strlen(settings.mqtt.topic_monitor) > 0
-        && (settings.node.energy_mode == 0 || settings.node.energy_mode == 1)) {
+        && (settings.node.energy_mode == 0 || settings.node.energy_mode == 1)
+        && strlen(settings.mqtt.topic_settings) > 0 && strlen(settings.mqtt.topic_handshake) > 0) {
         return true;
         }
     return false;
@@ -242,7 +259,6 @@ static esp_err_t setting_save_to_nvs(void) {
     nvs_close(h);
     return ret;
 }
-
 
 
 /**
@@ -398,6 +414,26 @@ static bool process_command(const char *command) {
         return false;
     }
 
+    if (strcmp(cmd, CMD_SET_MQTT_TOPIC_SETTINGS) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <topic> -\r\n");
+            return false;
+        }
+        SAFE_STRCPY(settings.mqtt.topic_settings, param);
+        uart_send_text("- INFO: Topico MQTT configurado correctamente -\r\n");
+        return false;
+    }
+
+    if (strcmp(cmd, CMD_SET_MQTT_TOPIC_HANDSHAKE) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <topic> -\r\n");
+            return false;
+        }
+        SAFE_STRCPY(settings.mqtt.topic_handshake, param);
+        uart_send_text("- INFO: Topico MQTT configurado correctamente -\r\n");
+        return false;
+    }
+
     if (strcmp(cmd, CMD_SET_DEVICE_NAME) == 0) {
         if (parsed < 2) {
             uart_send_text("- ERROR: Falta parametro <name> -\r\n");
@@ -468,7 +504,6 @@ static bool process_command(const char *command) {
 }
 
 
-
 static void generate_json_settings(char *output_buffer, size_t buffer_size) {
     char time[30];
     get_time(time);
@@ -487,6 +522,8 @@ static void generate_json_settings(char *output_buffer, size_t buffer_size) {
         "  \"topic_data\": \"%s\",\n"
         "  \"topic_alert\": \"%s\",\n"
         "  \"topic_monitor\": \"%s\",\n"
+        "  \"topic_settings\": \"%s\",\n"
+        "  \"topic_handshake\": \"%s\",\n"
         "  \"device_name\": \"%s\",\n"
         "  \"sample\": %lu\n"
         "  \"energy_mode\": %u\n"
@@ -501,12 +538,13 @@ static void generate_json_settings(char *output_buffer, size_t buffer_size) {
         settings.mqtt.topic_data,
         settings.mqtt.topic_alert,
         settings.mqtt.topic_monitor,
+        settings.mqtt.topic_settings,
+        settings.mqtt.topic_handshake,
         settings.node.device_name,
         settings.node.sample_rate,
         settings.node.energy_mode
     );
 }
-
 
 
 /**
@@ -515,7 +553,7 @@ static void generate_json_settings(char *output_buffer, size_t buffer_size) {
  * @param data Mensaje JSON.
  * @param data_len Longitud del mensaje JSON.
  */
-void process_json(const char *data, int data_len) {
+void process_json_settings(const char *data, int data_len) {
 
     char *json_str = malloc(data_len + 1);
     if (!json_str) {
@@ -753,10 +791,87 @@ esp_err_t uart_init(void) {
             }
         }
     }
-    // IMPLEMENTAR: espera de confirmacion
-    char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
-    generate_json_settings(json, JSON_MAX);
-    xQueueSend(queues.settings_buffer, &json, portMAX_DELAY);
     show_config();
     return ESP_OK;
+}
+
+
+void process_json_handshake(const char *data, int data_len) {
+    char *json_str = malloc(data_len + 1);
+    if (!json_str) {
+        ESP_LOGE(TAG, "- ERROR: No hay memoria -");
+        return;
+    }
+    memcpy(json_str, data, data_len);
+    json_str[data_len] = '\0';
+
+    cJSON *root = cJSON_Parse(json_str);
+    if (!root) {
+        ESP_LOGE(TAG, "- ERROR: JSON invalido -");
+        free(json_str);
+        return;
+    }
+
+    bool is_valid_target = false;
+    cJSON *obj_id = cJSON_GetObjectItem(root, "ID");
+    cJSON *obj_dtype = cJSON_GetObjectItem(root, "destination_type");
+    cJSON *obj_did = cJSON_GetObjectItem(root, "destination_id");
+
+    // Logica de validacion
+    if (cJSON_IsString(obj_id) && strcmp(obj_id->valuestring, "SERVER0") == 0) {
+        if (cJSON_IsString(obj_dtype) && strcmp(obj_dtype->valuestring, "NODE") == 0) {
+            if (cJSON_IsString(obj_did)) {
+                // Verificamos si es para este nodo
+                if (strcmp(obj_did->valuestring, settings.node.mac_address) == 0) {
+                    is_valid_target = true;
+                }
+            }
+        }
+    }
+
+    // Si la validacion fallo, salimos
+    if (!is_valid_target) {
+        ESP_LOGW(TAG, "- JSON ignorado: No es para este dispositivo o ID incorrecto -");
+        cJSON_Delete(root);
+        free(json_str);
+        return;
+    }
+
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, root) {
+        const char *key = item->string;
+
+        if (cJSON_IsString(item)) {
+            const char *value = item->valuestring;
+
+            if (strcmp(key, "setting_received") == 0) {
+                if (strcmp(value, "true") == 0) {
+                    if (task_handle.send_settings_handle != NULL) {
+                        xTaskNotifyGive(task_handle.send_settings_handle);
+                    }
+                }
+            }
+        }
+    }
+    cJSON_Delete(root);
+    free(json_str);
+}
+
+
+void send_settings_task(void *pvParameter) {
+    const TickType_t loop_delay = pdMS_TO_TICKS(settings.node.sample_rate * 2 * MS_TO_MIN);
+
+    while (1) {
+        char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
+        if (json) {
+            generate_json_settings(json, JSON_MAX);
+            if (xQueueSend(queues.settings_buffer, &json, pdMS_TO_TICKS(100)) != pdTRUE) {
+                free(json); // Si no se pudo encolar, liberamos memoria para evitar fugas
+            }
+        } else {
+            ESP_LOGE(TAG, "- ERROR: No hay memoria para JSON -");
+        }
+        uint32_t flag = ulTaskNotifyTake(pdTRUE, loop_delay);
+        if (flag > 0) vTaskDelete(NULL);
+    }
 }

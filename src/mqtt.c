@@ -44,9 +44,8 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             xEventGroupSetBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupClearBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
             ESP_LOGI(TAG, "- INFO: Conectado al broker -");
-            esp_mqtt_client_subscribe(event->client, "/devices/config/sample", 1);
-            esp_mqtt_client_subscribe(event->client, "/devices/config/name", 1);
-            esp_mqtt_client_subscribe(event->client, "/devices/config/topic", 1);
+            esp_mqtt_client_subscribe(event->client, settings.mqtt.topic_settings, 1);
+            esp_mqtt_client_subscribe(event->client, settings.mqtt.topic_handshake, 1);
             break;
 
         case MQTT_EVENT_DISCONNECTED:
@@ -74,19 +73,14 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             char msg[event->data_len + 1];
             memcpy(msg, event->data, event->data_len);
             msg[event->data_len] = '\0';
-            ESP_LOGI("MQTT", "Recibido: %s \n", msg);
 
-            if (event->topic_len == strlen("/devices/config/sample") &&
-                strncmp(event->topic, "/devices/config/sample", event->topic_len) == 0) {
-                process_json(msg, event->data_len);
+            if (event->topic_len == strlen(settings.mqtt.topic_settings) &&
+                strncmp(event->topic, settings.mqtt.topic_settings, event->topic_len) == 0) {
+                process_json_settings(msg, event->data_len);
                 }
-            else if (event->topic_len == strlen("/devices/config/name") &&
-                     strncmp(event->topic, "/devices/config/name", event->topic_len) == 0) {
-                process_json(msg, event->data_len);
-                     }
-            else if (event->topic_len == strlen("/devices/config/topic") &&
-                     strncmp(event->topic, "/devices/config/topic", event->topic_len) == 0) {
-                process_json(msg, event->data_len);
+            else if (event->topic_len == strlen(settings.mqtt.topic_handshake) &&
+                     strncmp(event->topic, settings.mqtt.topic_handshake, event->topic_len) == 0) {
+                process_json_handshake(msg, event->data_len);
                      }
             break;
         }
