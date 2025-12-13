@@ -7,7 +7,6 @@ idf_component_register(
         "ky037.c"
         "dht11.c"
         "data.c"
-        "aes-ctr.c"
         "wifi.c"
         "time.c"
         "monitor.c"

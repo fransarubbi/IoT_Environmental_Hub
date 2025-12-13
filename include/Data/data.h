@@ -1,7 +1,7 @@
 #ifndef DATA_H
 #define DATA_H
 
-#define JSON_MAX 600
+#define JSON_MAX 700
 #define MS_TO_MIN 60000
 #define ALL_DATA_READY    (DHT11_DATA_READY | KY037_DATA_READY | MQ135_DATA_READY)
 

@@ -5,52 +5,11 @@
 #include "Setting/settings.h"
 #include "MQTT/mqtt.h"
 #include "Time/time.h"
-#include "AES-CTR/aes-ctr.h"
 #include "esp_log.h"
-
 #include "System/system.h"
 
-static const char *TAG = "JSON";
+
 static data_sensors_t data;
-
-
-/**
- * @brief  Convierte el IV binario a string hexadecimal sin espacios.
- *
- * @param iv  IV generado en binario.
- * @param iv_str  String de salida formateado.
- * @param iv_len  Longitud del vector.
- */
-void iv_to_string(const unsigned char *iv, char *iv_str, size_t iv_len) {
-    static const char hex[] = "0123456789abcdef";
-
-    for (size_t i = 0; i < iv_len; ++i) {
-        uint8_t b = iv[i];
-        iv_str[i * 2]     = hex[(b >> 4) & 0x0F]; // nibble alto
-        iv_str[i * 2 + 1] = hex[b & 0x0F];        // nibble bajo
-    }
-    iv_str[iv_len * 2] = '\0';
-}
-
-
-/**
- * @brief  Genera un JSON con el texto encriptado y el IV.
- *
- * @param json_message  String que contendra el mensaje resultante.
- * @param encrypted  Texto plano encriptado.
- * @param iv  String IV.
- * @param buffer_size  Tamaño del mensaje.
- */
-static void generate_encrypted_message(char *json_message, const char *encrypted, const char *iv, size_t buffer_size) {
-    snprintf(json_message, buffer_size,
-        "{\n"
-        "  \"Texto\": \"%s\",\n"
-        "  \"IV\": \"%s\",\n"
-        "}",
-        encrypted,
-        iv
-    );
-}
 
 
 /**
@@ -66,31 +25,32 @@ static void generate_json_data(char *output_buffer, size_t buffer_size, const se
 
     snprintf(output_buffer, buffer_size,
         "{\n"
-        "  \"Dispositivo\": \"%s\",\n"
-        "  \"IPv4\": \"%s\",\n"
-        "  \"WiFi SSID\": \"%s\",\n"
-        "  \"MAC\": \"%s\",\n"
-        "  \"Fecha\": \"%s\",\n"
-        "  \"Contador de pulsos de sonido\": %lu,\n"
-        "  \"Maxima duracion de pulso\": %lu,\n"
-        "  \"Temperatura\": %u,\n"
-        "  \"Humedad\": %u,\n"
-        "  \"CO2 ppm\": %.2f,\n"
-        "  \"Sample min\": %lu\n"
+        "  \"ID\": \"%s\",\n"
+        "  \"destination_type\": SERVER,\n"
+        "  \"destination_id\": SERVER0,\n"
+        "  \"timestamp\": \"%s\",\n"
+        "  \"device_name\": \"%s\",\n"
+        "  \"ipv4\": \"%s\",\n"
+        "  \"wifi_ssid\": \"%s\",\n"
+        "  \"pulse_counter\": %lu,\n"
+        "  \"pulse_max_duration\": %lu,\n"
+        "  \"temperature\": %u,\n"
+        "  \"humidity\": %u,\n"
+        "  \"co2_ppm\": %.2f,\n"
+        "  \"sample\": %lu\n"
         "}",
-        config->device_name,
-        config->wifi_ip,
-        (const char*)config->wifi_ssid,
-        config->mac_address,
+        config->node.mac_address,
         data.time,
+        config->node.device_name,
+        config->wifi.ip,
+        (const char*)config->wifi.ssid,
         (unsigned long)data.ky037_counter,
         (unsigned long)data.ky037_max_duration,
         data.dht11_temperature,
         data.dht11_humidity,
         data.co2ppm,
-        config->sample_rate
+        config->node.sample_rate
     );
-    ESP_LOGI(TAG, "%s", output_buffer);
 }
 
 
@@ -126,16 +86,11 @@ static void get_formated_data(dht11_data_t *dht11, ky037_stats_t *ky037, mq135_d
  * @param pvParameter
  */
 void data_collection_task(void *pvParameter) {
-    char iv_str[IV_HEX_LEN];
-    unsigned char iv_out[IV_LEN];
     dht11_data_t dht11;
     ky037_stats_t ky037;
     mq135_data_t mq135;
 
-    char *output_base64 = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
-
     while (1) {
-
         xEventGroupWaitBits(
             event_group.collector_events,
             ALL_DATA_READY,
@@ -143,25 +98,9 @@ void data_collection_task(void *pvParameter) {
             pdTRUE,  // Esperar todos los bits
             pdMS_TO_TICKS(portMAX_DELAY)
         );
-
         char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
-
-        if (!json || !output_base64) {
-            ESP_LOGE(TAG, "- ERROR: No hay memoria para buffers JSON -");
-            esp_restart();
-        }
-        memset(json, 0, JSON_MAX);
-        memset(output_base64, 0, JSON_MAX);
-
         get_formated_data(&dht11, &ky037, &mq135);
         generate_json_data(json, JSON_MAX, &settings);
-
-        aes_ctr_encrypt_to_base64((const unsigned char*)json, strlen(json),
-                                  iv_out, output_base64, JSON_MAX);
-
-        iv_to_string(iv_out, iv_str, IV_LEN);
-        memset(json, 0, JSON_MAX);
-        generate_encrypted_message(json, output_base64, iv_str, JSON_MAX);
         xQueueSend(queues.data_buffer, &json, portMAX_DELAY);
     }
 }
@@ -174,11 +113,12 @@ void data_collection_task(void *pvParameter) {
  * @param pvParameter
  */
 void data_publish_task(void *pvParameter) {
-    char *json = NULL;
+    char *json_data = NULL;
     char *json_info = NULL;
+    char *json_sett = NULL;
 
     while (1) {
-        if (xQueueReceive(queues.data_buffer, &json, pdMS_TO_TICKS(100))) {
+        if (xQueueReceive(queues.data_buffer, &json_data, pdMS_TO_TICKS(100))) {
             xEventGroupWaitBits(
                 event_group.mqtt_event_group,
                 MQTT_CONNECTED_BIT,
@@ -186,8 +126,8 @@ void data_publish_task(void *pvParameter) {
                 pdTRUE,   // Esperar todos los bits
                 portMAX_DELAY
             );
-            mqtt_publish(settings.topic_mqtt, json, (int)strlen(json), 2, 0);
-            heap_caps_free(json);
+            mqtt_publish(settings.mqtt.topic_data, json_data, (int)strlen(json_data), 2, 0);
+            heap_caps_free(json_data);
         }
         if (xQueueReceive(queues.monitor_buffer, &json_info, 0)) {
             xEventGroupWaitBits(
@@ -197,8 +137,19 @@ void data_publish_task(void *pvParameter) {
                 pdTRUE,   // Esperar todos los bits
                 portMAX_DELAY
             );
-            mqtt_publish("/devices/esp32/system_status", json_info, (int)strlen(json_info), 2, 0);
+            mqtt_publish(settings.mqtt.topic_monitor, json_info, (int)strlen(json_info), 2, 0);
             heap_caps_free(json_info);
+        }
+        if (xQueueReceive(queues.settings_buffer, &json_sett, 0)) {
+            xEventGroupWaitBits(
+                event_group.mqtt_event_group,
+                MQTT_CONNECTED_BIT,
+                pdFALSE,  // No limpiar el bit
+                pdTRUE,   // Esperar todos los bits
+                portMAX_DELAY
+            );
+            mqtt_publish(settings.mqtt.topic_settings, json_sett, (int)strlen(json_sett), 2, 0);
+            heap_caps_free(json_sett);
         }
     }
 }

@@ -37,7 +37,7 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
  * @brief Tarea que procesa las interrupciones del sensor y calcula estadisticas
  */
 void vStatsTask(void *pvParameters) {
-    const TickType_t period_ticks = pdMS_TO_TICKS(settings.sample_rate * MS_TO_MIN);
+    const TickType_t period_ticks = pdMS_TO_TICKS(settings.node.sample_rate * MS_TO_MIN);
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while (1) {

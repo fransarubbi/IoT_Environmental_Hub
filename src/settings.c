@@ -11,6 +11,10 @@
 #include <ctype.h>
 #include "nvs_flash.h"
 #include "cJSON.h"
+#include "esp_pm.h"
+#include "Data/data.h"
+#include "Time/time.h"
+#include "System/system.h"
 
 
 static const char *TAG = "SETTINGS";
@@ -63,6 +67,23 @@ static void timeout_init(bool *timer_flag) {
 
 
 /**
+ * @brief Configura el modo de operacion del microcontrolador
+ * @param mhz Frecuencia de la CPU
+ * @param flag Flag para permitir que entre en sueño ligero en idle
+ * @return ESP_OK en caso de exito, otro en caso de fallo
+ */
+static esp_err_t set_cpu_frequency(int mhz, bool flag) {
+    esp_pm_config_t pm_config = {
+        .max_freq_mhz = mhz,
+        .min_freq_mhz = mhz,
+        .light_sleep_enable = flag     // true para que duerma en idle (ahorra más bateria)
+    };
+    esp_err_t ret = esp_pm_configure(&pm_config);
+    return ret;
+}
+
+
+/**
  * @brief Inicializa UART para el modo configuración.
  * @return esp_err_t  Devuelve ESP_OK si la inicializacion fue exitosa.
  */
@@ -96,25 +117,28 @@ static esp_err_t uart_config(void) {
  */
 static void show_help(void) {
     uart_send_text("\r\n\n");
-    uart_send_text("| ================================================================== |\r\n");
-    uart_send_text("| ------- Puede usar mayusculas o minusculas, es indistinto! ------- |\r\n");
-    uart_send_text("| ====================== COMANDOS DISPONIBLES ====================== |\r\n");
-    uart_send_text("| SET_WIFI_SSID <ssid>      - Configura SSID WiFi                    |\r\n");
-    uart_send_text("| SET_WIFI_PASS <password>  - Configura password WiFi                |\r\n");
-    uart_send_text("| SET_MQTT_URI <uri>        - Configura uri MQTT                     |\r\n");
-    uart_send_text("| SET_MQTT_USER <user>      - Configura usuario MQTT                 |\r\n");
-    uart_send_text("| SET_MQTT_PASS <pass>      - Configura password MQTT                |\r\n");
-    uart_send_text("| SET_DEVICE_NAME <name>    - Configura nombre del dispositivo       |\r\n");
-    uart_send_text("| SET_SAMPLE <rate>         - Configura frecuencia de envio de datos |\r\n");
-    uart_send_text("| SET_AES_KEY <key>         - Configura clave de cifrado de AES-CTR  |\r\n");
-    uart_send_text("| SET_MQTT_TOPIC <topic>    - Configura el topico de publicacion     |\r\n");
-    uart_send_text("| SHOW                      - Muestra configuracion actual           |\r\n");
-    uart_send_text("| EXIT                      - Salir                                  |\r\n");
-    uart_send_text("| HELP                      - Muestra mensaje de ayuda               |\r\n");
-    uart_send_text("| ================================================================== |\r\n");
-    uart_send_text("| Info: SET_SAMPLE setea cada cuantos minutos se envian los datos    |\r\n");
-    uart_send_text("| Info: Debe ingresar mqtts:// obligatoriamente en la uri de MQTT    |\r\n");
-    uart_send_text("| ================================================================== |\r\n\r\n");
+    uart_send_text("| ============================================================================== |\r\n");
+    uart_send_text("| ------------- Puede usar mayusculas o minusculas, es indistinto! ------------- |\r\n");
+    uart_send_text("| ============================ COMANDOS DISPONIBLES ============================ |\r\n");
+    uart_send_text("| WIFI_SSID <ssid>            - Configura SSID WiFi                              |\r\n");
+    uart_send_text("| WIFI_PASS <password>        - Configura password WiFi                          |\r\n");
+    uart_send_text("| MQTT_URI <uri>              - Configura uri MQTT                               |\r\n");
+    uart_send_text("| MQTT_USER <user>            - Configura usuario MQTT                           |\r\n");
+    uart_send_text("| MQTT_PASS <pass>            - Configura password MQTT                          |\r\n");
+    uart_send_text("| MQTT_TOPIC_DATA <topic>     - Configura el topico de publicacion de datos      |\r\n");
+    uart_send_text("| MQTT_TOPIC_ALERT <topic>    - Configura el topico de publicacion de alertas    |\r\n");
+    uart_send_text("| MQTT_TOPIC_MONITOR <topic>  - Configura el topico de publicacion de monitoreo  |\r\n");
+    uart_send_text("| DEVICE_NAME <name>          - Configura nombre del dispositivo                 |\r\n");
+    uart_send_text("| SAMPLE <rate>               - Configura frecuencia de envio de datos           |\r\n");
+    uart_send_text("| ENERGY_MODE <energy>        - Configura modo de energia                        |\r\n");
+    uart_send_text("| SHOW                        - Muestra configuracion actual                     |\r\n");
+    uart_send_text("| EXIT                        - Salir                                            |\r\n");
+    uart_send_text("| HELP                        - Muestra mensaje de ayuda                         |\r\n");
+    uart_send_text("| ============================================================================== |\r\n");
+    uart_send_text("| Info: SET_SAMPLE setea cada cuantos minutos se envian los datos                |\r\n");
+    uart_send_text("| Info: SET_ENERGY_MODE [0 = Bajo consumo, 1 = Alto consumo]                     |\r\n");
+    uart_send_text("| Info: Debe ingresar mqtts:// obligatoriamente en la uri de MQTT                |\r\n");
+    uart_send_text("| ============================================================================== |\r\n\r\n");
 }
 
 
@@ -122,29 +146,31 @@ static void show_help(void) {
  * @brief Muestra la configuracion actual.
  */
 void show_config(void) {
-    char temp_buffer[128];
+    char temp_buffer[200];
 
     uart_send_text("\r\n|============================================|\r\n");
     uart_send_text("|=========== CONFIGURACION ACTUAL ===========|\r\n");
-    sprintf(temp_buffer, "| WiFi SSID:        %s\r\n", (const char*)settings.wifi_ssid);
+    sprintf(temp_buffer, "| WiFi SSID:        %s\r\n", (const char*)settings.wifi.ssid);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| WiFi Password:    %s\r\n", settings.wifi_pass_len > 0 ? "**configurado**" : "no configurado");
+    sprintf(temp_buffer, "| WiFi Password:    %s\r\n", settings.wifi.pass_len > 0 ? "**configurado**" : "no configurado");
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| MQTT Uri:         %s\r\n", settings.mqtt_uri);
+    sprintf(temp_buffer, "| MQTT Uri:         %s\r\n", settings.mqtt.uri);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| MQTT User:        %s\r\n", settings.mqtt_user);
+    sprintf(temp_buffer, "| MQTT User:        %s\r\n", settings.mqtt.user);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| MQTT Password:    %s\r\n", strlen(settings.mqtt_password) > 0 ? "**configurado**" : "no configurado");
+    sprintf(temp_buffer, "| MQTT Password:    %s\r\n", strlen(settings.mqtt.password) > 0 ? "**configurado**" : "no configurado");
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| MQTT Topico:      %s\r\n", settings.topic_mqtt);
+    sprintf(temp_buffer, "| MQTT Topico Datos:   %s\r\n", settings.mqtt.topic_data);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Device Name:      %s\r\n", settings.device_name);
+    sprintf(temp_buffer, "| MQTT Topico Alerta:  %s\r\n", settings.mqtt.topic_alert);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Sample Rate:      %lu\r\n", settings.sample_rate);
+    sprintf(temp_buffer, "| MQTT Topico Monitor: %s\r\n", settings.mqtt.topic_monitor);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer,"| AES Key:           %s\r\n", strlen(settings.aes_key) > 0 ? "**configurado**" : "no configurado");
+    sprintf(temp_buffer, "| Device Name:      %s\r\n", settings.node.device_name);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer,"| Topic:             %s\r\n", settings.topic_mqtt);
+    sprintf(temp_buffer, "| Sample Rate:      %lu\r\n", settings.node.sample_rate);
+    uart_send_text(temp_buffer);
+    sprintf(temp_buffer, "| Modo Energia:     %u\r\n", settings.node.energy_mode);
     uart_send_text(temp_buffer);
     uart_send_text("|============================================|\r\n\r\n");
 }
@@ -188,11 +214,12 @@ static void show_menu_change_settings(void) {
  * @return bool  Devuelve true cuando la configuracion esta completa. Sino retorna false.
  */
 static bool setting_is_device_configured(void) {
-    if (settings.wifi_ssid_len > 0 && settings.wifi_pass_len > 0
-        && strlen(settings.mqtt_uri) > 0 && strlen(settings.mqtt_user) > 0
-        && strlen(settings.mqtt_password) > 0 && strlen(settings.device_name) > 0
-        && settings.sample_rate > 0 && strlen(settings.aes_key) > 0
-        && strlen(settings.topic_mqtt) > 0 && strlen(settings.topic_mqtt) > 0) {
+    if (settings.wifi.ssid_len > 0 && settings.wifi.pass_len > 0
+        && strlen(settings.mqtt.uri) > 0 && strlen(settings.mqtt.user) > 0
+        && strlen(settings.mqtt.password) > 0 && strlen(settings.node.device_name) > 0
+        && settings.node.sample_rate > 0 && strlen(settings.mqtt.topic_data) > 0
+        && strlen(settings.mqtt.topic_alert) > 0 && strlen(settings.mqtt.topic_monitor) > 0
+        && (settings.node.energy_mode == 0 || settings.node.energy_mode == 1)) {
         return true;
         }
     return false;
@@ -208,26 +235,14 @@ static esp_err_t setting_save_to_nvs(void) {
     esp_err_t ret = nvs_open("device_setting", NVS_READWRITE, &h);
     if (ret != ESP_OK) return ret;
 
-    if ((ret = nvs_set_blob(h, "wifi_ssid", settings.wifi_ssid, settings.wifi_ssid_len)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_blob(h, "wifi_password", settings.wifi_password, settings.wifi_pass_len)) != ESP_OK) goto exit;
+    ret = nvs_set_blob(h, "config", &settings, sizeof(settings_t));
 
-    if ((ret = nvs_set_str(h, "mqtt_uri", settings.mqtt_uri)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "mqtt_user", settings.mqtt_user)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "mqtt_password", settings.mqtt_password)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "mqtt_topic", settings.topic_mqtt)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "device_name", settings.device_name)) != ESP_OK) goto exit;
-    if ((ret = nvs_set_str(h, "topic", settings.topic_mqtt)) != ESP_OK) goto exit;
+    if (ret == ESP_OK) ret = nvs_commit(h);
 
-    if ((ret = nvs_set_u32(h, "sample_rate", settings.sample_rate)) != ESP_OK) goto exit;
-
-    if ((ret = nvs_set_blob(h, "aes_key", settings.aes_key, AES_KEY_LEN)) != ESP_OK) goto exit;
-
-    ret = nvs_commit(h);
-
-    exit:
-        nvs_close(h);
+    nvs_close(h);
     return ret;
 }
+
 
 
 /**
@@ -240,48 +255,27 @@ static bool setting_load_from_nvs(void) {
     esp_err_t ret = nvs_open("device_setting", NVS_READONLY, &h);
     if (ret != ESP_OK) return false;
 
-    size_t size;
+    size_t size = 0;
+    ret = nvs_get_blob(h, "config", NULL, &size); // Obtenemos solo el tamaño primero
 
-    size = sizeof(settings.wifi_ssid);
-    ret = nvs_get_blob(h, "wifi_ssid", settings.wifi_ssid, &size);
-    if (ret != ESP_OK || size == 0) goto exit;
-    settings.wifi_ssid_len = size;
-
-    size = sizeof(settings.wifi_password);
-    ret = nvs_get_blob(h, "wifi_password", settings.wifi_password, &size);
-    if (ret != ESP_OK || size == 0) goto exit;
-    settings.wifi_pass_len = size;
-
-    size = sizeof(settings.mqtt_uri);
-    if (nvs_get_str(h, "mqtt_uri", settings.mqtt_uri, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.mqtt_user);
-    if (nvs_get_str(h, "mqtt_user", settings.mqtt_user, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.mqtt_password);
-    if (nvs_get_str(h, "mqtt_password", settings.mqtt_password, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.topic_mqtt);
-    if (nvs_get_str(h, "mqtt_topic", settings.topic_mqtt, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.device_name);
-    if (nvs_get_str(h, "device_name", settings.device_name, &size) != ESP_OK) goto exit;
-
-    size = sizeof(settings.topic_mqtt);
-    if (nvs_get_str(h, "topic", settings.topic_mqtt, &size) != ESP_OK) goto exit;
-
-    if (nvs_get_u32(h, "sample_rate", &settings.sample_rate) != ESP_OK) goto exit;
-
-    size = sizeof(settings.aes_key);
-    ret = nvs_get_blob(h, "aes_key", settings.aes_key, &size);
-    if (ret != ESP_OK || size != AES_KEY_LEN) goto exit;
-
-    nvs_close(h);
-    return true;
-
-    exit:
+    if (ret != ESP_OK || size != sizeof(settings_t)) {  // Si no existe la configuración o el tamaño de la estructura cambió, no leer nada
         nvs_close(h);
-    return false;
+        return false;
+    }
+
+    // Leemos la estructura completa
+    ret = nvs_get_blob(h, "config", &settings, &size);
+    nvs_close(h);
+
+    if (ret != ESP_OK) return false;
+
+    if (settings.node.energy_mode) {
+        set_cpu_frequency(MAX_FREQ, false);
+    } else {
+        set_cpu_frequency(MIN_FREQ, true);
+    }
+
+    return true;
 }
 
 
@@ -322,8 +316,8 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <SSID> -\r\n");
             return false;
         }
-        SAFE_STRCPY(settings.wifi_ssid, param);
-        settings.wifi_ssid_len = strlen((char *)settings.wifi_ssid);
+        SAFE_STRCPY(settings.wifi.ssid, param);
+        settings.wifi.ssid_len = strlen((char *)settings.wifi.ssid);
         uart_send_text("- INFO: SSID configurado correctamente -\r\n");
         return false;
     }
@@ -333,8 +327,8 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <password> -\r\n");
             return false;
         }
-        SAFE_STRCPY(settings.wifi_password, param);
-        settings.wifi_pass_len = strlen((char *)settings.wifi_password);
+        SAFE_STRCPY(settings.wifi.password, param);
+        settings.wifi.pass_len = strlen((char *)settings.wifi.password);
         uart_send_text("- INFO: Password WiFi configurado correctamente -\r\n");
         return false;
     }
@@ -349,7 +343,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: MQTT uri erroneo. Falta mqtts:// como primer parametro -\r\n");
             return false;
         }
-        SAFE_STRCPY(settings.mqtt_uri, param);
+        SAFE_STRCPY(settings.mqtt.uri, param);
         uart_send_text("- INFO: MQTT uri configurado correctamente -\r\n");
         return false;
     }
@@ -359,7 +353,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro usuario -\r\n");
             return false;
         }
-        SAFE_STRCPY(settings.mqtt_user, param);
+        SAFE_STRCPY(settings.mqtt.user, param);
         uart_send_text("- INFO: Usuario MQTT configurado correctamente -\r\n");
         return false;
     }
@@ -369,17 +363,37 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <password> -\r\n");
             return false;
         }
-        SAFE_STRCPY(settings.mqtt_password, param);
+        SAFE_STRCPY(settings.mqtt.password, param);
         uart_send_text("- INFO: Password MQTT configurado correctamente -\r\n");
         return false;
     }
 
-    if (strcmp(cmd, CMD_SET_MQTT_TOPIC) == 0) {
+    if (strcmp(cmd, CMD_SET_MQTT_TOPIC_DATA) == 0) {
         if (parsed < 2) {
             uart_send_text("- ERROR: Falta parametro <topic> -\r\n");
             return false;
         }
-        SAFE_STRCPY(settings.topic_mqtt, param);
+        SAFE_STRCPY(settings.mqtt.topic_data, param);
+        uart_send_text("- INFO: Topico MQTT configurado correctamente -\r\n");
+        return false;
+    }
+
+    if (strcmp(cmd, CMD_SET_MQTT_TOPIC_ALERT) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <topic> -\r\n");
+            return false;
+        }
+        SAFE_STRCPY(settings.mqtt.topic_alert, param);
+        uart_send_text("- INFO: Topico MQTT configurado correctamente -\r\n");
+        return false;
+    }
+
+    if (strcmp(cmd, CMD_SET_MQTT_TOPIC_MONITOR) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <topic> -\r\n");
+            return false;
+        }
+        SAFE_STRCPY(settings.mqtt.topic_monitor, param);
         uart_send_text("- INFO: Topico MQTT configurado correctamente -\r\n");
         return false;
     }
@@ -389,7 +403,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Falta parametro <name> -\r\n");
             return false;
         }
-        SAFE_STRCPY(settings.device_name, param);
+        SAFE_STRCPY(settings.node.device_name, param);
         uart_send_text("INFO: Nombre del dispositivo configurado correctamente -\r\n");
         return false;
     }
@@ -405,7 +419,7 @@ static bool process_command(const char *command) {
             uart_send_text("- ERROR: Ingrese un numero de muestreo valido -\r\n");
         }
         if (val > 0) {
-            settings.sample_rate = val;
+            settings.node.sample_rate = val;
             uart_send_text("- INFO: Muestreo configurado correctamente -\r\n");
         } else {
             uart_send_text("- ERROR: Ingrese un numero de muestreo valido -\r\n");
@@ -413,17 +427,23 @@ static bool process_command(const char *command) {
         return false;
     }
 
-    if (strcmp(cmd, CMD_SET_AES_KEY) == 0) {
+    if (strcmp(cmd, CMD_SET_ENERGY_MODE) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <key> -\r\n");
+            uart_send_text("- ERROR: Falta parametro <energy> -\r\n");
             return false;
         }
-        if (strlen(param) == AES_KEY_LEN) {
-            memcpy(settings.aes_key, param, AES_KEY_LEN);
-            uart_send_text("- INFO: Clave AES configurada correctamente -\r\n");
+        errno = 0;
+        unsigned long val = strtoul(param, &endptr, 10);
+        if (endptr == param || (errno == ERANGE)) {
+            uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
         }
-        else {
-            uart_send_text("- ERROR: La clave debe tener 32 caracteres obligatoriamente -\r\n");
+        if (val == 0 || val == 1) {
+            settings.node.energy_mode = val;
+            if (val) set_cpu_frequency(MAX_FREQ, false);
+            else set_cpu_frequency(MIN_FREQ, true);
+            uart_send_text("- INFO: Modo de energia configurado correctamente -\r\n");
+        } else {
+            uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
         }
         return false;
     }
@@ -448,6 +468,47 @@ static bool process_command(const char *command) {
 }
 
 
+
+static void generate_json_settings(char *output_buffer, size_t buffer_size) {
+    char time[30];
+    get_time(time);
+
+    snprintf(output_buffer, buffer_size,
+        "{\n"
+        "  \"ID\": \"%s\",\n"
+        "  \"destination_type\": SERVER,\n"
+        "  \"destination_id\": SERVER0,\n"
+        "  \"timestamp\": \"%s\",\n"
+        "  \"wifi_ssid\": \"%s\",\n"
+        "  \"wifi_password\": \"%s\",\n"
+        "  \"mqtt_uri\": \"%s\",\n"
+        "  \"mqtt_user\": \"%s\",\n"
+        "  \"mqtt_pass\": \"%s\",\n"
+        "  \"topic_data\": \"%s\",\n"
+        "  \"topic_alert\": \"%s\",\n"
+        "  \"topic_monitor\": \"%s\",\n"
+        "  \"device_name\": \"%s\",\n"
+        "  \"sample\": %lu\n"
+        "  \"energy_mode\": %u\n"
+        "}",
+        settings.node.mac_address,
+        time,
+        (char *)settings.wifi.ssid,
+        (char *)settings.wifi.password,
+        settings.mqtt.uri,
+        settings.mqtt.user,
+        settings.mqtt.password,
+        settings.mqtt.topic_data,
+        settings.mqtt.topic_alert,
+        settings.mqtt.topic_monitor,
+        settings.node.device_name,
+        settings.node.sample_rate,
+        settings.node.energy_mode
+    );
+}
+
+
+
 /**
  * @brief Procesar comando recibido por MQTT desde el broker para modificar la configuracion del sistema.
  *
@@ -455,21 +516,44 @@ static bool process_command(const char *command) {
  * @param data_len Longitud del mensaje JSON.
  */
 void process_json(const char *data, int data_len) {
-    char device_name[SETTINGS_MAX_STRING_LEN] = {0};
-    bool flag_all = false;
 
     char *json_str = malloc(data_len + 1);
     if (!json_str) {
-        ESP_LOGE(TAG, "- ERROR: No hay memoria para copiar JSON -");
+        ESP_LOGE(TAG, "- ERROR: No hay memoria -");
         return;
     }
-
     memcpy(json_str, data, data_len);
     json_str[data_len] = '\0';
 
     cJSON *root = cJSON_Parse(json_str);
     if (!root) {
-        ESP_LOGE(TAG, "- ERROR: Formato JSON invalido -");
+        ESP_LOGE(TAG, "- ERROR: JSON invalido -");
+        free(json_str);
+        return;
+    }
+
+    bool is_valid_target = false;
+    cJSON *obj_id = cJSON_GetObjectItem(root, "ID");
+    cJSON *obj_dtype = cJSON_GetObjectItem(root, "destination_type");
+    cJSON *obj_did = cJSON_GetObjectItem(root, "destination_id");
+
+    // Logica de validacion
+    if (cJSON_IsString(obj_id) && strcmp(obj_id->valuestring, "SERVER0") == 0) {
+        if (cJSON_IsString(obj_dtype) && strcmp(obj_dtype->valuestring, "NODE") == 0) {
+            if (cJSON_IsString(obj_did)) {
+                // Verificamos si es para "all" o para este nodo
+                if (strcmp(obj_did->valuestring, "all") == 0 ||
+                    strcmp(obj_did->valuestring, settings.node.mac_address) == 0) {
+                    is_valid_target = true;
+                }
+            }
+        }
+    }
+
+    // Si la validacion fallo, salimos
+    if (!is_valid_target) {
+        ESP_LOGW(TAG, "- JSON ignorado: No es para este dispositivo o ID incorrecto -");
+        cJSON_Delete(root);
         free(json_str);
         return;
     }
@@ -480,37 +564,54 @@ void process_json(const char *data, int data_len) {
 
         if (cJSON_IsString(item)) {
             const char *value = item->valuestring;
-            if (strcmp(key, "Dispositivo") == 0) {
-                if (strcmp(value, "all") == 0) {
-                    flag_all = true;
-                } else {
-                    strncpy(device_name, value, sizeof(device_name) - 1);
-                }
+
+            if (strcmp(key, "wifi_ssid") == 0) {
+                SAFE_RAW_COPY(settings.wifi.ssid, value, settings.wifi.ssid_len);
             }
-
-            else if (strcmp(key, "Name") == 0) {
-                if (strcmp(settings.device_name, device_name) == 0) {
-                    strcpy(settings.device_name, value);
-                }
+            else if (strcmp(key, "wifi_password") == 0) {
+                SAFE_RAW_COPY(settings.wifi.password, value, settings.wifi.pass_len);
             }
-
-
-            else if (strcmp(key, "Topic") == 0) {
-                if (flag_all || strcmp(settings.device_name, device_name) == 0) {
-                    strncpy(settings.topic_mqtt, value, 39);
-                    settings.topic_mqtt[39] = '\0';
-                }
+            else if (strcmp(key, "mqtt_uri") == 0) {
+                SAFE_STRCPY(settings.mqtt.uri, value);
+            }
+            else if (strcmp(key, "mqtt_user") == 0) {
+                SAFE_STRCPY(settings.mqtt.user, value);
+            }
+            else if (strcmp(key, "mqtt_pass") == 0) {
+                SAFE_STRCPY(settings.mqtt.password, value);
+            }
+            else if (strcmp(key, "topic_data") == 0) {
+                SAFE_STRCPY(settings.mqtt.topic_data, value);
+            }
+            else if (strcmp(key, "topic_alert") == 0) {
+                SAFE_STRCPY(settings.mqtt.topic_alert, value);
+            }
+            else if (strcmp(key, "topic_monitor") == 0) {
+                SAFE_STRCPY(settings.mqtt.topic_monitor, value);
+            }
+            else if (strcmp(key, "device_name") == 0) {
+                SAFE_STRCPY(settings.node.device_name, value);
             }
         }
         else if (cJSON_IsNumber(item)) {
-            if (strcmp(key, "Sample") == 0) {
-                if (flag_all || strcmp(settings.device_name, device_name) == 0) {
-                    settings.sample_rate = item->valueint;
+            if (strcmp(key, "sample") == 0) {
+                if (item->valueint > 0) {
+                    settings.node.sample_rate = item->valueint;
+                }
+            }
+            else if (strcmp(key, "energy_mode") == 0) {
+                int mode = item->valueint;
+                if (mode == 0 || mode == 1) {
+                    settings.node.energy_mode = mode;
+                    if (mode == 1) set_cpu_frequency(MAX_FREQ, false);
+                    else set_cpu_frequency(MIN_FREQ, true);
                 }
             }
         }
     }
 
+    // Guardar cambios
+    esp_err_t ret = setting_save_to_nvs();
     cJSON_Delete(root);
     free(json_str);
 }
@@ -652,6 +753,10 @@ esp_err_t uart_init(void) {
             }
         }
     }
+    // IMPLEMENTAR: espera de confirmacion
+    char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
+    generate_json_settings(json, JSON_MAX);
+    xQueueSend(queues.settings_buffer, &json, portMAX_DELAY);
     show_config();
     return ESP_OK;
 }

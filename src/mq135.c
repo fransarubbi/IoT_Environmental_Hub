@@ -335,7 +335,7 @@ void mq135_task(void *pvParameters) {
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while (1) {
-        uint32_t slices = (settings.sample_rate * 60)/(DHT11_DELAY/1000);
+        uint32_t slices = (settings.node.sample_rate * 60)/(DHT11_DELAY/1000);
         counter++;
 
         if (xQueueReceive(queues.dht11_to_mq135, &dht11, portMAX_DELAY)) {

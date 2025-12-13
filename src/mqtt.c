@@ -123,16 +123,16 @@ esp_err_t mqtt_init(void) {
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
     if (ret == ESP_OK) {
-        strcpy(settings.mac_address, mac_addr);
-        mqtt.config.broker.address.uri = settings.mqtt_uri;   // Establecer la URI del broker
+        strcpy(settings.node.mac_address, mac_addr);
+        mqtt.config.broker.address.uri = settings.mqtt.uri;   // Establecer la URI del broker
         mqtt.config.broker.verification.certificate = (const char *)ca_crt;  // Certificado CA
         mqtt.config.buffer.size = 1024;           // Tamaño del buffer de salida
         mqtt.config.buffer.out_size = 1024;       // Tamaño del buffer de envío
         mqtt.config.credentials.authentication.certificate = (const char *)client1_crt;  // Certificado del cliente
         mqtt.config.credentials.authentication.key = (const char *)client1_key;   // Clave para mTLS
-        mqtt.config.credentials.username  = settings.mqtt_user;  // Usuario MQTT
+        mqtt.config.credentials.username  = settings.mqtt.user;  // Usuario MQTT
         mqtt.config.credentials.client_id = mac_addr;    // ID (la MAC de la ESP32)
-        mqtt.config.credentials.authentication.password = settings.mqtt_password;  // Contrasena de MQTT
+        mqtt.config.credentials.authentication.password = settings.mqtt.password;  // Contrasena de MQTT
         mqtt.config.network.disable_auto_reconnect = false;   // Reconectar automaticamente si se pierde conexion
         mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad
         mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5
