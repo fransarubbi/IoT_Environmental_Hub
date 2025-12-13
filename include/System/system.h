@@ -12,6 +12,7 @@
 #define STACK_PUBLISHER 8000
 #define STACK_MONITOR   8000
 #define STACK_MQ135     8000
+#define STACK_SEND_SETT 8000
 
 #define QUEUE_LENGTH 100
 #define QUEUE 2
@@ -50,6 +51,7 @@ typedef struct {
     TaskHandle_t data_pt_handle;
     TaskHandle_t data_ct_handle;
     TaskHandle_t monitor_handle;
+    TaskHandle_t send_settings_handle;
 } app_task_handle_t;
 
 
@@ -79,6 +81,10 @@ typedef struct {
         StackType_t stack[STACK_MONITOR];
         StaticTask_t tcb;
     } monitor;
+    struct {
+        StackType_t stack[STACK_SEND_SETT];
+        StaticTask_t tcb;
+    } send_settings;
 } app_static_mem_t;
 
 

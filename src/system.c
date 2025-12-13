@@ -71,9 +71,10 @@ void wait_for_sensors(void) {
 
 void start_application_tasks(void) {
     task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_1);
-    task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(vStatsTask, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);
+    task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);
     task_handle.mq135_handle = xTaskCreateStaticPinnedToCore(mq135_task, "MQ135", STACK_MQ135, NULL, PRIO_SENSORS, mem.mq135.stack, &mem.mq135.tcb, CORE_0);
     task_handle.data_ct_handle = xTaskCreateStaticPinnedToCore(data_collection_task, "Collector", STACK_COLLECTOR, NULL, PRIO_COMMS, mem.collector.stack, &mem.collector.tcb, CORE_1);
     task_handle.data_pt_handle = xTaskCreateStaticPinnedToCore(data_publish_task, "Publisher", STACK_PUBLISHER, NULL, PRIO_COMMS, mem.publisher.stack, &mem.publisher.tcb, CORE_0);
     task_handle.monitor_handle = xTaskCreateStaticPinnedToCore(stack_monitor_task, "Monitor", STACK_MONITOR, NULL, PRIO_SENSORS, mem.monitor.stack, &mem.monitor.tcb, CORE_0);
+    task_handle.send_settings_handle = xTaskCreateStaticPinnedToCore(send_settings_task, "Send_sett", STACK_SEND_SETT, NULL, PRIO_COMMS, mem.send_settings.stack, &mem.send_settings.tcb, CORE_0);
 }

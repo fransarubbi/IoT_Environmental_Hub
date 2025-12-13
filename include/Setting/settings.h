@@ -28,6 +28,8 @@
 #define CMD_SET_MQTT_TOPIC_DATA    "MQTT_TOPIC_DATA"
 #define CMD_SET_MQTT_TOPIC_ALERT   "MQTT_TOPIC_ALERT"
 #define CMD_SET_MQTT_TOPIC_MONITOR "MQTT_TOPIC_MONITOR"
+#define CMD_SET_MQTT_TOPIC_SETTINGS "MQTT_TOPIC_SETTINGS"
+#define CMD_SET_MQTT_TOPIC_HANDSHAKE "MQTT_TOPIC_HANDSHAKE"
 #define CMD_SET_DEVICE_NAME        "DEVICE_NAME"
 #define CMD_SET_SAMPLE             "SAMPLE"
 #define CMD_SET_ENERGY_MODE        "ENERGY_MODE"
@@ -83,6 +85,7 @@ typedef struct {
         char topic_alert[MAX_TOPIC];
         char topic_monitor[MAX_TOPIC];
         char topic_settings[MAX_TOPIC];
+        char topic_handshake[MAX_TOPIC];
     } mqtt;
 } settings_t;
 
@@ -92,16 +95,10 @@ extern settings_t settings;
 
 /* ---- Funcion de la API ---- */
 esp_err_t uart_init(void);
-void process_json(const char *, int);
+void process_json_settings(const char *, int);
+void process_json_handshake(const char *, int);
+void send_settings_task(void *);
 
-
-/**
- * @brief Envía texto por UART.
- * @param text String para imprimir por UART.
- */
-static inline void uart_send_text(const char *text) {
-    uart_write_bytes(SETTINGS_UART_PORT_NUM, text, strlen(text));
-}
 
 
 #endif //SETTINGS_H
