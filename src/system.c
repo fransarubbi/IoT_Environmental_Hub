@@ -15,15 +15,17 @@ static const char *TAG = "System";
 
 
 bool init_queues(void) {
-    queues.data_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
-    queues.monitor_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
-    queues.dht11_buffer   = xQueueCreate(QUEUE, sizeof(dht11_data_t));
-    queues.ky037_buffer   = xQueueCreate(QUEUE, sizeof(ky037_stats_t));
-    queues.mq135_buffer   = xQueueCreate(QUEUE, sizeof(mq135_data_t));
-    queues.dht11_to_mq135 = xQueueCreate(QUEUE, sizeof(dht11_data_t));
+    queues.data_buffer     = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
+    queues.alert_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
+    queues.monitor_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
+    queues.settings_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
+    queues.dht11_buffer    = xQueueCreate(QUEUE, sizeof(dht11_data_t));
+    queues.ky037_buffer    = xQueueCreate(QUEUE, sizeof(ky037_stats_t));
+    queues.mq135_buffer    = xQueueCreate(QUEUE, sizeof(mq135_data_t));
+    queues.dht11_to_mq135  = xQueueCreate(QUEUE, sizeof(dht11_data_t));
 
     if (!queues.data_buffer || !queues.monitor_buffer || !queues.dht11_buffer || !queues.ky037_buffer ||
-        !queues.mq135_buffer || !queues.dht11_to_mq135) {
+        !queues.mq135_buffer || !queues.dht11_to_mq135 || !queues.alert_buffer || !queues.settings_buffer) {
         ESP_LOGE(TAG, "ERROR: Error creando queues");
         return false;
     }
@@ -68,8 +70,7 @@ void wait_for_sensors(void) {
 
 
 void start_application_tasks(void) {
-    // Sensores (Prioridad Media, Core 0/1 balanceado)
-    task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_0);
+    task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_1);
     task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(vStatsTask, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);
     task_handle.mq135_handle = xTaskCreateStaticPinnedToCore(mq135_task, "MQ135", STACK_MQ135, NULL, PRIO_SENSORS, mem.mq135.stack, &mem.mq135.tcb, CORE_0);
     task_handle.data_ct_handle = xTaskCreateStaticPinnedToCore(data_collection_task, "Collector", STACK_COLLECTOR, NULL, PRIO_COMMS, mem.collector.stack, &mem.collector.tcb, CORE_1);

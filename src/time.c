@@ -8,10 +8,6 @@
 
 static const char *TAG = "TIME";
 
-static const char* days_name[] = {
-    "Domingo", "Lunes", "Martes", "Miercoles",
-    "Jueves", "Viernes", "Sabado"
-};
 
 
 /**
@@ -62,14 +58,9 @@ esp_err_t time_init(void) {
 void get_time(char *time_str) {
     time_t now;
     struct tm timeinfo;
-    char date[30];
-
     time(&now);
     localtime_r(&now, &timeinfo);
-
-    const char *day = days_name[timeinfo.tm_wday];
-    strftime(date, sizeof(date), "%d/%b/%Y %H:%M:%S", &timeinfo);
-    snprintf(time_str, 50, "%s %s", day, date);
+    strftime(time_str, 30, "%d/%m/%Y %H:%M:%S", &timeinfo);
 }
 
 

@@ -5,6 +5,7 @@
 #include "Wifi/wifi.h"
 #include "esp_log.h"
 #include "System/system.h"
+#include "Time/time.h"
 
 
 static const char *TAG = "Monitor";
@@ -18,6 +19,7 @@ void stack_monitor_task(void *pvParameter) {
     multi_heap_info_t info;
     TickType_t last_wake_time = xTaskGetTickCount();
     wifi_stats_t wifi_stats;
+    char time[50];
 
     while (1) {
         char *json = (char*)heap_caps_malloc(JSON_MAX, MALLOC_CAP_8BIT);
@@ -38,33 +40,41 @@ void stack_monitor_task(void *pvParameter) {
         uint32_t seconds = (uptime_ms % 60000ULL) / 1000ULL;
         heap_caps_get_info(&info, MALLOC_CAP_8BIT);
         get_stats_wifi(&wifi_stats);
+        get_time(time);
 
         snprintf(json, JSON_MAX,
                 "{\n"
-                "  \"MAC\": \"%s\",\n"
-                "  \"Memoria libre\": %lu,\n"
-                "  \"Memoria libre (minimo historico)\": %lu,\n"
-                "  \"Bloque de memoria libre mas grande\": %u,\n"
-                "  \"Memoria interna libre\": %u,\n"
-                "  \"Stack libre minimo historico Collector\": %u,\n"
-                "  \"Stack libre minimo historico Publisher\": %u,\n"
-                "  \"Stack libre minimo historico Microfono\": %u,\n"
-                "  \"Stack libre minimo historico DHT11\": %u,\n"
-                "  \"Stack libre minimo historico MQ135\": %u,\n"
-                "  \"Stack libre minimo historico Monitor\": %u,\n"
-                "  \"WiFi ssid\": %p,\n"
-                "  \"WiFi rssi\": %d,\n"
-                "  \"Tiempo activo (hh:mm:ss)\": %02lu:%02lu:%02lu,\n"
+                "  \"ID\": \"%s\",\n"
+                "  \"destination_type\": SERVER,\n"
+                "  \"destination_id\": SERVER0,\n"
+                "  \"timestamp\": \"%s\",\n"
+                "  \"device_name\": \"%s\",\n"
+                "  \"mem_free\": %lu,\n"
+                "  \"mem_free_hm\": %lu,\n"
+                "  \"mem_free_block\": %u,\n"
+                "  \"mem_free_internal\": %u,\n"
+                "  \"stack_free_min_coll\": %u,\n"
+                "  \"stack_free_min_pub\": %u,\n"
+                "  \"stack_free_min_mic\": %u,\n"
+                "  \"stack_free_min_th\": %u,\n"
+                "  \"stack_free_min_air\": %u,\n"
+                "  \"stack_free_min_mon\": %u,\n"
+                "  \"wifi_ssid\": \"%s\",\n"
+                "  \"wifi_rssi\": %d,\n"
+                "  \"energy_mode\": %u,\n"
+                "  \"active_time\": %02lu:%02lu:%02lu,\n"
                 "}",
-                settings.mac_address,
+                settings.node.mac_address,
+                time,
+                settings.node.device_name,
                 esp_get_free_heap_size()/4,
                 esp_get_minimum_free_heap_size()/4,
                 heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4,
                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4,
-                hwm1, hwm2, hwm3, hwm4, hwm5, hwm_monitor, wifi_stats.ssid, wifi_stats.rssi, hours, minutes, seconds);
+                hwm1, hwm2, hwm3, hwm4, hwm5, hwm_monitor, (char *)wifi_stats.ssid, wifi_stats.rssi, settings.node.energy_mode, hours, minutes, seconds);
         xQueueSend(queues.monitor_buffer, &json, portMAX_DELAY);
 
-        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(settings.sample_rate * 2 * MS_TO_MIN));
+        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(settings.node.sample_rate * 2 * MS_TO_MIN));
     }
 }
 

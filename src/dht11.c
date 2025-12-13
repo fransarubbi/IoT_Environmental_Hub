@@ -352,7 +352,7 @@ void dht11_task(void *pvParameter) {
 
     while (1) {
 
-        uint32_t slices = (settings.sample_rate * 60)/(DHT11_DELAY/1000);
+        uint32_t slices = (settings.node.sample_rate * 60)/(DHT11_DELAY/1000);
         counter++;
 
         if (counter >= slices) {
@@ -388,7 +388,7 @@ void dht11_task(void *pvParameter) {
                         state_dht11 = ALERT_DHT11;
                         temp_before_alert = ema_temp;   // Guardamos la "normalidad" previa
                         generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_before_alert, (uint8_t)temp_actual);
-                        mqtt_publish("/dht11/alert/on_alert", json, (int)strlen(json), 2, 0);
+                        mqtt_publish(settings.mqtt.topic_alert, json, (int)strlen(json), 2, 0);
                     } else {
                         ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
                     }
@@ -400,7 +400,7 @@ void dht11_task(void *pvParameter) {
                         state_dht11 = NORMAL_DHT11;
 
                         generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_actual, (uint8_t)ema_temp);
-                        mqtt_publish("/dht11/alert/off_alert", json, (int)strlen(json), 2, 0);
+                        mqtt_publish(settings.mqtt.topic_alert, json, (int)strlen(json), 2, 0);
 
                         ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
                     }

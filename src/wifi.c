@@ -33,7 +33,7 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base,
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "- INFO: IP asignada: " IPSTR, IP2STR(&event->ip_info.ip));
-        snprintf(settings.wifi_ip, 30, IPSTR, IP2STR(&event->ip_info.ip));
+        snprintf(settings.wifi.ip, 30, IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(event_group.wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -95,8 +95,8 @@ esp_err_t wifi_init(void) {
     wifi_config_t wifi_config = { 0 };
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
     wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_UNSPECIFIED;
-    memcpy(wifi_config.sta.ssid, settings.wifi_ssid, sizeof(wifi_config.sta.ssid));
-    memcpy(wifi_config.sta.password, settings.wifi_password, sizeof(wifi_config.sta.password));
+    memcpy(wifi_config.sta.ssid, settings.wifi.ssid, sizeof(wifi_config.sta.ssid));
+    memcpy(wifi_config.sta.password, settings.wifi.password, sizeof(wifi_config.sta.password));
 
     ESP_LOGI("WIFI", "SSID: %d", strlen((char *)wifi_config.sta.ssid));
     ESP_LOGI("WIFI", "Password length: %d", strlen((char *)wifi_config.sta.password));

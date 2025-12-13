@@ -24,11 +24,13 @@
 /* Estructura que contiene todas las colas del sistema */
 typedef struct {
     QueueHandle_t data_buffer;
+    QueueHandle_t alert_buffer;
     QueueHandle_t monitor_buffer;
     QueueHandle_t dht11_buffer;
     QueueHandle_t ky037_buffer;
     QueueHandle_t mq135_buffer;
     QueueHandle_t dht11_to_mq135;
+    QueueHandle_t settings_buffer;
 } app_queues_t;
 
 
