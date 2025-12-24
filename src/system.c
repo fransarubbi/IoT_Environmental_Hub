@@ -14,46 +14,65 @@
 static const char *TAG = "System";
 
 
+/**
+ * @brief Inicializa todas las queues del sistema.
+ * @return true si el proceso fue exitoso, false en caso contrario. Si el
+ * retorno fue false, el sistema se reiniciara.
+ */
 bool init_queues(void) {
-    queues.data_buffer     = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
-    queues.alert_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
-    queues.monitor_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
-    queues.settings_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(char *));
-    queues.dht11_buffer    = xQueueCreate(QUEUE, sizeof(dht11_data_t));
-    queues.ky037_buffer    = xQueueCreate(QUEUE, sizeof(ky037_stats_t));
+    queues.data_buffer     = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.alert_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.monitor_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.settings_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.dht11_buffer    = xQueueCreate(QUEUE, dht11_struct_get_size());
+    queues.ky037_buffer    = xQueueCreate(QUEUE, ky037_get_size());
     queues.mq135_buffer    = xQueueCreate(QUEUE, sizeof(mq135_data_t));
-    queues.dht11_to_mq135  = xQueueCreate(QUEUE, sizeof(dht11_data_t));
+    queues.dht11_to_mq135  = xQueueCreate(QUEUE, dht11_struct_get_size());
 
     if (!queues.data_buffer || !queues.monitor_buffer || !queues.dht11_buffer || !queues.ky037_buffer ||
         !queues.mq135_buffer || !queues.dht11_to_mq135 || !queues.alert_buffer || !queues.settings_buffer) {
-        ESP_LOGE(TAG, "ERROR: Error creando queues");
+        ESP_LOGE(TAG, "- ERROR: Error creando queues -");
         return false;
     }
     return true;
 }
 
 
+/**
+ * @brief Inicia los Event Group del sistema
+ * @return true si el proceso fue exitoso, false si ocurrio algun problema.
+ * Si el retorno fue false, el sistema se reiniciara.
+ */
 bool init_event_group(void) {
     event_group.collector_events = xEventGroupCreate();
     event_group.mqtt_event_group = xEventGroupCreate();
     event_group.wifi_event_group = xEventGroupCreate();
     if (!event_group.collector_events || !event_group.mqtt_event_group || !event_group.wifi_event_group) {
-        ESP_LOGE(TAG, "ERROR: Error creando event_group");
+        ESP_LOGE(TAG, "- ERROR: Error creando event_group -");
         return false;
     }
     return true;
 }
 
 
+/**
+ * @brief Inicializacion de los drivers basicos para el funcionamiento del sistema.
+ * @return true en caso de exito o false en caso de que falle alguno de los drivers.
+ * Es importante este retorno porque es critico que todos los componentes se inicien
+ * correctamente. Caso contrario el sistema se reiniciara.
+ */
 bool init_base_drivers(void) {
-    if (uart_init() != ESP_OK) { ESP_LOGE(TAG, "ERROR: UART fallo"); return false; }
-    if (wifi_init() != ESP_OK) { ESP_LOGE(TAG, "ERROR: WiFi fallo"); return false; }
-    if (time_init() != ESP_OK) { ESP_LOGE(TAG, "ERROR: Time fallo"); return false; }
-    if (mqtt_init() != ESP_OK) { ESP_LOGE(TAG, "ERROR: MQTT fallo"); return false; }
+    if (uart_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: UART fallo -"); return false; }
+    if (wifi_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: WiFi fallo -"); return false; }
+    if (time_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: Time fallo -"); return false; }
+    if (mqtt_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: MQTT fallo -"); return false; }
     return true;
 }
 
 
+/**
+ * @brief Espera que todos los sensores del sistema esten listos para su uso.
+ */
 void wait_for_sensors(void) {
     esp_err_t retMQ135 = ESP_FAIL, retDHT11 = ESP_FAIL, retKY037 = ESP_FAIL;
 
@@ -69,6 +88,9 @@ void wait_for_sensors(void) {
 }
 
 
+/**
+ * @brief Creacion de todas las tareas del sistema.
+ */
 void start_application_tasks(void) {
     task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_1);
     task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);

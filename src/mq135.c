@@ -19,8 +19,9 @@
 #include "esp_log.h"
 #include <math.h>
 #include <string.h>
-
 #include "System/system.h"
+#include "components/mpack/include/mpack.h"
+#include "Time/time.h"
 
 
 
@@ -309,17 +310,46 @@ void mq135_print_diagnostics(float temperature_c, float humidity_percent) {
  * @param buffer_size Tamaño del string.
  * @param alert Estructura con los valores iniciales y actuales.
  */
-static void generate_json(char *output_buffer, size_t buffer_size, mq135_alert_t alert) {
+static bool serialize_mpack_alert(mqtt_packet_t *packet, mq135_alert_t alert) {
+    packet->payload = NULL;
+    packet->len = 0;
+    size_t buffer_size = MPACK_MQ135_ALERT_SIZE;
+    packet->payload = malloc(buffer_size);
 
-    snprintf(output_buffer, buffer_size,
-        "{\n"
-        "  \"co2 ppm inicial\": %f,\n"
-        "  \"co2 ppm actual\": %f,\n"
-        "}",
-        alert.co2ppm_i,
-        alert.co2ppm_a
-    );
+    if (packet->payload == NULL) {
+        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        return false;
+    }
+
+    char time[TIME_MAX_LEN];
+    char mac[MAC];
+    settings_get_node_mac(mac, sizeof(mac));
+    get_time(time);
+
+    mpack_writer_t writer;
+    mpack_writer_init(&writer, packet->payload, buffer_size);
+
+    mpack_start_map(&writer, 6);
+    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, mac);
+    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
+    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
+    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, time);
+    mpack_write_cstr(&writer, "co2_ppm_initial");   mpack_write_float(&writer, alert.co2ppm_i);
+    mpack_write_cstr(&writer, "co2_ppm_rightnow");  mpack_write_float(&writer, alert.co2ppm_a);
+    mpack_finish_map(&writer);
+
+    if (mpack_writer_destroy(&writer) != mpack_ok) {
+        ESP_LOGE("Data", "- ERROR: Error codificando MPack -");
+        free(packet->payload);
+        packet->payload = NULL;
+        return false;
+    }
+
+    packet->len = mpack_writer_buffer_used(&writer);
+    return true;
 }
+
+
 
 
 void mq135_task(void *pvParameters) {
@@ -330,12 +360,12 @@ void mq135_task(void *pvParameters) {
     static mq135_data_t mq135;
     static mq135_alert_t alert;
     static dht11_data_t dht11;
-    char json[MQ135_JSON_ALERT];
+    mqtt_packet_t packet;
 
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while (1) {
-        uint32_t slices = (settings.node.sample_rate * 60)/(DHT11_DELAY/1000);
+        uint32_t slices = (settings_get_node_sample_rate() * 60)/(DHT11_DELAY/1000);
         counter++;
 
         if (xQueueReceive(queues.dht11_to_mq135, &dht11, portMAX_DELAY)) {
@@ -365,8 +395,14 @@ void mq135_task(void *pvParameters) {
                         state_mq135 = ALERT_MQ135;
                         alert.co2ppm_i = ema_ppm;
                         alert.co2ppm_a = ppm_actual;
-                        generate_json(json, DHT11_JSON_ALERT, alert);
-                        mqtt_publish("/mq135/alert/on_alert", json, (int)strlen(json), 2, 0);
+                        if (serialize_mpack_alert(&packet, alert)) {
+                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                                free(packet.payload);
+                            }
+                        } else {
+                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                        }
                     } else {
                         ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
                     }
@@ -376,10 +412,14 @@ void mq135_task(void *pvParameters) {
             case ALERT_MQ135:
                     if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                         state_mq135 = NORMAL_MQ135;
-
-                        generate_json(json, DHT11_JSON_ALERT, alert);
-                        mqtt_publish("/mq135/alert/off_alert", json, (int)strlen(json), 2, 0);
-
+                        if (serialize_mpack_alert(&packet, alert)) {
+                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                                free(packet.payload);
+                            }
+                        } else {
+                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                        }
                         ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
                     }
                     ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * ema_ppm);

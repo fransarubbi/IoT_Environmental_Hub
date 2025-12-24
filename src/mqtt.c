@@ -9,9 +9,15 @@
 #include "System/system.h"
 
 
+typedef struct {
+    esp_mqtt_client_handle_t client;   // handler de ESP-IDF para el cliente MQTT
+    esp_mqtt_client_config_t config;   // configuracion (URI, credenciales, etc.)
+} mqtt_client_t;
+
+
 static const char *TAG = "MQTT";
 static char mac_addr[18];
-mqtt_client_t mqtt;
+static mqtt_client_t mqtt;
 
 
 
@@ -39,13 +45,17 @@ static esp_err_t get_mac_address(void) {
  * @return ESP_OK si el evento fue procesado correctamente
  */
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
+    char topic_settings[MAX_TOPIC];
+    char topic_handshake[MAX_TOPIC];
+
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             xEventGroupSetBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupClearBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
-            ESP_LOGI(TAG, "- INFO: Conectado al broker -");
-            esp_mqtt_client_subscribe(event->client, settings.mqtt.topic_settings, 1);
-            esp_mqtt_client_subscribe(event->client, settings.mqtt.topic_handshake, 1);
+            settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
+            settings_get_mqtt_topic_settings(topic_handshake, sizeof(topic_handshake));
+            esp_mqtt_client_subscribe(event->client, topic_settings, 1);
+            esp_mqtt_client_subscribe(event->client, topic_handshake, 1);
             break;
 
         case MQTT_EVENT_DISCONNECTED:
@@ -74,13 +84,16 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             memcpy(msg, event->data, event->data_len);
             msg[event->data_len] = '\0';
 
-            if (event->topic_len == strlen(settings.mqtt.topic_settings) &&
-                strncmp(event->topic, settings.mqtt.topic_settings, event->topic_len) == 0) {
-                process_json_settings(msg, event->data_len);
+            settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
+            settings_get_mqtt_topic_handshake(topic_handshake, sizeof(topic_handshake));
+
+            if (event->topic_len == strlen(topic_settings) &&
+                strncmp(event->topic, topic_settings, event->topic_len) == 0) {
+                if (!parse_mpack_settings(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo settings -");
                 }
-            else if (event->topic_len == strlen(settings.mqtt.topic_handshake) &&
-                     strncmp(event->topic, settings.mqtt.topic_handshake, event->topic_len) == 0) {
-                process_json_handshake(msg, event->data_len);
+            else if (event->topic_len == strlen(topic_handshake) &&
+                     strncmp(event->topic, topic_handshake, event->topic_len) == 0) {
+                if (!parse_mpack_handshake(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo handshake -");
                      }
             break;
         }
@@ -116,17 +129,25 @@ esp_err_t mqtt_init(void) {
     esp_err_t ret = get_mac_address();
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
+    static char mqtt_uri[MQTT_URI];
+    static char mqtt_user[MQTT_USER];
+    static char mqtt_pass[MQTT_PASS];
+
+    settings_get_mqtt_uri(mqtt_uri, sizeof(mqtt_uri));
+    settings_get_mqtt_user(mqtt_user, sizeof(mqtt_user));
+    settings_get_mqtt_password(mqtt_pass, sizeof(mqtt_pass));
+
     if (ret == ESP_OK) {
-        strcpy(settings.node.mac_address, mac_addr);
-        mqtt.config.broker.address.uri = settings.mqtt.uri;   // Establecer la URI del broker
+        settings_set_node_mac(mac_addr);
+        mqtt.config.broker.address.uri = mqtt_uri;   // Establecer la URI del broker
         mqtt.config.broker.verification.certificate = (const char *)ca_crt;  // Certificado CA
         mqtt.config.buffer.size = 1024;           // Tamaño del buffer de salida
         mqtt.config.buffer.out_size = 1024;       // Tamaño del buffer de envío
         mqtt.config.credentials.authentication.certificate = (const char *)client1_crt;  // Certificado del cliente
         mqtt.config.credentials.authentication.key = (const char *)client1_key;   // Clave para mTLS
-        mqtt.config.credentials.username  = settings.mqtt.user;  // Usuario MQTT
+        mqtt.config.credentials.username = mqtt_user;  // Usuario MQTT
         mqtt.config.credentials.client_id = mac_addr;    // ID (la MAC de la ESP32)
-        mqtt.config.credentials.authentication.password = settings.mqtt.password;  // Contrasena de MQTT
+        mqtt.config.credentials.authentication.password = mqtt_pass;  // Contrasena de MQTT
         mqtt.config.network.disable_auto_reconnect = false;   // Reconectar automaticamente si se pierde conexion
         mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad
         mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5

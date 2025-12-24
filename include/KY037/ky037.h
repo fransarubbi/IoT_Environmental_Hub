@@ -24,20 +24,11 @@ typedef struct {
 } ky037_t;
 
 
-extern ky037_stats_t ky037_stats;
-
-
-/**
- * @brief Obtiene el tiempo actual en milisegundos
- */
-static inline uint32_t get_time_ms(void) {
-    return (uint32_t)(esp_timer_get_time() / 1000);  // /1000 para convertir de micro seg a ms
-}
-
 
 esp_err_t ky037_init(void);
-// Declaraciones de tareas (para uso interno)
 void ky037_task(void *);
-
+uint32_t ky037_get_counter(ky037_t );
+uint32_t ky037_get_duration(ky037_t );
+size_t ky037_get_size(void);
 
 #endif //KY037_H

@@ -2,6 +2,7 @@
 #define TIME_H
 
 #define TIME_WAIT 2000
+#define TIME_MAX_LEN 30
 
 #include "esp_err.h"
 

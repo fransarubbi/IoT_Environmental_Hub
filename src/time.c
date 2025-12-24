@@ -6,8 +6,7 @@
 #include "lwip/sys.h"
 
 
-static const char *TAG = "TIME";
-
+static const char *TAG = "Time";
 
 
 /**
@@ -21,7 +20,7 @@ static esp_err_t wait_for_time_sync(void) {
     const int retry_count = 15;
 
     while (timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
-        ESP_LOGI(TAG, "- INFO: Esperando sincronización SNTP... (%d/%d) -", retry, retry_count);
+        ESP_LOGI(TAG, "- INFO: Esperando sincronizacion SNTP... (%d/%d) -", retry, retry_count);
         vTaskDelay(pdMS_TO_TICKS(TIME_WAIT));
         time(&now);
         localtime_r(&now, &timeinfo);
@@ -60,7 +59,7 @@ void get_time(char *time_str) {
     struct tm timeinfo;
     time(&now);
     localtime_r(&now, &timeinfo);
-    strftime(time_str, 30, "%d/%m/%Y %H:%M:%S", &timeinfo);
+    strftime(time_str, TIME_MAX_LEN, "%d/%m/%Y %H:%M:%S", &timeinfo);
 }
 
 
