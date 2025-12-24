@@ -12,14 +12,31 @@
 #include "esp32/rom/ets_sys.h"
 #include <string.h>
 #include <driver/rmt_rx.h>
+#include "components/mpack/include/mpack.h"
+#include "Time/time.h"
 
 
 static const char *TAG = "DHT11";
-static dht11_data_t dht11_data;
 static QueueHandle_t g_receive_queue = NULL;
 static rmt_channel_handle_t g_rx_channel = NULL;
 static rmt_symbol_word_t g_rx_buffer[120];
 static uint8_t num_symbols;
+typedef enum {INIT_DHT11, NORMAL_DHT11, ALERT_DHT11} state_dht11_t;
+
+
+uint8_t dht11_get_temperature(dht11_data_t *dhtt) {
+    return dhtt->temperature;
+}
+
+
+uint8_t dht11_get_humidity(dht11_data_t *dhtt) {
+    return dhtt->humidity;
+}
+
+
+size_t dht11_struct_get_size(void) {
+    return sizeof(dht11_data_t);
+}
 
 
 
@@ -215,7 +232,7 @@ static esp_err_t dht11_start_and_receive(void) {
  * @return esp_err_t  Devuelve ESP_OK si la decodificacion es exitosa y el checksum es valido.
  * Devuelve ESP_FAIL en caso de fallo.
  */
-static esp_err_t dht11_decode_data(void) {
+static esp_err_t dht11_decode_data(dht11_data_t *dht11_data) {
     int8_t bit = 7;
     uint8_t buffer = 0;
     uint8_t byte = 0;
@@ -231,11 +248,11 @@ static esp_err_t dht11_decode_data(void) {
                     if (bit == -1) {
                         bit = 7;
                         switch (byte) {
-                            case 0: dht11_data.humidity = buffer; break;
-                            case 1: dht11_data.hum_decimal = buffer; break;
-                            case 2: dht11_data.temperature = buffer; break;
-                            case 3: dht11_data.temp_decimal = buffer; break;
-                            case 4: dht11_data.checksum = buffer; break;
+                            case 0: dht11_data->humidity = buffer; break;
+                            case 1: dht11_data->hum_decimal = buffer; break;
+                            case 2: dht11_data->temperature = buffer; break;
+                            case 3: dht11_data->temp_decimal = buffer; break;
+                            case 4: dht11_data->checksum = buffer; break;
                             default: break;
                         }
                         buffer = 0;
@@ -247,9 +264,9 @@ static esp_err_t dht11_decode_data(void) {
     }
 
     // Verificar checksum
-    uint8_t checksum = dht11_data.humidity + dht11_data.hum_decimal + dht11_data.temperature + dht11_data.temp_decimal;
-    if (checksum != dht11_data.checksum) {
-        ESP_LOGE(TAG, "- ERROR: Checksum invalido: calculado %d, recibido %d -", checksum, dht11_data.checksum);
+    uint8_t checksum = dht11_data->humidity + dht11_data->hum_decimal + dht11_data->temperature + dht11_data->temp_decimal;
+    if (checksum != dht11_data->checksum) {
+        ESP_LOGE(TAG, "- ERROR: Checksum invalido: calculado %d, recibido %d -", checksum, dht11_data->checksum);
         return ESP_FAIL;
     }
     return ESP_OK;
@@ -264,7 +281,7 @@ static esp_err_t dht11_decode_data(void) {
  *
  * @return esp_err_t Devuelve un ESP_OK si el proceso fue exitoso, sino ESP_FAIL.
  */
-static esp_err_t dht11_read_data(void) {
+static esp_err_t dht11_read_data(dht11_data_t *dht11_data) {
 
     esp_err_t ret = dht11_start_and_receive();
     if (ret != ESP_OK) {
@@ -277,7 +294,7 @@ static esp_err_t dht11_read_data(void) {
         ESP_LOGI(TAG, "D0: %u S0: %u  -  D1: %u S1: %u", g_rx_buffer[i].duration0, g_rx_buffer[i].level0, g_rx_buffer[i].duration1, g_rx_buffer[i].level1);
     }*/
 
-    ret = dht11_decode_data();
+    ret = dht11_decode_data(dht11_data);
     if (ret != ESP_OK) return ret;
     xQueueReset(g_receive_queue);
     memset(g_rx_buffer, 0, sizeof(g_rx_buffer));
@@ -293,11 +310,6 @@ esp_err_t dht11_init(void) {
     if (ret != ESP_OK) return ret;
     ret = dht11_rmt_rx_config();
     if (ret != ESP_OK) return ret;
-    dht11_data.humidity = 0;
-    dht11_data.hum_decimal = 0;
-    dht11_data.temperature = 0;
-    dht11_data.temp_decimal = 0;
-    dht11_data.checksum = 0;
     return ESP_OK;
 }
 
@@ -313,16 +325,43 @@ esp_err_t dht11_init(void) {
  * @param temp_i Temperatura inicial.
  * @param temp_a Temperatura actual.
  */
-static void generate_json(char *output_buffer, size_t buffer_size, uint8_t temp_i, uint8_t temp_a) {
+static bool serialize_mpack_alert(mqtt_packet_t *packet, uint8_t temp_i, uint8_t temp_a) {
+    packet->payload = NULL;
+    packet->len = 0;
+    size_t buffer_size = MPACK_DHT11_ALERT_SIZE;
+    packet->payload = malloc(buffer_size);
 
-    snprintf(output_buffer, buffer_size,
-        "{\n"
-        "  \"Temperatura inicial\": %u,\n"
-        "  \"Temperatura actual\": %u,\n"
-        "}",
-        temp_i,
-        temp_a
-    );
+    if (packet->payload == NULL) {
+        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        return false;
+    }
+
+    char time[TIME_MAX_LEN];
+    char mac[MAC];
+    settings_get_node_mac(mac, sizeof(mac));
+    get_time(time);
+
+    mpack_writer_t writer;
+    mpack_writer_init(&writer, packet->payload, buffer_size);
+
+    mpack_start_map(&writer, 6);
+    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, mac);
+    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
+    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
+    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, time);
+    mpack_write_cstr(&writer, "temp_initial");      mpack_write_u8(&writer, temp_i);
+    mpack_write_cstr(&writer, "temp_rightnow");     mpack_write_u8(&writer, temp_a);
+    mpack_finish_map(&writer);
+
+    size_t used = mpack_writer_buffer_used(&writer);
+    if (mpack_writer_destroy(&writer) != mpack_ok) {
+        ESP_LOGE("DHT11", "- ERROR: Error codificando MPack -");
+        free(packet->payload);
+        packet->payload = NULL;
+        return false;
+    }
+    packet->len = used;
+    return true;
 }
 
 
@@ -346,39 +385,37 @@ void dht11_task(void *pvParameter) {
     static float ema_error = 0.0f;            // Media movil del error (ruido normal)
     static float temp_before_alert = 0.0f;
     static dht11_data_t dht11;
-    char json[DHT11_JSON_ALERT];
+    mqtt_packet_t packet;
 
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while (1) {
 
-        uint32_t slices = (settings.node.sample_rate * 60)/(DHT11_DELAY/1000);
+        uint32_t slices = (settings_get_node_sample_rate() * 60)/(DHT11_DELAY/1000);
         counter++;
 
         if (counter >= slices) {
             counter = 0;
-            if (dht11_read_data() != ESP_OK) {
+            if (dht11_read_data(&dht11) != ESP_OK) {
                 dht11.temperature = 0;
                 dht11.humidity = 0;
             }
-            dht11.temperature = dht11_data.temperature;
-            dht11.humidity = dht11_data.humidity;
             xQueueSend(queues.dht11_buffer, &dht11, portMAX_DELAY);
             xEventGroupSetBits(event_group.collector_events, DHT11_DATA_READY);
         }
         else {
-            if (dht11_read_data() != ESP_OK) {
+            if (dht11_read_data(&dht11) != ESP_OK) {
                 dht11.temperature = 0;
                 dht11.humidity = 0;
             }
-            float temp_actual = dht11_data.temperature;
+            float temp_actual = dht11.temperature;
             float error_actual = temp_actual - ema_temp;
             float error_abs = fabsf(error_actual);
             float umbral_alerta_dinamico = (K_SENSIBILIDAD * ema_error) + UMBRAL_MINIMO_ABS;
 
             switch (state_dht11) {
             case INIT_DHT11:
-                    ema_temp = dht11_data.temperature;
+                    ema_temp = dht11.temperature;
                     ema_error = 0.0f;
                     state_dht11 = NORMAL_DHT11;
                     break;
@@ -387,8 +424,14 @@ void dht11_task(void *pvParameter) {
                     if (error_abs > umbral_alerta_dinamico) {
                         state_dht11 = ALERT_DHT11;
                         temp_before_alert = ema_temp;   // Guardamos la "normalidad" previa
-                        generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_before_alert, (uint8_t)temp_actual);
-                        mqtt_publish(settings.mqtt.topic_alert, json, (int)strlen(json), 2, 0);
+                        if (serialize_mpack_alert(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
+                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                                free(packet.payload);
+                            }
+                        } else {
+                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                        }
                     } else {
                         ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
                     }
@@ -398,17 +441,20 @@ void dht11_task(void *pvParameter) {
             case ALERT_DHT11:
                     if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                         state_dht11 = NORMAL_DHT11;
-
-                        generate_json(json, DHT11_JSON_ALERT, (uint8_t)temp_actual, (uint8_t)ema_temp);
-                        mqtt_publish(settings.mqtt.topic_alert, json, (int)strlen(json), 2, 0);
-
+                        if (serialize_mpack_alert(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
+                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                                free(packet.payload);
+                            }
+                        } else {
+                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                        }
                         ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
                     }
                     ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * ema_temp);
                     break;
             }
         }
-
         xQueueSend(queues.dht11_to_mq135, &dht11, portMAX_DELAY);
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(DHT11_DELAY));
     }

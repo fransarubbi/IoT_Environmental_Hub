@@ -8,9 +8,9 @@ app_task_handle_t task_handle;
 
 
 void app_main(void) {
-    if (!init_queues()) esp_restart();   // Inicializar recursos de memoria (colas, eventos)
-    if (!init_event_group()) esp_restart();;   // Inicializar event group
+    if (!init_queues()) esp_restart();          // Inicializar recursos de memoria (colas, eventos)
+    if (!init_event_group()) esp_restart();;    // Inicializar event group
     if (!init_base_drivers()) esp_restart();;   // Inicializar drivers base (WiFi, UART, MQTT)
-    wait_for_sensors();  // Esperar a que los sensores esten listos (Bloqueante)
-    start_application_tasks();   // Arrancar las tareas del sistema
+    wait_for_sensors();                         // Esperar a que los sensores esten listos (Bloqueante)
+    start_application_tasks();                  // Arrancar las tareas del sistema
 }

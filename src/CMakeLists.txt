@@ -13,6 +13,7 @@ idf_component_register(
         "system.c"
         INCLUDE_DIRS
         "."
+        "../components/mpack/include"
         REQUIRES
         mbedtls
         esp_driver_rmt

@@ -9,17 +9,13 @@
 
 
 typedef struct {
-    esp_mqtt_client_handle_t client;   // handler de ESP-IDF para el cliente MQTT
-    esp_mqtt_client_config_t config;   // configuracion (URI, credenciales, etc.)
-} mqtt_client_t;
-
-
-extern mqtt_client_t mqtt;
+    char *payload;
+    size_t len;
+} mqtt_packet_t;
 
 
 esp_err_t mqtt_init(void);
 esp_err_t mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain);
-
 
 
 #endif // MQTT_CLIENT_H

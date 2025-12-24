@@ -32,7 +32,7 @@
 #define MQ135_DATA_READY  (1 << 1)
 
 #define STACK_MQ135 8000
-
+#define MPACK_MQ135_ALERT_SIZE 1024
 
 /* ===== Estructura de datos ===== */
 typedef struct {

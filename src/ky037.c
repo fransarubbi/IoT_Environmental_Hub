@@ -9,14 +9,32 @@
 #include "System/system.h"
 
 static const char *TAG = "KY037";
-
-
-ky037_stats_t ky037_stats;    // Estructura de estadisticas
-
-// Variables para ISR
+static ky037_stats_t ky037_stats;
 static volatile uint32_t isr_init_high_time = 0;     // Guarda el tiempo de inicio del pulso alto
 static volatile bool isr_service_installed = false;  // Flag que indica si ya se instalo el servicio de ISR del driver GPIO
 
+
+/**
+ * @brief Obtiene el tiempo actual en milisegundos
+ */
+static inline uint32_t get_time_ms(void) {
+    return (uint32_t)(esp_timer_get_time() / 1000);  // /1000 para convertir de micro seg a ms
+}
+
+
+uint32_t ky037_get_counter(ky037_t ky037) {
+    return ky037.counter;
+}
+
+
+uint32_t ky037_get_duration(ky037_t ky037) {
+    return ky037.max_duration;
+}
+
+
+size_t ky037_get_size(void) {
+    return sizeof(ky037_t);
+}
 
 
 /**
@@ -37,7 +55,8 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
  * @brief Tarea que procesa las interrupciones del sensor y calcula estadisticas
  */
 void ky037_task(void *pvParameters) {
-    const TickType_t period_ticks = pdMS_TO_TICKS(settings.node.sample_rate * MS_TO_MIN);
+    static ky037_t ky037;
+    const TickType_t period_ticks = pdMS_TO_TICKS(settings_get_node_sample_rate() * MS_TO_MIN);
     TickType_t last_wake_time = xTaskGetTickCount();
 
     while (1) {
@@ -69,7 +88,8 @@ void ky037_task(void *pvParameters) {
         now = xTaskGetTickCount();
         if ((now - last_wake_time) >= period_ticks) {
             // Enviar datos
-            ky037_stats_t ky037 = ky037_stats;
+            ky037.counter = ky037_stats.counter;
+            ky037.counter = ky037_stats.max_duration;
             xQueueSend(queues.ky037_buffer, &ky037, portMAX_DELAY);
             xEventGroupSetBits(event_group.collector_events, KY037_DATA_READY);
 
@@ -105,7 +125,6 @@ esp_err_t ky037_init(void) {
     }
 
     memset(&ky037_stats, 0, sizeof(ky037_stats_t));
-
     isr_init_high_time = 0;
 
     // Instalar servicio ISR si aún no esta instalado
