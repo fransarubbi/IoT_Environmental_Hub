@@ -26,26 +26,23 @@
 /* ---- Macros de longitudes ---- */
 #define MAC           18
 #define DEVICE_NAME   20
+#define ID_NETWORK    20
+#define ID_EDGE       20
 #define WIFI_SSID     32
 #define WIFI_PASSWORD 64
 #define WIFI_IP       16
 #define MQTT_URI      40
 #define MQTT_USER     20
 #define MQTT_PASS     30
-#define MAX_TOPIC     50
+#define MAX_TOPIC     73
 
 
 /* ---- Comandos disponibles ---- */
 #define CMD_SET_WIFI_SSID            "W_SSID"
 #define CMD_SET_WIFI_PASS            "W_PASS"
 #define CMD_SET_MQTT_URI             "M_URI"
-#define CMD_SET_MQTT_USER            "M_USER"
-#define CMD_SET_MQTT_PASS            "M_PASS"
-#define CMD_SET_MQTT_TOPIC_DATA      "M_T_DATA"
-#define CMD_SET_MQTT_TOPIC_ALERT     "M_T_ALERT"
-#define CMD_SET_MQTT_TOPIC_MONITOR   "M_T_MONITOR"
-#define CMD_SET_MQTT_TOPIC_SETTINGS  "M_T_SETTINGS"
-#define CMD_SET_MQTT_TOPIC_HANDSHAKE "M_T_HANDSHAKE"
+#define CMD_SET_NETWORK              "NET"
+#define CMD_SET_EDGE                 "EDGE"
 #define CMD_SET_DEVICE_NAME          "NAME"
 #define CMD_SET_SAMPLE               "SAMPLE"
 #define CMD_SET_ENERGY_MODE          "E_MODE"
@@ -79,10 +76,21 @@ void settings_get_mqtt_uri(char* dest, size_t dest_size);
 void settings_get_mqtt_user(char* dest, size_t dest_size);
 void settings_get_mqtt_password(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_data(char* dest, size_t dest_size);
-void settings_get_mqtt_topic_alert(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_alert_air(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_alert_temp(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_settings_ok(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_hub_firmware_ok(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_handshake_to_edge(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_monitor(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_settings(char* dest, size_t dest_size);
-void settings_get_mqtt_topic_handshake(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_edge_state(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_edge_handshake(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_heartbeat(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_new_firmware(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_new_settings(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_edge_setting_ok(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_delete_hub(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_active_hub(char* dest, size_t dest_size);
 
 
 #endif //SETTINGS_H

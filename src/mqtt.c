@@ -85,7 +85,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             msg[event->data_len] = '\0';
 
             settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
-            settings_get_mqtt_topic_handshake(topic_handshake, sizeof(topic_handshake));
+            //settings_get_mqtt_topic_handshake(topic_handshake, sizeof(topic_handshake));
 
             if (event->topic_len == strlen(topic_settings) &&
                 strncmp(event->topic, topic_settings, event->topic_len) == 0) {
@@ -130,12 +130,8 @@ esp_err_t mqtt_init(void) {
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
     static char mqtt_uri[MQTT_URI];
-    static char mqtt_user[MQTT_USER];
-    static char mqtt_pass[MQTT_PASS];
 
     settings_get_mqtt_uri(mqtt_uri, sizeof(mqtt_uri));
-    settings_get_mqtt_user(mqtt_user, sizeof(mqtt_user));
-    settings_get_mqtt_password(mqtt_pass, sizeof(mqtt_pass));
 
     if (ret == ESP_OK) {
         settings_set_node_mac(mac_addr);
@@ -145,9 +141,7 @@ esp_err_t mqtt_init(void) {
         mqtt.config.buffer.out_size = 1024;       // Tamaño del buffer de envío
         mqtt.config.credentials.authentication.certificate = (const char *)client1_crt;  // Certificado del cliente
         mqtt.config.credentials.authentication.key = (const char *)client1_key;   // Clave para mTLS
-        mqtt.config.credentials.username = mqtt_user;  // Usuario MQTT
         mqtt.config.credentials.client_id = mac_addr;    // ID (la MAC de la ESP32)
-        mqtt.config.credentials.authentication.password = mqtt_pass;  // Contrasena de MQTT
         mqtt.config.network.disable_auto_reconnect = false;   // Reconectar automaticamente si se pierde conexion
         mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad
         mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5
