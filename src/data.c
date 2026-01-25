@@ -159,7 +159,7 @@ void data_publish_task(void *pvParameter) {
     settings_get_mqtt_topic_data(topic_data, sizeof(topic_data));
     settings_get_mqtt_topic_monitor(topic_monitor, sizeof(topic_monitor));
     settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
-    settings_get_mqtt_topic_alert(topic_alert, sizeof(topic_alert));
+    //settings_get_mqtt_topic_alert(topic_alert, sizeof(topic_alert));
 
     while (1) {
         bool did_work = false;
