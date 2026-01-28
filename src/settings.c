@@ -12,56 +12,13 @@
 #include "nvs_flash.h"
 #include "esp_pm.h"
 #include "Data/data.h"
-#include "Time/time.h"
 #include "System/system.h"
-#include "components/mpack/include/mpack.h"
+#include "mpack.h"
+#include "Message/message.h"
 #include "MQTT/mqtt.h"
 
 
-static struct {
-    struct {
-        char mac_address[MAC];
-        char device_name[DEVICE_NAME];
-        uint32_t sample_rate;
-        uint8_t energy_mode;
-    } node;
-    struct {
-        char id_network[ID_NETWORK];
-        char id_edge[ID_EDGE];
-    } network;
-    struct {
-        uint8_t ssid[WIFI_SSID];
-        uint8_t ssid_len;
-        uint8_t password[WIFI_PASSWORD];
-        uint8_t pass_len;
-        char ip[WIFI_IP];
-    } wifi;
-    struct {
-        char uri[MQTT_URI];
-
-        // Publica
-        char topic_data[MAX_TOPIC];
-        char topic_alert_air[MAX_TOPIC];
-        char topic_alert_temp[MAX_TOPIC];
-        char topic_monitor[MAX_TOPIC];
-        char topic_settings[MAX_TOPIC];
-        char topic_settings_ok[MAX_TOPIC];
-        char topic_hub_firmware_ok[MAX_TOPIC];
-        char topic_handshake_to_edge[MAX_TOPIC];
-
-        // Escucha
-        char topic_edge_state[MAX_TOPIC];
-        char topic_edge_handshake[MAX_TOPIC];
-        char topic_heartbeat[MAX_TOPIC];
-        char topic_new_firmware[MAX_TOPIC];
-        char topic_new_settings[MAX_TOPIC];
-        char topic_edge_setting_ok[MAX_TOPIC];
-        char topic_delete_hub[MAX_TOPIC];
-        char topic_active_hub[MAX_TOPIC];
-    } mqtt;
-} settings;
-
-
+settings_t settings;
 static const char *TAG = "Settings";
 static char uart_buffer[SETTINGS_BUFFER_SIZE];
 static TimerHandle_t one_shot_timer = NULL;
@@ -80,13 +37,13 @@ static void unlock(void) {
     xSemaphoreGive(settings_mutex);
 }
 
-static void safe_string_copy(char* dest, const char* src, size_t size) {
+void safe_string_copy(char* dest, const char* src, size_t size) {
     if (size == 0) return;
     strncpy(dest, src, size - 1);
     dest[size - 1] = '\0';
 }
 
-static inline void safe_strcpy(char *dest, const char *src, size_t dest_size) {
+void safe_strcpy(char *dest, const char *src, size_t dest_size) {
     if (!src) {
         dest[0] = '\0';
         return;
@@ -98,7 +55,7 @@ static inline void safe_strcpy(char *dest, const char *src, size_t dest_size) {
     dest[actual_copy_len] = '\0';
 }
 
-static inline void uart_send_text(const char *text) {
+static void uart_send_text(const char *text) {
     uart_write_bytes(SETTINGS_UART_PORT_NUM, text, strlen(text));
 }
 
@@ -143,6 +100,12 @@ void settings_get_node_mac(char* dest, size_t dest_size) {
 void settings_get_node_device_name(char* dest, size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.node.device_name, dest_size);
+    unlock();
+}
+
+void settings_get_network(char* dest, size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.network.id_network, dest_size);
     unlock();
 }
 
@@ -488,7 +451,7 @@ static bool setting_is_device_configured(void) {
  * @brief Guardar en memoria no volatil (NVS) la configuracion.
  * @return esp_err_t  Devuelve ESP_OK cuando el almacenamiento fue correcto.
  */
-static esp_err_t setting_save_to_nvs(void) {
+esp_err_t setting_save_to_nvs(void) {
     nvs_handle_t h;
     esp_err_t ret = nvs_open("device_setting", NVS_READWRITE, &h);
     if (ret != ESP_OK) return ret;
@@ -776,229 +739,6 @@ void create_mqtt_topics() {
 }
 
 
-/**
- * @brief Genera un json con los datos de la configuracion del dispositivo
- * @param packet
- */
-static bool serialize_mpack_settings(mqtt_packet_t *packet) {
-    packet->payload = NULL;
-    packet->len = 0;
-    size_t buffer_size = MPACK_SETTINGS_SIZE;
-    packet->payload = malloc(buffer_size);
-
-    if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
-        return false;
-    }
-
-    char time[TIME_MAX_LEN];
-    get_time(time);
-
-    mpack_writer_t writer;
-    mpack_writer_init(&writer, packet->payload, buffer_size);
-
-    // El mapa tiene 17 elementos
-    mpack_start_map(&writer, 17);
-
-    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, settings.node.mac_address);
-    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
-    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
-    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, time);
-    mpack_write_cstr(&writer, "wifi_ssid");         mpack_write_str(&writer, (const char*)settings.wifi.ssid, strnlen((const char*)settings.wifi.ssid, sizeof(settings.wifi.ssid)));
-    mpack_write_cstr(&writer, "wifi_password");     mpack_write_str(&writer, (const char*)settings.wifi.password, strnlen((const char*)settings.wifi.password, sizeof(settings.wifi.password)));
-    mpack_write_cstr(&writer, "mqtt_uri");          mpack_write_cstr(&writer, settings.mqtt.uri);
-    mpack_write_cstr(&writer, "topic_data");        mpack_write_cstr(&writer, settings.mqtt.topic_data);
-    mpack_write_cstr(&writer, "topic_monitor");     mpack_write_cstr(&writer, settings.mqtt.topic_monitor);
-    mpack_write_cstr(&writer, "topic_settings");    mpack_write_cstr(&writer, settings.mqtt.topic_settings);
-    mpack_write_cstr(&writer, "device_name");       mpack_write_cstr(&writer, settings.node.device_name);
-    mpack_write_cstr(&writer, "sample");            mpack_write_u32(&writer, settings.node.sample_rate);
-    mpack_write_cstr(&writer, "energy_mode");       mpack_write_u8(&writer, settings.node.energy_mode);
-
-    mpack_finish_map(&writer);
-
-    size_t used = mpack_writer_buffer_used(&writer);
-    if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE(TAG, "- ERROR: Error codificando MPack -");
-        free(packet->payload);
-        packet->payload = NULL;
-        return false;
-    }
-    packet->len = used;
-    return true;
-}
-
-
-/**
- * @brief Procesar comando recibido por MQTT para modificar la configuracion del sistema.
- * @param data Mensaje mpack.
- * @param len Longitud del mensaje mpack.
- */
-bool parse_mpack_settings(const char* data, size_t len) {
-    uint8_t flags = 0x0;
-    mpack_reader_t reader;
-    mpack_reader_init_data(&reader, data, len);
-
-    uint32_t map_size = mpack_expect_map(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok) {
-        return false;
-    }
-
-    char val_buf[55];
-    for (uint32_t i = 0; i < map_size; i++) {
-        char key[55];
-        mpack_expect_cstr(&reader, key, sizeof(key));
-
-        if (strcmp(key, "ID") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (strcmp(val_buf, "SERVER0") == 0) flags |= FLAG_SERVER_VALID;
-        }
-        else if (strcmp(key, "destination_type") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x1 && strcmp(val_buf, "NODE") == 0) {
-                flags |= FLAG_CLIENT_VALID;
-            }
-        }
-        else if (strcmp(key, "destination_id") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x3) {
-                if (strcmp(val_buf, settings.node.mac_address) == 0) flags |= FLAG_ITS_ME;
-                if (strcmp(val_buf, "all") == 0) flags |= FLAG_ITS_ALL;
-            }
-        }
-        else if (strcmp(key, "wifi_ssid") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_strcpy((char *)settings.wifi.ssid, val_buf, sizeof(settings.wifi.ssid));
-            }
-        }
-        else if (strcmp(key, "wifi_password") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_strcpy((char *)settings.wifi.password, val_buf, sizeof(settings.wifi.password));
-            }
-        }
-        else if (strcmp(key, "mqtt_uri") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.uri, val_buf, sizeof(settings.mqtt.uri));
-            }
-        }
-
-        else if (strcmp(key, "topic_data") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.topic_data, val_buf, sizeof(settings.mqtt.topic_data));
-            }
-        }
-        else if (strcmp(key, "topic_monitor") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.topic_monitor, val_buf, sizeof(settings.mqtt.topic_monitor));
-            }
-        }
-        else if (strcmp(key, "topic_settings") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.topic_settings, val_buf, sizeof(settings.mqtt.topic_settings));
-            }
-        }
-        else if (strcmp(key, "device_name") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7) {
-                safe_string_copy(settings.node.device_name, val_buf, sizeof(settings.node.device_name));
-            }
-        }
-        else if (strcmp(key, "sample") == 0) {
-            uint32_t val = mpack_expect_u32(&reader);
-            if (flags == 0x7 || flags == 0xB) {
-                settings.node.sample_rate = val;
-            }
-        }
-        else if (strcmp(key, "energy_mode") == 0) {
-            uint8_t val = mpack_expect_u8(&reader);
-            if (flags == 0x7 || flags == 0xB) {
-                settings.node.energy_mode = val;
-            }
-        }
-        else {
-            mpack_discard(&reader);
-        }
-
-        if (mpack_reader_error(&reader) != mpack_ok) {
-            return false;
-        }
-    }
-
-    if (mpack_reader_destroy(&reader) != mpack_ok) {
-        return false;
-    }
-
-    esp_err_t ret = setting_save_to_nvs();
-    if (ret != ESP_OK) {
-        return false;
-    }
-    return true;
-}
-
-
-/**
- * @brief Procesar comando recibido por MQTT para confirmar recepcion de datos.
- * @param data Mensaje mpack recibido.
- * @param len Longitud del mensaje.
- */
-bool parse_mpack_handshake(const char* data, size_t len) {
-    uint8_t flags = 0x0;
-    mpack_reader_t reader;
-    mpack_reader_init_data(&reader, data, len);
-
-    uint32_t map_size = mpack_expect_map(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok) {
-        return false;
-    }
-
-    char key[32];
-    char value[32];
-    for (uint32_t i = 0; i < map_size; i++) {
-        mpack_expect_cstr(&reader, key, sizeof(key));
-
-        if (strcmp(key, "ID") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if (strcmp(value, "SERVER0") == 0) {
-                flags |= FLAG_SERVER_VALID;
-            }
-        }
-        else if (strcmp(key, "destination_type") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == FLAG_SERVER_VALID) && (strcmp(value, "NODE") == 0)) {
-                flags |= FLAG_CLIENT_VALID;
-            }
-        }
-        else if (strcmp(key, "destination_id") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x03) && (strcmp(value, settings.node.mac_address) == 0)) {
-                flags |= FLAG_ITS_ME;
-            }
-        }
-        else if (strcmp(key, "setting_received") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x07) && (strcmp(value, "true") == 0)) {
-                if (task_handle.send_settings_handle != NULL) {
-                    xTaskNotifyGive(task_handle.send_settings_handle);
-                }
-            }
-        }
-        else {
-            mpack_discard(&reader);
-        }
-
-        if (mpack_reader_error(&reader) != mpack_ok) {
-            return false;
-        }
-    }
-
-    return (mpack_reader_destroy(&reader) == mpack_ok);
-}
-
 
 /**
  * @brief Tarea de envio de mensaje de configuracion. Se autoelimina cuando recibe confirmacion.
@@ -1009,7 +749,7 @@ void send_settings_task(void *pvParameter) {
     mqtt_packet_t packet;
 
     while (1) {
-        if (serialize_mpack_settings(&packet)) {
+        if (generate_message_settings(&packet)) {
             if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                 ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                 free(packet.payload);

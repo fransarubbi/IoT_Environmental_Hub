@@ -12,7 +12,8 @@
 #include "esp32/rom/ets_sys.h"
 #include <string.h>
 #include <driver/rmt_rx.h>
-#include "components/mpack/include/mpack.h"
+#include "mpack.h"
+#include "Message/message.h"
 #include "Time/time.h"
 
 
@@ -315,57 +316,6 @@ esp_err_t dht11_init(void) {
 
 
 /**
- * @brief Funcion que genera un JSON con la temperatura inicial y la actual.
- *
- * Genera el JSON que sera enviado en caso de una alerta por aumento brusco de
- * temperatura. Por ello sen envia la primer temperatura estable y la temperatura actual.
- *
- * @param output_buffer String formateado en JSON.
- * @param buffer_size Tamaño del string.
- * @param temp_i Temperatura inicial.
- * @param temp_a Temperatura actual.
- */
-static bool serialize_mpack_alert(mqtt_packet_t *packet, uint8_t temp_i, uint8_t temp_a) {
-    packet->payload = NULL;
-    packet->len = 0;
-    size_t buffer_size = MPACK_DHT11_ALERT_SIZE;
-    packet->payload = malloc(buffer_size);
-
-    if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
-        return false;
-    }
-
-    char time[TIME_MAX_LEN];
-    char mac[MAC];
-    settings_get_node_mac(mac, sizeof(mac));
-    get_time(time);
-
-    mpack_writer_t writer;
-    mpack_writer_init(&writer, packet->payload, buffer_size);
-
-    mpack_start_map(&writer, 6);
-    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, mac);
-    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
-    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
-    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, time);
-    mpack_write_cstr(&writer, "temp_initial");      mpack_write_u8(&writer, temp_i);
-    mpack_write_cstr(&writer, "temp_rightnow");     mpack_write_u8(&writer, temp_a);
-    mpack_finish_map(&writer);
-
-    size_t used = mpack_writer_buffer_used(&writer);
-    if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("DHT11", "- ERROR: Error codificando MPack -");
-        free(packet->payload);
-        packet->payload = NULL;
-        return false;
-    }
-    packet->len = used;
-    return true;
-}
-
-
-/**
  * @brief Tarea que monitorea temperatura DHT11 y detecta cambios bruscos
  *
  * Implementa una máquina de estados que detecta incrementos rapidos de temperatura
@@ -424,7 +374,7 @@ void dht11_task(void *pvParameter) {
                     if (error_abs > umbral_alerta_dinamico) {
                         state_dht11 = ALERT_DHT11;
                         temp_before_alert = ema_temp;   // Guardamos la "normalidad" previa
-                        if (serialize_mpack_alert(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
+                        if (generate_message_alert_temp(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
                             if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                                 ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                                 free(packet.payload);
@@ -441,7 +391,7 @@ void dht11_task(void *pvParameter) {
             case ALERT_DHT11:
                     if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                         state_dht11 = NORMAL_DHT11;
-                        if (serialize_mpack_alert(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
+                        if (generate_message_alert_temp(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
                             if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                                 ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                                 free(packet.payload);

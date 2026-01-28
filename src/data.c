@@ -7,77 +7,8 @@
 #include "Time/time.h"
 #include "esp_log.h"
 #include "System/system.h"
-#include "components/mpack/include/mpack.h"
-
-
-
-typedef struct {
-    uint32_t ky037_counter;         // Contador de detecciones del microfono
-    uint32_t ky037_max_duration;    // Maxima duracion de pulso de microfono
-    uint8_t dht11_temperature;      // Parte entera de temperatura
-    uint8_t dht11_humidity;         // Parte entera de humedad
-    float co2ppm;
-    char time[TIME_MAX_LEN];
-} data_sensors_t;
-
-
-/**
- * @brief Genera una cadena JSON con los datos del dispositivo y sensores.
- *
- */
-static bool generate_mpack_data(data_sensors_t data, mqtt_packet_t *packet) {
-    packet->payload = NULL;
-    packet->len = 0;
-    size_t buffer_size = MPACK_DATA_SIZE;
-    packet->payload = malloc(buffer_size);
-
-    if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
-        return false;
-    }
-
-    char mac[MAC];
-    char device[DEVICE_NAME];
-    char ip[WIFI_IP];
-    uint8_t ssid[WIFI_SSID];
-
-    settings_get_node_mac(mac, sizeof(mac));
-    settings_get_node_device_name(device, sizeof(device));
-    settings_get_wifi_ip(ip, sizeof(ip));
-    settings_get_wifi_ssid(ssid, sizeof(ssid));
-
-    mpack_writer_t writer;
-    mpack_writer_init(&writer, packet->payload, buffer_size);
-
-    // El mapa tiene 13 elementos
-    mpack_start_map(&writer, 13);
-
-    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, mac);
-    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
-    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
-    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, data.time);
-    mpack_write_cstr(&writer, "device_name");       mpack_write_cstr(&writer, device);
-    mpack_write_cstr(&writer, "ipv4");              mpack_write_cstr(&writer, ip);
-    mpack_write_cstr(&writer, "wifi_ssid");         mpack_write_cstr(&writer, (const char*)ssid);
-    mpack_write_cstr(&writer, "pulse_counter");     mpack_write_u32(&writer, (uint32_t)data.ky037_counter);
-    mpack_write_cstr(&writer, "pulse_max_duration");mpack_write_u32(&writer, (uint32_t)data.ky037_max_duration);
-    mpack_write_cstr(&writer, "temperature");       mpack_write_u8(&writer, data.dht11_temperature);
-    mpack_write_cstr(&writer, "humidity");          mpack_write_u8(&writer, data.dht11_humidity);
-    mpack_write_cstr(&writer, "co2_ppm");           mpack_write_float(&writer, data.co2ppm);
-    mpack_write_cstr(&writer, "sample");            mpack_write_u32(&writer, settings_get_node_sample_rate());
-
-    mpack_finish_map(&writer);
-
-    size_t used = mpack_writer_buffer_used(&writer);
-    if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack -");
-        free(packet->payload);
-        packet->payload = NULL;
-        return false;
-    }
-    packet->len = used;
-    return true;
-}
+#include "mpack.h"
+#include "Message/message.h"
 
 
 /**
@@ -88,7 +19,7 @@ static bool generate_mpack_data(data_sensors_t data, mqtt_packet_t *packet) {
  */
 static void get_formated_data(dht11_data_t *dht11, ky037_t *ky037, mq135_data_t *mq135, data_sensors_t *data) {
     memset(data, 0, sizeof(*data));
-    get_time(data->time);
+    data->time = get_time();
 
     if (xQueueReceive(queues.dht11_buffer, dht11, 0)) {
         data->dht11_temperature = dht11_get_temperature(dht11);
@@ -127,7 +58,7 @@ void data_collection_task(void *pvParameter) {
             pdMS_TO_TICKS(portMAX_DELAY)
         );
         get_formated_data(&dht11, &ky037, &mq135, &data);
-        if (generate_mpack_data(data, &packet)) {
+        if (generate_message_data(data, &packet)) {
             if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                 ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                 free(packet.payload);

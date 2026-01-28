@@ -6,6 +6,8 @@
 #define CORE_0          0
 #define CORE_1          1
 
+#define STACK_FSM       8000
+#define STACK_CONVERTER 8000
 #define STACK_DHT11     8000
 #define STACK_MIC       8000
 #define STACK_COLLECTOR 8000
@@ -24,6 +26,9 @@
 
 /* Estructura que contiene todas las colas del sistema */
 typedef struct {
+    QueueHandle_t general;
+    QueueHandle_t flag;
+    QueueHandle_t event;
     QueueHandle_t data_buffer;
     QueueHandle_t alert_buffer;
     QueueHandle_t monitor_buffer;
@@ -45,6 +50,8 @@ typedef struct {
 
 /* Estructura que contiene todos los task handle */
 typedef struct {
+    TaskHandle_t fsm_handle;
+    TaskHandle_t converter_handle;
     TaskHandle_t dht11_handle;
     TaskHandle_t ky037_handle;
     TaskHandle_t mq135_handle;
@@ -57,6 +64,14 @@ typedef struct {
 
 /* Estructura que contiene todos los buffers para crear task estaticas */
 typedef struct {
+    struct {
+        StackType_t stack[STACK_FSM];
+        StaticTask_t tcb;
+    } fsm;
+    struct {
+        StackType_t stack[STACK_FSM];
+        StaticTask_t tcb;
+    } converter;
     struct {
         StackType_t stack[STACK_DHT11];
         StaticTask_t tcb;

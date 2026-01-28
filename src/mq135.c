@@ -20,7 +20,8 @@
 #include <math.h>
 #include <string.h>
 #include "System/system.h"
-#include "components/mpack/include/mpack.h"
+#include "mpack.h"
+#include "Message/message.h"
 #include "Time/time.h"
 
 
@@ -301,56 +302,6 @@ void mq135_print_diagnostics(float temperature_c, float humidity_percent) {
 }
 
 
-/**
- * @brief Funcion que genera un JSON con la temperatura inicial y la actual.
- *
- * Genera el JSON que sera enviado en caso de una alerta por aumento brusco de ppm.
- *
- * @param output_buffer String formateado en JSON.
- * @param buffer_size Tamaño del string.
- * @param alert Estructura con los valores iniciales y actuales.
- */
-static bool serialize_mpack_alert(mqtt_packet_t *packet, mq135_alert_t alert) {
-    packet->payload = NULL;
-    packet->len = 0;
-    size_t buffer_size = MPACK_MQ135_ALERT_SIZE;
-    packet->payload = malloc(buffer_size);
-
-    if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
-        return false;
-    }
-
-    char time[TIME_MAX_LEN];
-    char mac[MAC];
-    settings_get_node_mac(mac, sizeof(mac));
-    get_time(time);
-
-    mpack_writer_t writer;
-    mpack_writer_init(&writer, packet->payload, buffer_size);
-
-    mpack_start_map(&writer, 6);
-    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, mac);
-    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
-    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
-    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, time);
-    mpack_write_cstr(&writer, "co2_ppm_initial");   mpack_write_float(&writer, alert.co2ppm_i);
-    mpack_write_cstr(&writer, "co2_ppm_rightnow");  mpack_write_float(&writer, alert.co2ppm_a);
-    mpack_finish_map(&writer);
-
-    if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack -");
-        free(packet->payload);
-        packet->payload = NULL;
-        return false;
-    }
-
-    packet->len = mpack_writer_buffer_used(&writer);
-    return true;
-}
-
-
-
 
 void mq135_task(void *pvParameters) {
     static state_mq135_t state_mq135 = INIT_MQ135;
@@ -395,7 +346,7 @@ void mq135_task(void *pvParameters) {
                         state_mq135 = ALERT_MQ135;
                         alert.co2ppm_i = ema_ppm;
                         alert.co2ppm_a = ppm_actual;
-                        if (serialize_mpack_alert(&packet, alert)) {
+                        if (generate_message_alert_air(&packet, alert)) {
                             if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                                 ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                                 free(packet.payload);
@@ -412,7 +363,7 @@ void mq135_task(void *pvParameters) {
             case ALERT_MQ135:
                     if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                         state_mq135 = NORMAL_MQ135;
-                        if (serialize_mpack_alert(&packet, alert)) {
+                        if (generate_message_alert_air(&packet, alert)) {
                             if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                                 ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                                 free(packet.payload);

@@ -6,6 +6,7 @@
 #include "certs/ca_crt.h"
 #include "certs/client1_crt.h"
 #include "certs/client1_key.h"
+#include "Message/message.h"
 #include "System/system.h"
 
 
@@ -89,11 +90,11 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
 
             if (event->topic_len == strlen(topic_settings) &&
                 strncmp(event->topic, topic_settings, event->topic_len) == 0) {
-                if (!parse_mpack_settings(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo settings -");
+                if (!parse_message_setting(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo settings -");
                 }
             else if (event->topic_len == strlen(topic_handshake) &&
                      strncmp(event->topic, topic_handshake, event->topic_len) == 0) {
-                if (!parse_mpack_handshake(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo handshake -");
+                if (!parse_message_setting_ok(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo handshake -");
                      }
             break;
         }

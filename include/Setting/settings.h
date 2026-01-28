@@ -53,11 +53,58 @@
 #define CMD_HELP                     "HELP"
 
 
+typedef struct {
+    struct {
+        char mac_address[MAC];
+        char device_name[DEVICE_NAME];
+        uint32_t sample_rate;
+        uint8_t energy_mode;
+    } node;
+    struct {
+        char id_network[ID_NETWORK];
+        char id_edge[ID_EDGE];
+    } network;
+    struct {
+        uint8_t ssid[WIFI_SSID];
+        uint8_t ssid_len;
+        uint8_t password[WIFI_PASSWORD];
+        uint8_t pass_len;
+        char ip[WIFI_IP];
+    } wifi;
+    struct {
+        char uri[MQTT_URI];
+
+        // Publica
+        char topic_data[MAX_TOPIC];
+        char topic_alert_air[MAX_TOPIC];
+        char topic_alert_temp[MAX_TOPIC];
+        char topic_monitor[MAX_TOPIC];
+        char topic_settings[MAX_TOPIC];
+        char topic_settings_ok[MAX_TOPIC];
+        char topic_hub_firmware_ok[MAX_TOPIC];
+        char topic_handshake_to_edge[MAX_TOPIC];
+
+        // Escucha
+        char topic_edge_state[MAX_TOPIC];
+        char topic_edge_handshake[MAX_TOPIC];
+        char topic_heartbeat[MAX_TOPIC];
+        char topic_new_firmware[MAX_TOPIC];
+        char topic_new_settings[MAX_TOPIC];
+        char topic_edge_setting_ok[MAX_TOPIC];
+        char topic_delete_hub[MAX_TOPIC];
+        char topic_active_hub[MAX_TOPIC];
+    } mqtt;
+} settings_t;
+
+
+extern settings_t settings;
+
 
 /* ---- Funciones de la API ---- */
 esp_err_t uart_init(void);
-bool parse_mpack_settings(const char *msg, size_t len);
-bool parse_mpack_handshake(const char *msg, size_t len);
+void safe_strcpy(char *dest, const char *src, size_t dest_size);
+void safe_string_copy(char* dest, const char* src, size_t size);
+esp_err_t setting_save_to_nvs(void);
 
 void send_settings_task(void *);
 void settings_init(void);
@@ -66,6 +113,7 @@ void settings_get_node_mac(char* dest, size_t dest_size);
 void settings_get_node_device_name(char* dest, size_t dest_size);
 uint32_t settings_get_node_sample_rate(void);
 uint8_t settings_get_node_energy_mode(void);
+void settings_get_network(char* dest, size_t dest_size);
 void settings_get_wifi_ssid(uint8_t* dest, size_t dest_size);
 uint8_t settings_get_wifi_ssid_len(void);
 void settings_get_wifi_password(uint8_t* dest, size_t dest_size);
