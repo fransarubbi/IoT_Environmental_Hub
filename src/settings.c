@@ -116,9 +116,9 @@ uint32_t settings_get_node_sample_rate(void) {
     return val;
 }
 
-uint8_t settings_get_node_energy_mode(void) {
+energy_mode_t settings_get_node_energy_mode(void) {
     lock();
-    uint8_t val = settings.node.energy_mode;
+    energy_mode_t val = settings.node.energy_mode;
     unlock();
     return val;
 }
@@ -358,14 +358,14 @@ static void show_help(void) {
     uart_send_text("| EDGE <id_edge>               - Configura el id del edge al que se conectara            |\r\n");
     uart_send_text("| NAME <name>                  - Configura nombre del dispositivo                        |\r\n");
     uart_send_text("| SAMPLE <rate>                - Configura frecuencia de envio de datos                  |\r\n");
-    uart_send_text("| E_MODE <energy>              - Configura modo de energia                               |\r\n");
+    uart_send_text("| ENERGY <energy>              - Configura modo de energia                               |\r\n");
     uart_send_text("| SHOW                         - Muestra configuracion actual                            |\r\n");
     uart_send_text("| EXIT                         - Salir                                                   |\r\n");
     uart_send_text("| HELP                         - Muestra mensaje de ayuda                                |\r\n");
     uart_send_text("| ====================================================================================== |\r\n");
     uart_send_text("| Info: SAMPLE setea cada cuantos minutos se envian los datos                            |\r\n");
-    uart_send_text("| Info: E_MODE [0 = Bajo consumo, 1 = Alto consumo]                                      |\r\n");
-    uart_send_text("| Info: Debe ingresar mqtts:// obligatoriamente en la uri de MQTT                        |\r\n");
+    uart_send_text("| Info: ENERGY [0 = Bajo consumo, 1 = Balanceado, 2 = Performance]                       |\r\n");
+    uart_send_text("| Info: Debe ingresar el prefijo mqtts:// obligatoriamente en la uri de MQTT             |\r\n");
     uart_send_text("| ====================================================================================== |\r\n\r\n");
 }
 
@@ -440,7 +440,7 @@ static bool setting_is_device_configured(void) {
         && strlen(settings.mqtt.uri) > 0 && strlen(settings.node.device_name) > 0
         && strlen(settings.network.id_network) > 0 && strlen(settings.network.id_edge) > 0
         && settings.node.sample_rate > 0 &&
-        (settings.node.energy_mode == 0 || settings.node.energy_mode == 1)) {
+        (settings.node.energy_mode == 0 || settings.node.energy_mode == 1 || settings.node.energy_mode == 2)) {
         return true;
         }
     return false;
@@ -599,9 +599,6 @@ static bool process_command(const char *command) {
         }
         safe_strcpy(settings.network.id_network, param, sizeof(settings.network.id_network));
         uart_send_text("- INFO: Red configurada correctamente -\r\n");
-
-        // todo
-
         return false;
     }
 
@@ -654,13 +651,21 @@ static bool process_command(const char *command) {
         if (endptr == param || (errno == ERANGE)) {
             uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
         }
-        if (val == 0 || val == 1) {
-            settings.node.energy_mode = val;
-            if (val) set_cpu_frequency(MAX_FREQ, false);
-            else set_cpu_frequency(MIN_FREQ, true);
-            uart_send_text("- INFO: Modo de energia configurado correctamente -\r\n");
-        } else {
-            uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
+        switch (val) {
+            case 0: settings.node.energy_mode = val;
+                    set_cpu_frequency(MIN_FREQ, true);
+                    uart_send_text("- INFO: Modo de energia configurado correctamente. LOW_CONSUMPTION -\r\n");
+                    break;
+            case 1: settings.node.energy_mode = val;
+                    set_cpu_frequency(MID_FREQ, false);
+                    uart_send_text("- INFO: Modo de energia configurado correctamente. BALANCED -\r\n");
+                    break;
+            case 2: settings.node.energy_mode = val;
+                    set_cpu_frequency(MAX_FREQ, false);
+                    uart_send_text("- INFO: Modo de energia configurado correctamente. PERFORMANCE -\r\n");
+                    break;
+            default: uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
+                     break;
         }
         return false;
     }

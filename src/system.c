@@ -23,9 +23,9 @@ static const char *TAG = "System";
  * retorno fue false, el sistema se reiniciara.
  */
 bool init_queues(void) {
-    queues.general         = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.flag            = xQueueCreate(QUEUE_LENGTH, sizeof(uint32_t));
-    queues.event           = xQueueCreate(QUEUE_LENGTH, sizeof(int));
+    queues.general         = xQueueCreate(QUEUE_GENERAL, sizeof(mqtt_packet_t));
+    queues.flag            = xQueueCreate(QUEUE_FLAG, sizeof(uint32_t));
+    queues.event           = xQueueCreate(QUEUE_EVENT, sizeof(int));
     queues.data_buffer     = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
     queues.alert_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
     queues.monitor_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));

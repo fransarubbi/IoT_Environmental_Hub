@@ -16,8 +16,12 @@
 #define STACK_MQ135     8000
 #define STACK_SEND_SETT 8000
 
-#define QUEUE_LENGTH 100
-#define QUEUE 2
+
+#define QUEUE_GENERAL   10
+#define QUEUE_FLAG      5
+#define QUEUE_EVENT     5
+#define QUEUE_LENGTH    100
+#define QUEUE           5
 #define TIME_SETUP 240000
 
 #include "freertos/FreeRTOS.h"

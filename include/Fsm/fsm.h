@@ -2,7 +2,6 @@
 #define FSM_H
 
 #include <stdint.h>
-#include <stdatomic.h>
 
 #define TIMEOUT_INIT 0x01                // Flag de timeout en INIT_SYSTEM
 #define STATE_SAFE_MODE 0x02             // Flag de mensaje de estado "SAFE_MODE"
@@ -21,6 +20,8 @@
 #define UPDATE_FLAG 0x4000               // Flag de actualizacion de firmware disponible
 #define UPDATE_OK 0x8000                 // Flag de actualizacion de firmware correcta
 
+#define NOTIFY_CMD_START  0x01
+#define NOTIFY_CMD_STOP   0x02
 
 typedef enum {
     CHECK_FIRMWARE,
@@ -85,7 +86,7 @@ typedef enum {
 
 typedef struct {
     State state;
-    atomic_uint_fast32_t flag;
+    uint32_t flag;
 } Fsm;
 
 void fsm_task(void *pvParameter);

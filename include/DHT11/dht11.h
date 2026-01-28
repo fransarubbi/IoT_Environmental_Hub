@@ -5,7 +5,9 @@
 #define DHT11_PIN                  GPIO_NUM_4      // Pin 4
 #define DHT11_START_SIGNAL_LOW     20000    // 20 ms señal baja de inicio
 #define DHT11_START_SIGNAL_HIGH    40       // 30 micro seg señal alta de inicio
-#define DHT11_DELAY                10000    // 10 seg
+#define DHT11_LOW_DELAY            10000    // 10 seg
+#define DHT11_BALANCED_DELAY       5000     // 5 seg
+#define DHT11_PERFORMANCE_DELAY    2000     // 2 seg
 #define STACK_DHT11                8000
 
 #define DHT11_RMT_CHANNEL          RMT_CHANNEL_0   // Canal RMT
@@ -45,8 +47,8 @@ typedef struct {
 /* ===== API ===== */
 esp_err_t dht11_init(void);
 void dht11_task(void *);
-uint8_t dht11_get_temperature(dht11_data_t*);
-uint8_t dht11_get_humidity(dht11_data_t*);
+uint8_t dht11_get_temperature(const dht11_data_t*);
+uint8_t dht11_get_humidity(const dht11_data_t*);
 size_t dht11_struct_get_size(void);
 
 

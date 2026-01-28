@@ -66,7 +66,7 @@ static void event_processor(Fsm *fsm, const Event event) {
 void fsm_task(void *pvParameter) {
     Fsm fsm;
     fsm.state = CHECK_FIRMWARE;
-    fsm.flag = ATOMIC_VAR_INIT(0);
+    fsm.flag = 0;
     Event event;
 
     action_entry_check_firmware(&fsm);
@@ -86,9 +86,7 @@ void action_entry_check_firmware(Fsm *fsm) {
 
 void action_entry_update(Fsm *fsm) {
     if (ota_from_github() == ESP_OK) {
-        uint32_t flag = atomic_load(&fsm->flag);
-        flag |= UPDATE_FLAG;
-        atomic_store(&fsm->flag, flag);
+        uint32_t flag = UPDATE_FLAG;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     } else {
         mqtt_packet_t packet;

@@ -13,6 +13,7 @@
 #define MQTTS_PREFIX                  "mqtts://"
 #define MQTTS_PREFIX_LEN              (sizeof(MQTTS_PREFIX) - 1)
 #define MAX_FREQ                      240
+#define MID_FREQ                      160
 #define MIN_FREQ                      80
 #define MPACK_SETTINGS_SIZE           1024
 
@@ -20,7 +21,6 @@
 #define FLAG_CLIENT_VALID    (1 << 1)  // 0000 0010 (Hex: 0x02)
 #define FLAG_ITS_ME          (1 << 2)  // 0000 0100 (Hex: 0x04)
 #define FLAG_ITS_ALL         (1 << 3)  // 0000 1000 (Hex: 0x08)
-
 
 
 /* ---- Macros de longitudes ---- */
@@ -45,7 +45,7 @@
 #define CMD_SET_EDGE                 "EDGE"
 #define CMD_SET_DEVICE_NAME          "NAME"
 #define CMD_SET_SAMPLE               "SAMPLE"
-#define CMD_SET_ENERGY_MODE          "E_MODE"
+#define CMD_SET_ENERGY_MODE          "ENERGY"
 #define CMD_SHOW_CONFIG              "SHOW"
 #define CMD_EXIT                     "EXIT"
 #define CMD_CHANGE                   "Y"
@@ -53,12 +53,19 @@
 #define CMD_HELP                     "HELP"
 
 
+typedef enum {
+    LOW_CONSUMPTION = 0,
+    BALANCED = 1,
+    PERFORMANCE = 2,
+} energy_mode_t;
+
+
 typedef struct {
     struct {
         char mac_address[MAC];
         char device_name[DEVICE_NAME];
         uint32_t sample_rate;
-        uint8_t energy_mode;
+        energy_mode_t energy_mode;
     } node;
     struct {
         char id_network[ID_NETWORK];
@@ -112,7 +119,7 @@ void settings_set_node_mac(const char* mac);
 void settings_get_node_mac(char* dest, size_t dest_size);
 void settings_get_node_device_name(char* dest, size_t dest_size);
 uint32_t settings_get_node_sample_rate(void);
-uint8_t settings_get_node_energy_mode(void);
+energy_mode_t settings_get_node_energy_mode(void);
 void settings_get_network(char* dest, size_t dest_size);
 void settings_get_wifi_ssid(uint8_t* dest, size_t dest_size);
 uint8_t settings_get_wifi_ssid_len(void);

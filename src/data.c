@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "System/system.h"
 #include "mpack.h"
+#include "Fsm/fsm.h"
 #include "Message/message.h"
 
 
@@ -49,25 +50,97 @@ void data_collection_task(void *pvParameter) {
     static mq135_data_t mq135;
     mqtt_packet_t packet;
 
+    uint32_t notification = 0;
+
     while (1) {
-        xEventGroupWaitBits(
-            event_group.collector_events,
-            ALL_DATA_READY,
-            pdTRUE,  // Limpiar bits despues de leer
-            pdTRUE,  // Esperar todos los bits
-            pdMS_TO_TICKS(portMAX_DELAY)
-        );
-        get_formated_data(&dht11, &ky037, &mq135, &data);
-        if (generate_message_data(data, &packet)) {
-            if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                free(packet.payload);
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+        if (notification & NOTIFY_CMD_START) {
+            bool running = true;
+
+            while (running) {
+
+                xEventGroupWaitBits(event_group.collector_events,
+                    ALL_DATA_READY,
+                    pdTRUE,  // Limpiar bits despues de leer
+                    pdTRUE,  // Esperar todos los bits
+                    pdMS_TO_TICKS(portMAX_DELAY)
+                    );
+                get_formated_data(&dht11, &ky037, &mq135, &data);
+                if (generate_message_data(data, &packet)) {
+                    if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        free(packet.payload);
+                    }
+                } else {
+                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                }
+
+                uint32_t stop_signal = 0;
+                if (xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0) == pdTRUE) {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        ESP_LOGW("Data", "WARNING: Señal STOP recibida. Suspendiendo...");
+                        running = false;
+                    }
+                }
             }
-        } else {
-            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
         }
     }
 }
+
+/*
+ *void worker_task(void *pvParameters) {
+    uint32_t notification_value = 0;
+
+    ESP_LOGI(TAG, "Tarea creada. Entrando en modo SUSPENDIDO (esperando start)...");
+
+    // --- BUCLE EXTERNO (Ciclo de Vida) ---
+    while (1) {
+
+        // 1. ESTADO DORMIDO:
+        // Bloqueamos la tarea indefinidamente (portMAX_DELAY) hasta recibir START.
+        // xTaskNotifyWait limpia los bits al salir.
+        xTaskNotifyWait(0,                // No limpiar bits al entrar
+                        ULONG_MAX,        // Limpiar todos los bits al salir
+                        &notification_value,
+                        portMAX_DELAY);   // Esperar para siempre
+
+        // Verificamos si la señal fue START
+        if (notification_value & NOTIFY_CMD_START) {
+            ESP_LOGI(TAG, "Señal START recibida. Activando modo TRABAJO.");
+
+            // --- BUCLE INTERNO (Modo Activo) ---
+            bool running = true;
+
+            while (running) {
+                // ------------------------------------------------
+                // A. TU CÓDIGO DE TRABAJO NORMAL AQUÍ
+                // ------------------------------------------------
+                ESP_LOGI(TAG, "Trabajando... (ping, calculo, lectura sensor)");
+                vTaskDelay(pdMS_TO_TICKS(1000)); // Simula trabajo
+
+                // ------------------------------------------------
+                // B. CHEQUEO NO BLOQUEANTE DE PARADA
+                // ------------------------------------------------
+                // Verificamos si hay una nueva notificación pendiente con timeout 0.
+                uint32_t stop_signal = 0;
+                if (xTaskNotifyWait(0,
+                                    ULONG_MAX,
+                                    &stop_signal,
+                                    0) == pdTRUE) { // TimeOut = 0 (No bloquea)
+
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        ESP_LOGW(TAG, "Señal STOP recibida. Suspendiendo...");
+                        running = false; // Rompe el bucle interno
+                    }
+                }
+            }
+
+            ESP_LOGI(TAG, "Volviendo a dormir...");
+        }
+    }
+}
+ */
 
 
 /**

@@ -9,6 +9,7 @@
 #include "Monitor/monitor.h"
 #include "MQTT/mqtt.h"
 #include "mpack.h"
+#include "Fsm/fsm.h"
 #include "Message/message.h"
 
 
@@ -42,22 +43,39 @@ static void get_formated_data(stats_monitor_t *stats) {
  * @param pvParameter
  */
 void stack_monitor_task(void *pvParameter) {
-    TickType_t last_wake_time = xTaskGetTickCount();
     mqtt_packet_t packet;
     stats_monitor_t stats;
+    uint32_t notification = 0;
 
     while (1) {
-        get_formated_data(&stats);
-        if (generate_message_monitor(&packet, stats)) {
-            if (xQueueSend(queues.monitor_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                free(packet.payload);
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+        if (notification & NOTIFY_CMD_START) {
+            bool running = true;
+
+            while (running) {
+                uint32_t rate_min = settings_get_node_sample_rate();
+                if (rate_min == 0) rate_min = 1;
+
+                TickType_t dynamic_delay = pdMS_TO_TICKS(rate_min * 2 * 60000);
+
+                get_formated_data(&stats);
+                if (generate_message_monitor(&packet, stats)) {
+                    if (xQueueSend(queues.monitor_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        free(packet.payload);
+                    }
+                }
+
+                uint32_t stop_signal = 0;
+                BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, dynamic_delay);
+
+                if (result == pdTRUE) {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        running = false;
+                    }
+                }
             }
         }
-        else {
-            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
-        }
-        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(settings_get_node_sample_rate() * 2 * MS_TO_MIN));
     }
 }
 
