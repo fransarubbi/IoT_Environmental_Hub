@@ -348,7 +348,11 @@ bool generate_message_settings(mqtt_packet_t *packet) {
 
 // --------------------------------------------------------------------------------------
 
-// todo parsear mas mensajes
+
+bool parse_message_state_normal(const char* data, size_t len) {
+    return true;
+}
+
 
 bool parse_message_state_balance(const char* data, size_t len) {
     uint8_t flags = 0x0;
@@ -412,6 +416,26 @@ bool parse_message_state_balance(const char* data, size_t len) {
     }
 
     return (mpack_reader_destroy(&reader) == mpack_ok);
+}
+
+
+bool parse_message_state_safe(const char* data, size_t len) {
+    return true;
+}
+
+
+bool parse_message_handshake(const char* data, size_t len) {
+    return true;
+}
+
+
+bool parse_message_heartbeat(const char* data, size_t len) {
+    return true;
+}
+
+
+bool parse_message_new_firmware(const char* data, size_t len) {
+    return true;
 }
 
 
@@ -549,4 +573,14 @@ bool parse_message_setting_ok(const char* data, size_t len) {
     }
 
     return (mpack_reader_destroy(&reader) == mpack_ok);
+}
+
+
+bool parse_message_delete(const char* data, size_t len) {
+    return true;
+}
+
+
+bool parse_message_active(const char* data, size_t len) {
+    return true;
 }

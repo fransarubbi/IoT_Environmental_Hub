@@ -98,21 +98,29 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             break;
 
         case MQTT_EVENT_DATA: {
-            char msg[event->data_len + 1];
-            memcpy(msg, event->data, event->data_len);
-            msg[event->data_len] = '\0';
+            mqtt_msg_to_parse_t new_msg;
 
-            settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
-            //settings_get_mqtt_topic_handshake(topic_handshake, sizeof(topic_handshake));
+            if (event->topic_len < MAX_TOPIC) {
+                memcpy(new_msg.topic, event->topic, event->topic_len);
+                new_msg.topic[event->topic_len] = '\0';
+            } else {
+                break;
+            }
 
-            if (event->topic_len == strlen(topic_settings) &&
-                strncmp(event->topic, topic_settings, event->topic_len) == 0) {
-                if (!parse_message_setting(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo settings -");
-                }
-            else if (event->topic_len == strlen(topic_handshake) &&
-                     strncmp(event->topic, topic_handshake, event->topic_len) == 0) {
-                if (!parse_message_setting_ok(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo handshake -");
-                     }
+            new_msg.payload = malloc(event->data_len + 1);
+            if (new_msg.payload == NULL) {
+                ESP_LOGE(TAG, "ERROR: No hay RAM para copiar mensaje MQTT");
+                break;
+            }
+
+            memcpy(new_msg.payload, event->data, event->data_len);
+            new_msg.payload[event->data_len] = '\0';
+            new_msg.len = event->data_len;
+
+            if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(10)) != pdTRUE) {
+                ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje.");
+                free(new_msg.payload);  // Liberar si no se pudo encolar
+            }
             break;
         }
         default:

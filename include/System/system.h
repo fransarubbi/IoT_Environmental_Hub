@@ -8,6 +8,7 @@
 
 #define STACK_FSM       8000
 #define STACK_HEALTH    8000
+#define STACK_PARSER    8000
 #define STACK_CONVERTER 8000
 #define STACK_DHT11     8000
 #define STACK_MIC       8000
@@ -19,6 +20,7 @@
 
 
 #define QUEUE_HEALTH    5
+#define QUEUE_PARSER    5
 #define QUEUE_GENERAL   10
 #define QUEUE_FLAG      5
 #define QUEUE_EVENT     5
@@ -32,6 +34,7 @@
 
 /* Estructura que contiene todas las colas del sistema */
 typedef struct {
+    QueueHandle_t parser;
     QueueHandle_t health;
     QueueHandle_t general;
     QueueHandle_t flag;
@@ -60,6 +63,7 @@ typedef struct {
 typedef struct {
     TaskHandle_t fsm_handle;
     TaskHandle_t health_handle;
+    TaskHandle_t parser_handle;
     TaskHandle_t converter_handle;
     TaskHandle_t dht11_handle;
     TaskHandle_t ky037_handle;
@@ -81,6 +85,10 @@ typedef struct {
         StackType_t stack[STACK_HEALTH];
         StaticTask_t tcb;
     } health;
+    struct {
+        StackType_t stack[STACK_PARSER];
+        StaticTask_t tcb;
+    } parser;
     struct {
         StackType_t stack[STACK_FSM];
         StaticTask_t tcb;

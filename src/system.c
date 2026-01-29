@@ -12,6 +12,7 @@
 #include <esp_log.h>
 #include "Converter/converter.h"
 #include "Healthscore/healthscore.h"
+#include "Parser/parser.h"
 
 
 static const char *TAG = "System";
@@ -23,6 +24,7 @@ static const char *TAG = "System";
  * retorno fue false, el sistema se reiniciara.
  */
 bool init_queues(void) {
+    queues.parser            = xQueueCreate(QUEUE_PARSER, sizeof(mqtt_msg_to_parse_t));
     queues.health            = xQueueCreate(QUEUE_HEALTH, sizeof(health_event_t));
     queues.general           = xQueueCreate(QUEUE_GENERAL, sizeof(mqtt_packet_t));
     queues.flag              = xQueueCreate(QUEUE_FLAG, sizeof(uint32_t));
@@ -104,6 +106,7 @@ void wait_for_sensors(void) {
 void start_application_tasks(void) {
     task_handle.fsm_handle = xTaskCreateStaticPinnedToCore(fsm_task, "FSM", STACK_FSM, NULL, PRIO_SENSORS, mem.fsm.stack, &mem.fsm.tcb, CORE_1);
     task_handle.health_handle = xTaskCreateStaticPinnedToCore(health_score_task, "Health", STACK_HEALTH, NULL, PRIO_SENSORS, mem.health.stack, &mem.health.tcb, CORE_1);
+    task_handle.parser_handle = xTaskCreateStaticPinnedToCore(parser_task, "Parser", STACK_PARSER, NULL, PRIO_SENSORS, mem.parser.stack, &mem.parser.tcb, CORE_1);
     task_handle.converter_handle = xTaskCreateStaticPinnedToCore(flag_converter_task, "Converter", STACK_CONVERTER, NULL, PRIO_SENSORS, mem.converter.stack, &mem.converter.tcb, CORE_1);
     task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_1);
     task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);

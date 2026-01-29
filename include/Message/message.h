@@ -25,9 +25,15 @@ bool generate_message_balance_mode_handshake(mqtt_packet_t *packet);
 bool generate_message_settings(mqtt_packet_t *packet);
 
 
-
+bool parse_message_state_normal(const char* data, size_t len);
+bool parse_message_state_balance(const char* data, size_t len);
+bool parse_message_state_safe(const char* data, size_t len);
+bool parse_message_handshake(const char* data, size_t len);
+bool parse_message_heartbeat(const char* data, size_t len);
+bool parse_message_new_firmware(const char* data, size_t len);
 bool parse_message_setting(const char* data, size_t len);
 bool parse_message_setting_ok(const char* data, size_t len);
-
+bool parse_message_delete(const char* data, size_t len);
+bool parse_message_active(const char* data, size_t len);
 
 #endif //MESSAGE_H

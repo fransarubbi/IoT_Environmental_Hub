@@ -17,6 +17,7 @@ idf_component_register(
         "converter.c"
         "timer.c"
         "healthscore.c"
+        "parser.c"
         INCLUDE_DIRS
         "."
         REQUIRES
