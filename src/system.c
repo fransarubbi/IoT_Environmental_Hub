@@ -10,8 +10,8 @@
 #include "Monitor/monitor.h"
 #include "Fsm/fsm.h"
 #include <esp_log.h>
-
 #include "Converter/converter.h"
+#include "Healthscore/healthscore.h"
 
 
 static const char *TAG = "System";
@@ -23,6 +23,7 @@ static const char *TAG = "System";
  * retorno fue false, el sistema se reiniciara.
  */
 bool init_queues(void) {
+    queues.health            = xQueueCreate(QUEUE_HEALTH, sizeof(health_event_t));
     queues.general           = xQueueCreate(QUEUE_GENERAL, sizeof(mqtt_packet_t));
     queues.flag              = xQueueCreate(QUEUE_FLAG, sizeof(uint32_t));
     queues.event             = xQueueCreate(QUEUE_EVENT, sizeof(int));
@@ -36,10 +37,10 @@ bool init_queues(void) {
     queues.mq135_buffer      = xQueueCreate(QUEUE, sizeof(mq135_data_t));
     queues.dht11_to_mq135    = xQueueCreate(QUEUE, dht11_struct_get_size());
 
-    if (!queues.general || !queues.flag || !queues.event || !queues.data_buffer ||
-        !queues.monitor_buffer || !queues.dht11_buffer || !queues.ky037_buffer ||
-        !queues.mq135_buffer || !queues.dht11_to_mq135 || !queues.alert_air_buffer ||
-        !queues.alert_temp_buffer || !queues.settings_buffer) {
+    if (!queues.health || !queues.general || !queues.flag || !queues.event ||
+        !queues.data_buffer || !queues.monitor_buffer || !queues.dht11_buffer ||
+        !queues.ky037_buffer || !queues.mq135_buffer || !queues.dht11_to_mq135 ||
+        !queues.alert_air_buffer || !queues.alert_temp_buffer || !queues.settings_buffer) {
         ESP_LOGE(TAG, "- ERROR: Error creando queues -");
         return false;
     }
@@ -102,6 +103,7 @@ void wait_for_sensors(void) {
  */
 void start_application_tasks(void) {
     task_handle.fsm_handle = xTaskCreateStaticPinnedToCore(fsm_task, "FSM", STACK_FSM, NULL, PRIO_SENSORS, mem.fsm.stack, &mem.fsm.tcb, CORE_1);
+    task_handle.health_handle = xTaskCreateStaticPinnedToCore(health_score_task, "Health", STACK_HEALTH, NULL, PRIO_SENSORS, mem.health.stack, &mem.health.tcb, CORE_1);
     task_handle.converter_handle = xTaskCreateStaticPinnedToCore(flag_converter_task, "Converter", STACK_CONVERTER, NULL, PRIO_SENSORS, mem.converter.stack, &mem.converter.tcb, CORE_1);
     task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_1);
     task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);

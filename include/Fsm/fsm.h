@@ -17,6 +17,7 @@
 #define HEALTH_SCORE_DEGRADED 0x400      // Flag de salud de la conexion degradada
 #define HEALTH_SCORE_CRITICAL 0x800      // Flag de salud de la conexion critica
 #define HEALTH_SCORE_UNAVAILABLE 0x1000  // Flag de salud de la conexion nefasta
+#define HEALTH_SCORE_HEALTHY     0x2000  // Flag de salud de la conexion saludable
 #define TIMEOUT_SAFE_MODE 0x2000         // Flag de fin de timer para SAFE_MODE
 #define UPDATE_FLAG 0x4000               // Flag de actualizacion de firmware disponible
 #define UPDATE_OK 0x8000                 // Flag de actualizacion de firmware correcta

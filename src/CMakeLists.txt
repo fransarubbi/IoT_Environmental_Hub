@@ -16,6 +16,7 @@ idf_component_register(
         "message.c"
         "converter.c"
         "timer.c"
+        "healthscore.c"
         INCLUDE_DIRS
         "."
         REQUIRES

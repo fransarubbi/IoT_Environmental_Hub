@@ -9,12 +9,37 @@
 #include "System/system.h"
 #include "mpack.h"
 #include "Fsm/fsm.h"
+#include "Healthscore/healthscore.h"
 #include "Message/message.h"
+
+
+
+
+static void update_health_score(int ret, int qos) {
+    if (ret == -1) {
+        const health_event_t event = {
+            .event = HEALTH_EVT_ERROR_SEND,
+            .msg_id = 0,
+            .timestamp = 0
+        };
+        xQueueSend(queues.health, &event, pdMS_TO_TICKS(0));
+    } else if (qos == 1) {
+        const health_event_t event = {
+            .event = HEALTH_EVT_MSG_SENT,
+            .msg_id = ret,
+            .timestamp = esp_timer_get_time()
+        };
+        xQueueSend(queues.health, &event, pdMS_TO_TICKS(0));
+    }
+}
 
 
 /**
  * @brief  Recolecta la informacion en el parametro data
  *
+ * @param dht11
+ * @param ky037
+ * @param mq135
  * @param data Puntero de tipo data_sensors_t que recibe la informacion. Para no generar una
  * copia de este campo, se usa un puntero y de esa forma buscar mas eficiencia.
  */
@@ -121,29 +146,34 @@ void data_publish_task(void *pvParameter) {
             continue;
         }
         if (xQueueReceive(queues.data_buffer, &packet_data, 0)) {
-            mqtt_publish(topic_data, packet_data.payload, (int)packet_data.len, 0, 0);
+            const esp_err_t ret = mqtt_publish(topic_data, packet_data.payload, (int)packet_data.len, QOS_DATA, NOT_RETAIN);
             free(packet_data.payload);
             did_work = true;
+            update_health_score(ret, QOS_DATA);
         }
         if (xQueueReceive(queues.monitor_buffer, &packet_monitor, 0)) {
-            mqtt_publish(topic_monitor, packet_monitor.payload, (int)packet_monitor.len, 0, 0);
+            const esp_err_t ret = mqtt_publish(topic_monitor, packet_monitor.payload, (int)packet_monitor.len, QOS_MONITOR, NOT_RETAIN);
             free(packet_monitor.payload);
             did_work = true;
+            update_health_score(ret, QOS_MONITOR);
         }
         if (xQueueReceive(queues.settings_buffer, &packet_settings, 0)) {
-            mqtt_publish(topic_settings, packet_settings.payload, (int)packet_settings.len, 2, 0);
+            const esp_err_t ret = mqtt_publish(topic_settings, packet_settings.payload, (int)packet_settings.len, QOS_SETTING, NOT_RETAIN);
             free(packet_settings.payload);
             did_work = true;
+            update_health_score(ret, QOS_SETTING);
         }
         if (xQueueReceive(queues.alert_air_buffer, &packet_alert, 0)) {
-            mqtt_publish(topic_alert_air, packet_alert.payload, (int)packet_alert.len, 1, 0);
+            const esp_err_t ret = mqtt_publish(topic_alert_air, packet_alert.payload, (int)packet_alert.len, QOS_ALERT, NOT_RETAIN);
             free(packet_alert.payload);
             did_work = true;
+            update_health_score(ret, QOS_ALERT);
         }
         if (xQueueReceive(queues.alert_temp_buffer, &packet_alert, 0)) {
-            mqtt_publish(topic_alert_temp, packet_alert.payload, (int)packet_alert.len, 1, 0);
+            const esp_err_t ret = mqtt_publish(topic_alert_temp, packet_alert.payload, (int)packet_alert.len, QOS_ALERT, NOT_RETAIN);
             free(packet_alert.payload);
             did_work = true;
+            update_health_score(ret, QOS_ALERT);
         }
         if (!did_work) {
             vTaskDelay(pdMS_TO_TICKS(10));

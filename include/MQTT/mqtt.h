@@ -15,7 +15,7 @@ typedef struct {
 
 
 esp_err_t mqtt_init(void);
-esp_err_t mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain);
+int mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain);
 
 
 #endif // MQTT_CLIENT_H

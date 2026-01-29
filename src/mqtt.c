@@ -3,9 +3,12 @@
 #include "Setting/settings.h"
 #include "esp_log.h"
 #include <esp_mac.h>
+#include <esp_timer.h>
+
 #include "certs/ca_crt.h"
 #include "certs/client1_crt.h"
 #include "certs/client1_key.h"
+#include "Healthscore/healthscore.h"
 #include "Message/message.h"
 #include "System/system.h"
 
@@ -59,15 +62,29 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             esp_mqtt_client_subscribe(event->client, topic_handshake, 1);
             break;
 
-        case MQTT_EVENT_DISCONNECTED:
+        case MQTT_EVENT_DISCONNECTED: {
             xEventGroupClearBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupSetBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
+            const health_event_t health = {
+                .event = HEALTH_EVT_DISCONNECT,
+                .msg_id = 0,
+                .timestamp = 0
+            };
+            xQueueSend(queues.health, &health, pdMS_TO_TICKS(0));
             ESP_LOGW(TAG, "- WARNING: Desconectado del broker -");
             break;
+        }
 
-        case MQTT_EVENT_PUBLISHED:
+        case MQTT_EVENT_PUBLISHED: {
+            const health_event_t health = {
+                .event = HEALTH_EVT_PUBACK,
+                .msg_id = event->msg_id,
+                .timestamp = esp_timer_get_time()
+            };
+            xQueueSend(queues.health, &health, pdMS_TO_TICKS(0));
             ESP_LOGI(TAG, "- INFO: Publicado msg_id = %d -", event->msg_id);
             break;
+        }
 
         case MQTT_EVENT_ERROR:
             ESP_LOGE(TAG, "- ERROR: Error tipo: %d -", event->error_handle->error_type);
@@ -182,11 +199,11 @@ esp_err_t mqtt_init(void) {
  * @param retain
  * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
  */
-esp_err_t mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain) {
-    if (!mqtt.client) return ESP_FAIL;
+int mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain) {
+    if (!mqtt.client) return -1;
 
     int msg_id = esp_mqtt_client_publish(mqtt.client, topic,payload,
                                          len, qos, retain);
-    return (msg_id >= 0) ? ESP_OK : ESP_FAIL;
+    return msg_id;
 }
 
