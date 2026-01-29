@@ -7,6 +7,14 @@
 #include "Monitor/monitor.h"
 #include "Setting/settings.h"
 
+#define NOTIFY_CMD_DESTROY  0x02
+
+#define FLAG_SERVER_VALID    0x01
+#define FLAG_ITS_ME          0x02
+#define FLAG_ITS_ALL         0x04
+#define FLAG_STATE_OK        0x08
+#define FLAG_EPOCH_VALID     0x10
+
 bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet);
 bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert);
 bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t temp_a);

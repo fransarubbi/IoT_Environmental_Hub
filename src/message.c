@@ -6,6 +6,7 @@
 #include "mpack.h"
 #include "Data/data.h"
 #include "DHT11/dht11.h"
+#include "Fsm/fsm.h"
 #include "MQ135/mq135.h"
 #include "Monitor/monitor.h"
 #include "Setting/settings.h"
@@ -349,6 +350,71 @@ bool generate_message_settings(mqtt_packet_t *packet) {
 
 // todo parsear mas mensajes
 
+bool parse_message_state_balance(const char* data, size_t len) {
+    uint8_t flags = 0x0;
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char key[32];
+    char value[32];
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "Server0") == 0) {
+                flags |= FLAG_SERVER_VALID;
+            }
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if ((flags == 0x01) && (strcmp(value, "all") == 0)) {
+                flags |= FLAG_ITS_ALL;
+            }
+        }
+        else if (strcmp(key, "state") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if ((flags == 0x06) && (strcmp(value, "balance_mode") == 0)) {
+                flags |= FLAG_STATE_OK;
+            }
+        }
+        else if (strcmp(key, "balance_epoch") == 0) {
+            uint32_t val = mpack_expect_u32(&reader);
+            if (flags == 0x0d) {
+                flags |= FLAG_EPOCH_VALID;
+                uint32_t balance = settings_get_balance_epoch();
+                if (balance < val) {
+                    settings_set_balance_epoch(val);
+                    setting_save_to_nvs();
+                }
+            }
+        }
+        else if (strcmp(key, "duration") == 0) {
+            uint32_t val = mpack_expect_u32(&reader);
+            if (flags == 0x1d) {
+                uint32_t flag = STATE_BALANCE_MODE;
+                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+                atomic_store(&msg_data.duration, val);
+            }
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    return (mpack_reader_destroy(&reader) == mpack_ok);
+}
+
+
 bool parse_message_setting(const char* data, size_t len) {
     uint8_t flags = 0x0;
     mpack_reader_t reader;
@@ -469,7 +535,7 @@ bool parse_message_setting_ok(const char* data, size_t len) {
             mpack_expect_cstr(&reader, value, sizeof(value));
             if ((flags == 0x07) && (strcmp(value, "true") == 0)) {
                 if (task_handle.send_settings_handle != NULL) {
-                    xTaskNotifyGive(task_handle.send_settings_handle);
+                    xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_DESTROY, eSetBits);
                 }
             }
         }

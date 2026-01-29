@@ -33,6 +33,9 @@
 
 #define STACK_MQ135 8000
 #define MPACK_MQ135_ALERT_SIZE 1024
+#define MQ135_LOW_DELAY            10000    // 10 seg
+#define MQ135_BALANCED_DELAY       5000     // 5 seg
+#define MQ135_PERFORMANCE_DELAY    2000     // 2 seg
 
 /* ===== Estructura de datos ===== */
 typedef struct {

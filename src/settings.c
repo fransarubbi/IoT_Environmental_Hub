@@ -14,6 +14,7 @@
 #include "Data/data.h"
 #include "System/system.h"
 #include "mpack.h"
+#include "Fsm/fsm.h"
 #include "Message/message.h"
 #include "MQTT/mqtt.h"
 
@@ -89,6 +90,12 @@ void settings_set_wifi_ip(const char* ip) {
     unlock();
 }
 
+void settings_set_balance_epoch(const uint32_t balance) {
+    lock();
+    settings.network.balance_epoch = balance;
+    unlock();
+}
+
 
 /* ---- Getters ---- */
 void settings_get_node_mac(char* dest, size_t dest_size) {
@@ -107,6 +114,13 @@ void settings_get_network(char* dest, size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.network.id_network, dest_size);
     unlock();
+}
+
+uint32_t settings_get_balance_epoch(void) {
+    lock();
+    uint32_t val = settings.network.balance_epoch;
+    unlock();
+    return val;
 }
 
 uint32_t settings_get_node_sample_rate(void) {
@@ -215,9 +229,21 @@ void settings_get_mqtt_topic_settings(char* dest, size_t dest_size) {
     unlock();
 }
 
-void settings_get_mqtt_topic_edge_state(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_edge_state_balance(char* dest, size_t dest_size) {
     lock();
-    safe_string_copy(dest, settings.mqtt.topic_edge_state, dest_size);
+    safe_string_copy(dest, settings.mqtt.topic_edge_state_balance, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_edge_state_normal(char* dest, size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_edge_state_normal, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_edge_state_safe(char* dest, size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_edge_state_safe, dest_size);
     unlock();
 }
 
@@ -718,8 +744,14 @@ void create_mqtt_topics() {
     snprintf(settings.mqtt.topic_settings, sizeof(settings.mqtt.topic_settings),
         "iot/%s/hub/%s/setting", settings.network.id_network, settings.node.mac_address);
 
-    snprintf(settings.mqtt.topic_edge_state, sizeof(settings.mqtt.topic_edge_state),
-        "iot/%s/state", settings.network.id_edge);
+    snprintf(settings.mqtt.topic_edge_state_balance, sizeof(settings.mqtt.topic_edge_state_balance),
+        "iot/%s/state/balance", settings.network.id_edge);
+
+    snprintf(settings.mqtt.topic_edge_state_normal, sizeof(settings.mqtt.topic_edge_state_normal),
+        "iot/%s/state/normal", settings.network.id_edge);
+
+    snprintf(settings.mqtt.topic_edge_state_safe, sizeof(settings.mqtt.topic_edge_state_safe),
+        "iot/%s/state/safe", settings.network.id_edge);
 
     snprintf(settings.mqtt.topic_edge_handshake, sizeof(settings.mqtt.topic_edge_handshake),
         "iot/%s/handshake", settings.network.id_edge);
@@ -744,28 +776,43 @@ void create_mqtt_topics() {
 }
 
 
-
 /**
  * @brief Tarea de envio de mensaje de configuracion. Se autoelimina cuando recibe confirmacion.
  * @param pvParameter
  */
 void send_settings_task(void *pvParameter) {
-    const TickType_t loop_delay = pdMS_TO_TICKS(settings.node.sample_rate * 2 * MS_TO_MIN);
     mqtt_packet_t packet;
+    uint32_t notification = 0;
 
-    while (1) {
-        if (generate_message_settings(&packet)) {
-            if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                free(packet.payload);
+    xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+    if (notification & NOTIFY_CMD_START) {
+        while (1) {
+            uint32_t rate = settings.node.sample_rate;
+            if (rate == 0) rate = 1;
+            const TickType_t loop_delay = pdMS_TO_TICKS(rate * 2 * 60000);
+
+            if (generate_message_settings(&packet)) {
+                if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                    ESP_LOGW("Settings", "Cola llena, descartando paquete");
+                    free(packet.payload);
+                }
+            } else {
+                ESP_LOGE("Settings", "Error RAM al generar paquete");
+            }
+
+            uint32_t kill_signal = 0;
+            BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &kill_signal, loop_delay);
+
+            if (result == pdTRUE) {
+                if (kill_signal & NOTIFY_CMD_DESTROY) {
+                    ESP_LOGW("Settings", "Orden de destrucción recibida. Eliminando tarea...");
+                    break;
+                }
             }
         }
-        else {
-            ESP_LOGE(TAG, "- ERROR: Fallo al generar paquete (RAM) -");
-        }
-        uint32_t flag = ulTaskNotifyTake(pdTRUE, loop_delay);
-        if (flag > 0) vTaskDelete(NULL);
     }
+    vTaskDelete(NULL);
 }
 
 

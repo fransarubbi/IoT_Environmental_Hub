@@ -21,9 +21,19 @@
 #include <string.h>
 #include "System/system.h"
 #include "mpack.h"
+#include "Fsm/fsm.h"
 #include "Message/message.h"
-#include "Time/time.h"
 
+
+typedef struct {
+    state_mq135_t state_mq135;
+    uint32_t counter;
+    float ema_ppm;
+    float ema_error;
+    mq135_data_t mq135;
+    mq135_alert_t alert;
+    mqtt_packet_t packet;
+} data_t;
 
 
 static const char *TAG = "MQ135_CO2";
@@ -302,82 +312,134 @@ void mq135_print_diagnostics(float temperature_c, float humidity_percent) {
 }
 
 
+static void alert_analysis(data_t *data, const bool get_data) {
+
+    if (get_data) {
+        data->mq135.co2ppm = mq135_read_ppm((float)10, (float)20);
+    }
+    const float ppm_actual = data->mq135.co2ppm;
+    const float error_actual = ppm_actual - data->ema_ppm;
+    const float error_abs = fabsf(error_actual);
+    const float umbral_alerta_dinamico = (K_SENSIBILIDAD * data->ema_error) + UMBRAL_MINIMO_ABS;
+
+    switch (data->state_mq135) {
+        case INIT_MQ135:
+            data->ema_ppm = data->mq135.co2ppm;
+            data->ema_error = 0.0f;
+            data->state_mq135 = NORMAL_MQ135;
+            break;
+
+        case NORMAL_MQ135:
+            if (error_abs > umbral_alerta_dinamico) {
+                data->state_mq135 = ALERT_MQ135;
+                data->alert.co2ppm_i = data->ema_ppm;
+                data->alert.co2ppm_a = ppm_actual;
+                if (generate_message_alert_air(&data->packet, data->alert)) {
+                    if (xQueueSend(queues.alert_air_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        free(data->packet.payload);
+                    }
+                } else {
+                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                }
+            } else {
+                data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
+            }
+            data->ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * data->ema_ppm);
+            break;
+
+        case ALERT_MQ135:
+            if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
+                data->state_mq135 = NORMAL_MQ135;
+                if (generate_message_alert_air(&data->packet, data->alert)) {
+                    if (xQueueSend(queues.alert_air_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        free(data->packet.payload);
+                    }
+                } else {
+                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                }
+                data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
+            }
+            data->ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * data->ema_ppm);
+            break;
+    }
+}
+
+
+void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, data_t *data) {
+    data->mq135.co2ppm = mq135_read_ppm((float)10, (float)20);
+
+    if (*counter >= slices) {
+        *counter = 0;
+        xQueueSend(queues.mq135_buffer, &data->mq135, pdMS_TO_TICKS(100));
+        xEventGroupSetBits(event_group.collector_events, DHT11_DATA_READY);
+    }
+
+    alert_analysis(data, false);
+}
+
+
+void init_data(data_t *data) {
+    data->state_mq135 = INIT_MQ135;
+    data->counter = 0;
+    data->ema_ppm = 440.0f;
+    data->ema_error = 0.0f;
+}
+
 
 void mq135_task(void *pvParameters) {
-    static state_mq135_t state_mq135 = INIT_MQ135;
-    static uint32_t counter = 0;
-    static float ema_ppm = 440.0f;            // Media movil de la temperatura
-    static float ema_error = 0.0f;            // Media movil del error (ruido normal)
-    static mq135_data_t mq135;
-    static mq135_alert_t alert;
-    static dht11_data_t dht11;
-    mqtt_packet_t packet;
+    static data_t data;
+    init_data(&data);
 
-    TickType_t last_wake_time = xTaskGetTickCount();
+    uint32_t counter = 0;
+    uint32_t notification = 0;
+    TickType_t dynamic_delay = pdMS_TO_TICKS(DHT11_LOW_DELAY);
 
     while (1) {
-        uint32_t slices = (settings_get_node_sample_rate() * 60)/(DHT11_DELAY/1000);
-        counter++;
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
 
-        if (xQueueReceive(queues.dht11_to_mq135, &dht11, portMAX_DELAY)) {
-            mq135.co2ppm = mq135_read_ppm((float)dht11.temperature, (float)dht11.humidity);
-        }
-
-        if (counter >= slices) {
+        if (notification & NOTIFY_CMD_START) {
+            bool running = true;
             counter = 0;
-            xQueueSend(queues.mq135_buffer, &mq135, portMAX_DELAY);
-            xEventGroupSetBits(event_group.collector_events, MQ135_DATA_READY);
-        }
-        else {
-            float ppm_actual = mq135.co2ppm = mq135_read_ppm((float)dht11.temperature, (float)dht11.humidity);
-            float error_actual = ppm_actual - ema_ppm;
-            float error_abs = fabsf(error_actual);
-            float umbral_alerta_dinamico = (K_SENSIBILIDAD * ema_error) + UMBRAL_MINIMO_ABS;
 
-            switch (state_mq135) {
-            case INIT_MQ135:
-                    ema_ppm = mq135.co2ppm;
-                    ema_error = 0.0f;
-                    state_mq135 = NORMAL_MQ135;
-                    break;
+            while (running) {
+                uint32_t sample_rate_min = settings_get_node_sample_rate();
+                if (sample_rate_min == 0) sample_rate_min = 1;
 
-            case NORMAL_MQ135:
-                    if (error_abs > umbral_alerta_dinamico) {
-                        state_mq135 = ALERT_MQ135;
-                        alert.co2ppm_i = ema_ppm;
-                        alert.co2ppm_a = ppm_actual;
-                        if (generate_message_alert_air(&packet, alert)) {
-                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                                free(packet.payload);
-                            }
-                        } else {
-                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
-                        }
-                    } else {
-                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+                const energy_mode_t mode = settings_get_node_energy_mode();
+                counter++;
+
+                switch (mode) {
+                    case LOW_CONSUMPTION: {
+                        dynamic_delay = pdMS_TO_TICKS(MQ135_LOW_DELAY);
+                        counter = 0;
+                        alert_analysis(&data, true);
+                        break;
                     }
-                    ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * ema_ppm);
-                    break;
-
-            case ALERT_MQ135:
-                    if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
-                        state_mq135 = NORMAL_MQ135;
-                        if (generate_message_alert_air(&packet, alert)) {
-                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                                free(packet.payload);
-                            }
-                        } else {
-                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
-                        }
-                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+                    case BALANCED: {
+                        dynamic_delay = pdMS_TO_TICKS(MQ135_BALANCED_DELAY);
+                        const uint32_t slices = (sample_rate_min * 60) / (MQ135_BALANCED_DELAY / 1000);
+                        mq135_task_in_balanced_or_performance(&counter, slices, &data);
+                        break;
                     }
-                    ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * ema_ppm);
-                    break;
+                    case PERFORMANCE: {
+                        dynamic_delay = pdMS_TO_TICKS(MQ135_PERFORMANCE_DELAY);
+                        const uint32_t slices = (sample_rate_min * 60) / (MQ135_PERFORMANCE_DELAY / 1000);
+                        mq135_task_in_balanced_or_performance(&counter, slices, &data);
+                        break;
+                    }
+                }
+
+                uint32_t stop_signal = 0;
+                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, dynamic_delay);
+
+                if (result == pdTRUE) {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        running = false;
+                    }
+                }
             }
         }
-
-        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(MQ135_DELAY));
     }
 }

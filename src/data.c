@@ -28,8 +28,8 @@ static void get_formated_data(dht11_data_t *dht11, ky037_t *ky037, mq135_data_t 
     }
 
     if (xQueueReceive(queues.ky037_buffer, ky037, 0)) {
-        data->ky037_counter = ky037_get_counter(*ky037);
-        data->ky037_max_duration = ky037_get_duration(*ky037);
+        data->ky037_counter = ky037_get_counter(ky037);
+        data->ky037_max_duration = ky037_get_duration(ky037);
     }
 
     if (xQueueReceive(queues.mq135_buffer, mq135, 0)) {
@@ -88,60 +88,6 @@ void data_collection_task(void *pvParameter) {
     }
 }
 
-/*
- *void worker_task(void *pvParameters) {
-    uint32_t notification_value = 0;
-
-    ESP_LOGI(TAG, "Tarea creada. Entrando en modo SUSPENDIDO (esperando start)...");
-
-    // --- BUCLE EXTERNO (Ciclo de Vida) ---
-    while (1) {
-
-        // 1. ESTADO DORMIDO:
-        // Bloqueamos la tarea indefinidamente (portMAX_DELAY) hasta recibir START.
-        // xTaskNotifyWait limpia los bits al salir.
-        xTaskNotifyWait(0,                // No limpiar bits al entrar
-                        ULONG_MAX,        // Limpiar todos los bits al salir
-                        &notification_value,
-                        portMAX_DELAY);   // Esperar para siempre
-
-        // Verificamos si la señal fue START
-        if (notification_value & NOTIFY_CMD_START) {
-            ESP_LOGI(TAG, "Señal START recibida. Activando modo TRABAJO.");
-
-            // --- BUCLE INTERNO (Modo Activo) ---
-            bool running = true;
-
-            while (running) {
-                // ------------------------------------------------
-                // A. TU CÓDIGO DE TRABAJO NORMAL AQUÍ
-                // ------------------------------------------------
-                ESP_LOGI(TAG, "Trabajando... (ping, calculo, lectura sensor)");
-                vTaskDelay(pdMS_TO_TICKS(1000)); // Simula trabajo
-
-                // ------------------------------------------------
-                // B. CHEQUEO NO BLOQUEANTE DE PARADA
-                // ------------------------------------------------
-                // Verificamos si hay una nueva notificación pendiente con timeout 0.
-                uint32_t stop_signal = 0;
-                if (xTaskNotifyWait(0,
-                                    ULONG_MAX,
-                                    &stop_signal,
-                                    0) == pdTRUE) { // TimeOut = 0 (No bloquea)
-
-                    if (stop_signal & NOTIFY_CMD_STOP) {
-                        ESP_LOGW(TAG, "Señal STOP recibida. Suspendiendo...");
-                        running = false; // Rompe el bucle interno
-                    }
-                }
-            }
-
-            ESP_LOGI(TAG, "Volviendo a dormir...");
-        }
-    }
-}
- */
-
 
 /**
  * @brief  Tarea que lee los datos de la cola y los publica al broker mientras la conexion
@@ -158,12 +104,14 @@ void data_publish_task(void *pvParameter) {
     char topic_data[MAX_TOPIC];
     char topic_monitor[MAX_TOPIC];
     char topic_settings[MAX_TOPIC];
-    char topic_alert[MAX_TOPIC];
+    char topic_alert_air[MAX_TOPIC];
+    char topic_alert_temp[MAX_TOPIC];
 
     settings_get_mqtt_topic_data(topic_data, sizeof(topic_data));
     settings_get_mqtt_topic_monitor(topic_monitor, sizeof(topic_monitor));
     settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
-    //settings_get_mqtt_topic_alert(topic_alert, sizeof(topic_alert));
+    settings_get_mqtt_topic_alert_air(topic_alert_air, sizeof(topic_alert_air));
+    settings_get_mqtt_topic_alert_temp(topic_alert_temp, sizeof(topic_alert_temp));
 
     while (1) {
         bool did_work = false;
@@ -173,12 +121,12 @@ void data_publish_task(void *pvParameter) {
             continue;
         }
         if (xQueueReceive(queues.data_buffer, &packet_data, 0)) {
-            mqtt_publish(topic_data, packet_data.payload, (int)packet_data.len, 2, 0);
+            mqtt_publish(topic_data, packet_data.payload, (int)packet_data.len, 0, 0);
             free(packet_data.payload);
             did_work = true;
         }
         if (xQueueReceive(queues.monitor_buffer, &packet_monitor, 0)) {
-            mqtt_publish(topic_monitor, packet_monitor.payload, (int)packet_monitor.len, 2, 0);
+            mqtt_publish(topic_monitor, packet_monitor.payload, (int)packet_monitor.len, 0, 0);
             free(packet_monitor.payload);
             did_work = true;
         }
@@ -187,8 +135,13 @@ void data_publish_task(void *pvParameter) {
             free(packet_settings.payload);
             did_work = true;
         }
-        if (xQueueReceive(queues.alert_buffer, &packet_alert, 0)) {
-            mqtt_publish(topic_alert, packet_alert.payload, (int)packet_alert.len, 2, 0);
+        if (xQueueReceive(queues.alert_air_buffer, &packet_alert, 0)) {
+            mqtt_publish(topic_alert_air, packet_alert.payload, (int)packet_alert.len, 1, 0);
+            free(packet_alert.payload);
+            did_work = true;
+        }
+        if (xQueueReceive(queues.alert_temp_buffer, &packet_alert, 0)) {
+            mqtt_publish(topic_alert_temp, packet_alert.payload, (int)packet_alert.len, 1, 0);
             free(packet_alert.payload);
             did_work = true;
         }

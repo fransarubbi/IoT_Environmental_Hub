@@ -34,7 +34,8 @@ typedef struct {
     QueueHandle_t flag;
     QueueHandle_t event;
     QueueHandle_t data_buffer;
-    QueueHandle_t alert_buffer;
+    QueueHandle_t alert_temp_buffer;
+    QueueHandle_t alert_air_buffer;
     QueueHandle_t monitor_buffer;
     QueueHandle_t dht11_buffer;
     QueueHandle_t ky037_buffer;

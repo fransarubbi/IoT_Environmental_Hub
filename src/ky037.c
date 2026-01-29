@@ -1,113 +1,141 @@
+/**
+* @file ky037.c
+ * @brief Driver y gestión de tarea para el sensor de sonido KY-037.
+ *
+ * Implementa una arquitectura de alta eficiencia donde el conteo de pulsos
+ * y medición de duración se realiza estrictamente dentro de la ISR,
+ * mientras que la tarea de FreeRTOS actúa como coordinadora para reportar
+ * los datos periódicamente sin saturar la CPU con cambios de contexto.
+ */
+
+
 #include "Data/data.h"
 #include "freertos/task.h"
 #include "KY037/ky037.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include <string.h>
-
+#include "esp_timer.h"
+#include "Fsm/fsm.h"
 #include "Setting/settings.h"
 #include "System/system.h"
 
+
 static const char *TAG = "KY037";
-static ky037_stats_t ky037_stats;
-static volatile uint32_t isr_init_high_time = 0;     // Guarda el tiempo de inicio del pulso alto
-static volatile bool isr_service_installed = false;  // Flag que indica si ya se instalo el servicio de ISR del driver GPIO
+
+
+// Estructura volátil para compartir datos entre ISR y Tarea
+typedef struct {
+    volatile uint32_t counter;
+    volatile uint32_t max_duration_us;
+    volatile uint64_t start_time_us;
+} ky037_isr_data_t;
+
+
+static ky037_isr_data_t isr_data = {0};
+static portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED; // Para leer/resetear atómicamente
 
 
 /**
- * @brief Obtiene el tiempo actual en milisegundos
- */
-static inline uint32_t get_time_ms(void) {
-    return (uint32_t)(esp_timer_get_time() / 1000);  // /1000 para convertir de micro seg a ms
-}
-
-
-uint32_t ky037_get_counter(ky037_t ky037) {
-    return ky037.counter;
-}
-
-
-uint32_t ky037_get_duration(ky037_t ky037) {
-    return ky037.max_duration;
-}
-
-
-size_t ky037_get_size(void) {
-    return sizeof(ky037_t);
-}
-
-
-/**
- * @brief ISR que maneja interrupciones del GPIO
+ * @brief Manejador de Interrupciones (ISR) del GPIO.
+ *
+ * Se ejecuta en cada cambio de estado (Any Edge) del pin del sensor.
+ * Realiza cálculos matemáticos rápidos para determinar la duración del pulso
+ * y contar eventos sin despertar a la tarea principal, ahorrando CPU.
+ *
+ * @param arg Argumento de usuario (no utilizado en este caso).
  */
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    if (task_handle.ky037_handle != NULL) {   // Solo notificar si la tarea existe
-        vTaskNotifyGiveFromISR(task_handle.ky037_handle, &xHigherPriorityTaskWoken);  // Despertar a la tarea para que atienda la interrupcion
-        if (xHigherPriorityTaskWoken) {   // Si la tarea que estaba ejecutandose es de menor prioridad, minimizar la latencia del context switching
-            portYIELD_FROM_ISR();
+    int level = gpio_get_level(KY037_PIN);
+    uint64_t now = esp_timer_get_time();  // Tiempo en microsegundos
+
+    if (level == 1) {
+        isr_data.start_time_us = now;  // Flanco de subida, guardamos inicio
+    } else {   // Flanco de bajada, calculamos duración
+        if (isr_data.start_time_us > 0) {
+            uint32_t duration = (uint32_t)(now - isr_data.start_time_us);
+
+            // Actualizamos estadísticas
+            isr_data.counter++;
+            if (duration > isr_data.max_duration_us) {
+                isr_data.max_duration_us = duration;
+            }
+            isr_data.start_time_us = 0;
         }
     }
 }
 
 
 /**
- * @brief Tarea que procesa las interrupciones del sensor y calcula estadisticas
+ * @brief Tarea principal de gestión del sensor KY-037.
+ *
+ * Implementa un patrón de doble bucle:
+ * 1. Espera pasiva de notificación START.
+ * 2. Bucle activo de muestreo periódico.
+ *
+ * La tarea duerme durante el tiempo configurado en los settings. Al despertar,
+ * toma los datos acumulados por la ISR de forma atómica, los envía a la cola
+ * del sistema y reinicia los contadores internos.
+ *
+ * @param pvParameters Parámetros de creación de la tarea (no usado).
  */
 void ky037_task(void *pvParameters) {
-    static ky037_t ky037;
-    const TickType_t period_ticks = pdMS_TO_TICKS(settings_get_node_sample_rate() * MS_TO_MIN);
-    TickType_t last_wake_time = xTaskGetTickCount();
+    ky037_t ky037_msg;
+    uint32_t notification = 0;
 
     while (1) {
-        // Calcular tiempo restante hasta el proximo envío
-        TickType_t now = xTaskGetTickCount();
-        TickType_t elapsed = now - last_wake_time;
-        TickType_t remaining = (elapsed < period_ticks) ? (period_ticks - elapsed) : 0;
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
 
-        // Esperar notificación ISR con timeout del tiempo restante
-        if (ulTaskNotifyTake(pdTRUE, remaining) > 0) {
-            // --- Procesamiento de ISR ---
-            int gpio_level = gpio_get_level(KY037_PIN);
-            uint32_t current_time = get_time_ms();
+        if (notification & NOTIFY_CMD_START) {
+            bool running = true;
 
-            if (gpio_level == 1) {
-                isr_init_high_time = current_time;
-            }
-            else if (isr_init_high_time > 0) {
-                uint32_t duration = current_time - isr_init_high_time;
-                ky037_stats.counter++;
-                if (duration > ky037_stats.max_duration) {
-                    ky037_stats.max_duration = duration;
+            portENTER_CRITICAL(&spinlock);
+            memset((void*)&isr_data, 0, sizeof(isr_data));
+            portEXIT_CRITICAL(&spinlock);
+
+            while (running) {
+                uint32_t sample_rate = settings_get_node_sample_rate();
+                if(sample_rate == 0) sample_rate = 1;
+
+                TickType_t delay_ticks = pdMS_TO_TICKS(sample_rate * 60000);
+
+                uint32_t stop_signal = 0;
+                BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, delay_ticks);
+
+                if (result == pdFALSE) {
+                    portENTER_CRITICAL(&spinlock);
+                    ky037_msg.counter = isr_data.counter;
+                    ky037_msg.max_duration = isr_data.max_duration_us / 1000; // Convertir us a ms
+
+                    isr_data.counter = 0;
+                    isr_data.max_duration_us = 0;
+                    portEXIT_CRITICAL(&spinlock);
+
+                    // Enviar a la cola (con timeout corto para no bloquear)
+                    if (xQueueSend(queues.ky037_buffer, &ky037_msg, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        xEventGroupSetBits(event_group.collector_events, KY037_DATA_READY);
+                    } else {
+                        ESP_LOGW(TAG, "Cola llena, dato descartado");
+                    }
+
+                } else {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        running = false;
+                    }
                 }
-                isr_init_high_time = 0;
             }
-        }
-
-        // Verificar si cumplio el periodo (tolerancia de 1 tick)
-        now = xTaskGetTickCount();
-        if ((now - last_wake_time) >= period_ticks) {
-            // Enviar datos
-            ky037.counter = ky037_stats.counter;
-            ky037.counter = ky037_stats.max_duration;
-            xQueueSend(queues.ky037_buffer, &ky037, portMAX_DELAY);
-            xEventGroupSetBits(event_group.collector_events, KY037_DATA_READY);
-
-            // Resetear estadisticas
-            ky037_stats.counter = 0;
-            ky037_stats.max_duration = 0;
-
-            // Actualizar referencia temporal
-            last_wake_time += period_ticks;
         }
     }
 }
 
 
-
 /**
- * @brief Inicializa el sensor KY037 con interrupciones en ambos flancos
- * @return esp_err_t  Devuelve ESP_OK si las configuraciones se hicieron con exito.
+ * @brief Inicializa el hardware y recursos para el sensor KY-037.
+ *
+ * Configura el GPIO, inicializa estructuras de memoria y registra
+ * el manejador de interrupciones (ISR).
+ *
+ * @return esp_err_t ESP_OK si todo es correcto, o código de error.
  */
 esp_err_t ky037_init(void) {
     gpio_config_t io_conf = {
@@ -115,42 +143,56 @@ esp_err_t ky037_init(void) {
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_ANYEDGE,  // Interrupciones en ambos flancos
+        .intr_type = GPIO_INTR_ANYEDGE,
     };
 
     esp_err_t ret = gpio_config(&io_conf);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: Error configurando GPIO: %s -", esp_err_to_name(ret));
-        return ret;
-    }
+    if (ret != ESP_OK) return ret;
 
-    memset(&ky037_stats, 0, sizeof(ky037_stats_t));
-    isr_init_high_time = 0;
+    // Reset de estructura
+    portENTER_CRITICAL(&spinlock);
+    memset((void*)&isr_data, 0, sizeof(isr_data));
+    portEXIT_CRITICAL(&spinlock);
 
-    // Instalar servicio ISR si aún no esta instalado
+    // Instalación de ISR
+    static bool isr_service_installed = false;
     if (!isr_service_installed) {
-        ret = gpio_install_isr_service(0);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "- ERROR: Error instalando servicio ISR: %s -", esp_err_to_name(ret));
-            vTaskDelete(task_handle.ky037_handle);
-            return ret;
-        }
+        gpio_install_isr_service(0);
         isr_service_installed = true;
     }
 
-    // Añadir handler ISR para el pin KY037
     ret = gpio_isr_handler_add(KY037_PIN, gpio_isr_handler, NULL);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: Error añadiendo ISR handler: %s -", esp_err_to_name(ret));
-        vTaskDelete(task_handle.ky037_handle);
-        return ret;
-    }
+    if (ret != ESP_OK) return ret;
 
     return ESP_OK;
 }
 
 
+/**
+ * @brief Obtiene el valor del contador de un objeto ky037_t.
+ * @param ky037 Puntero con los datos.
+ * @return Número de eventos detectados.
+ */
+uint32_t ky037_get_counter(const ky037_t *ky037) {
+    return ky037->counter;
+}
 
 
+/**
+ * @brief Obtiene la duración máxima registrada de un objeto ky037_t.
+ * @param ky037 Puntero con los datos.
+ * @return Duración máxima en milisegundos.
+ */
+uint32_t ky037_get_duration(const ky037_t *ky037) {
+    return ky037->max_duration;
+}
 
 
+/**
+ * @brief Obtiene el tamaño de la estructura ky037_t.
+ * Útil para serialización o manejo de memoria dinámica genérica.
+ * @return Tamaño en bytes.
+ */
+size_t ky037_get_size(void) {
+    return sizeof(ky037_t);
+}

@@ -27,8 +27,8 @@ typedef struct {
 
 esp_err_t ky037_init(void);
 void ky037_task(void *);
-uint32_t ky037_get_counter(ky037_t );
-uint32_t ky037_get_duration(ky037_t );
+uint32_t ky037_get_counter(const ky037_t *ky037);
+uint32_t ky037_get_duration(const ky037_t *ky037);
 size_t ky037_get_size(void);
 
 #endif //KY037_H

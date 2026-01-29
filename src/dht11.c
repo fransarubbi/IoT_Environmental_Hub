@@ -366,7 +366,7 @@ esp_err_t dht11_init(void) {
  * @param data Puntero a la estructura de contexto del sensor.
  * @param get_data Indica si se debe realizar una nueva lectura física (true) o usar los datos existentes (false).
  */
-void alert_analysis(data_t *data, bool get_data) {
+static void alert_analysis(data_t *data, const bool get_data) {
 
     if (get_data) {
         if (dht11_read_data(&data->dht11) != ESP_OK) {
@@ -390,7 +390,7 @@ void alert_analysis(data_t *data, bool get_data) {
                 data->state_dht11 = ALERT_DHT11;
                 data->temp_before_alert = data->ema_temp;   // Guardamos la "normalidad" previa
                 if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
-                    if (xQueueSend(queues.alert_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                    if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                         ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                         free(data->packet.payload);
                     }
@@ -407,7 +407,7 @@ void alert_analysis(data_t *data, bool get_data) {
             if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                 data->state_dht11 = NORMAL_DHT11;
                 if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
-                    if (xQueueSend(queues.alert_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                    if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                         ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
                         free(data->packet.payload);
                     }

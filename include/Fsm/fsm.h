@@ -2,6 +2,7 @@
 #define FSM_H
 
 #include <stdint.h>
+#include <stdatomic.h>
 
 #define TIMEOUT_INIT 0x01                // Flag de timeout en INIT_SYSTEM
 #define STATE_SAFE_MODE 0x02             // Flag de mensaje de estado "SAFE_MODE"
@@ -88,6 +89,14 @@ typedef struct {
     State state;
     uint32_t flag;
 } Fsm;
+
+
+typedef struct {
+    atomic_uint_fast32_t duration;
+    atomic_uint_fast32_t balance;
+} message_variable_t;
+
+extern message_variable_t msg_data;
 
 void fsm_task(void *pvParameter);
 

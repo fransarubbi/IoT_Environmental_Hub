@@ -23,22 +23,23 @@ static const char *TAG = "System";
  * retorno fue false, el sistema se reiniciara.
  */
 bool init_queues(void) {
-    queues.general         = xQueueCreate(QUEUE_GENERAL, sizeof(mqtt_packet_t));
-    queues.flag            = xQueueCreate(QUEUE_FLAG, sizeof(uint32_t));
-    queues.event           = xQueueCreate(QUEUE_EVENT, sizeof(int));
-    queues.data_buffer     = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.alert_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.monitor_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.settings_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.dht11_buffer    = xQueueCreate(QUEUE, dht11_struct_get_size());
-    queues.ky037_buffer    = xQueueCreate(QUEUE, ky037_get_size());
-    queues.mq135_buffer    = xQueueCreate(QUEUE, sizeof(mq135_data_t));
-    queues.dht11_to_mq135  = xQueueCreate(QUEUE, dht11_struct_get_size());
+    queues.general           = xQueueCreate(QUEUE_GENERAL, sizeof(mqtt_packet_t));
+    queues.flag              = xQueueCreate(QUEUE_FLAG, sizeof(uint32_t));
+    queues.event             = xQueueCreate(QUEUE_EVENT, sizeof(int));
+    queues.data_buffer       = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.alert_air_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.alert_temp_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.monitor_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.settings_buffer   = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.dht11_buffer      = xQueueCreate(QUEUE, dht11_struct_get_size());
+    queues.ky037_buffer      = xQueueCreate(QUEUE, ky037_get_size());
+    queues.mq135_buffer      = xQueueCreate(QUEUE, sizeof(mq135_data_t));
+    queues.dht11_to_mq135    = xQueueCreate(QUEUE, dht11_struct_get_size());
 
     if (!queues.general || !queues.flag || !queues.event || !queues.data_buffer ||
         !queues.monitor_buffer || !queues.dht11_buffer || !queues.ky037_buffer ||
-        !queues.mq135_buffer || !queues.dht11_to_mq135 || !queues.alert_buffer ||
-        !queues.settings_buffer) {
+        !queues.mq135_buffer || !queues.dht11_to_mq135 || !queues.alert_air_buffer ||
+        !queues.alert_temp_buffer || !queues.settings_buffer) {
         ESP_LOGE(TAG, "- ERROR: Error creando queues -");
         return false;
     }
