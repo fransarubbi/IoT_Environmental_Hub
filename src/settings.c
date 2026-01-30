@@ -11,7 +11,6 @@
 #include <ctype.h>
 #include "nvs_flash.h"
 #include "esp_pm.h"
-#include "Data/data.h"
 #include "System/system.h"
 #include "mpack.h"
 #include "Fsm/fsm.h"
@@ -96,6 +95,18 @@ void settings_set_balance_epoch(const uint32_t balance) {
     unlock();
 }
 
+void settings_set_energy_mode(energy_mode_t mode) {
+    lock();
+    settings.node.energy_mode = mode;
+    unlock();
+}
+
+void settings_empty_network(void) {
+    lock();
+    memset(&settings.network.id_network, 0, sizeof(settings.network.id_network));
+    unlock();
+}
+
 
 /* ---- Getters ---- */
 void settings_get_node_mac(char* dest, size_t dest_size) {
@@ -113,6 +124,12 @@ void settings_get_node_device_name(char* dest, size_t dest_size) {
 void settings_get_network(char* dest, size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.network.id_network, dest_size);
+    unlock();
+}
+
+void settings_get_network_id_edge(char* dest, size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.network.id_edge, dest_size);
     unlock();
 }
 
@@ -244,6 +261,12 @@ void settings_get_mqtt_topic_edge_state_normal(char* dest, size_t dest_size) {
 void settings_get_mqtt_topic_edge_state_safe(char* dest, size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_edge_state_safe, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_edge_phase(char* dest, size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_edge_phase, dest_size);
     unlock();
 }
 
@@ -752,6 +775,9 @@ void create_mqtt_topics() {
 
     snprintf(settings.mqtt.topic_edge_state_safe, sizeof(settings.mqtt.topic_edge_state_safe),
         "iot/%s/state/safe", settings.network.id_edge);
+
+    snprintf(settings.mqtt.topic_edge_phase, sizeof(settings.mqtt.topic_edge_phase),
+        "iot/%s/state/phase", settings.network.id_edge);
 
     snprintf(settings.mqtt.topic_edge_handshake, sizeof(settings.mqtt.topic_edge_handshake),
         "iot/%s/handshake", settings.network.id_edge);

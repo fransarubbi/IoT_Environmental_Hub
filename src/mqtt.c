@@ -100,26 +100,28 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
         case MQTT_EVENT_DATA: {
             mqtt_msg_to_parse_t new_msg;
 
-            if (event->topic_len < MAX_TOPIC) {
-                memcpy(new_msg.topic, event->topic, event->topic_len);
-                new_msg.topic[event->topic_len] = '\0';
-            } else {
-                break;
-            }
+            if (event->data_len > 0) {
+                if (event->topic_len < MAX_TOPIC) {
+                    memcpy(new_msg.topic, event->topic, event->topic_len);
+                    new_msg.topic[event->topic_len] = '\0';
+                } else {
+                    break;
+                }
 
-            new_msg.payload = malloc(event->data_len + 1);
-            if (new_msg.payload == NULL) {
-                ESP_LOGE(TAG, "ERROR: No hay RAM para copiar mensaje MQTT");
-                break;
-            }
+                new_msg.payload = malloc(event->data_len + 1);
+                if (new_msg.payload == NULL) {
+                    ESP_LOGE(TAG, "ERROR: No hay RAM para copiar mensaje MQTT");
+                    break;
+                }
 
-            memcpy(new_msg.payload, event->data, event->data_len);
-            new_msg.payload[event->data_len] = '\0';
-            new_msg.len = event->data_len;
+                memcpy(new_msg.payload, event->data, event->data_len);
+                new_msg.payload[event->data_len] = '\0';
+                new_msg.len = event->data_len;
 
-            if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(10)) != pdTRUE) {
-                ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje.");
-                free(new_msg.payload);  // Liberar si no se pudo encolar
+                if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(10)) != pdTRUE) {
+                    ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje.");
+                    free(new_msg.payload);  // Liberar si no se pudo encolar
+                }
             }
             break;
         }

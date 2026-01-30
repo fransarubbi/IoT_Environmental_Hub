@@ -91,6 +91,7 @@ typedef struct {
         char topic_edge_state_normal[MAX_TOPIC];
         char topic_edge_state_balance[MAX_TOPIC];
         char topic_edge_state_safe[MAX_TOPIC];
+        char topic_edge_phase[MAX_TOPIC];
         char topic_edge_handshake[MAX_TOPIC];
         char topic_heartbeat[MAX_TOPIC];
         char topic_new_firmware[MAX_TOPIC];
@@ -105,26 +106,32 @@ typedef struct {
 extern settings_t settings;
 
 
-/* ---- Funciones de la API ---- */
 esp_err_t uart_init(void);
 void safe_strcpy(char *dest, const char *src, size_t dest_size);
 void safe_string_copy(char* dest, const char* src, size_t size);
 esp_err_t setting_save_to_nvs(void);
-void settings_set_balance_epoch(uint32_t balance);
 void send_settings_task(void *);
 void settings_init(void);
+
+// Setters
 void settings_set_node_mac(const char* mac);
+void settings_set_energy_mode(energy_mode_t mode);
+void settings_empty_network(void);
+void settings_set_balance_epoch(uint32_t balance);
+void settings_set_wifi_ip(const char* ip);
+
+// Getters
 void settings_get_node_mac(char* dest, size_t dest_size);
 void settings_get_node_device_name(char* dest, size_t dest_size);
 uint32_t settings_get_node_sample_rate(void);
 energy_mode_t settings_get_node_energy_mode(void);
 void settings_get_network(char* dest, size_t dest_size);
+void settings_get_network_id_edge(char* dest, size_t dest_size);
 uint32_t settings_get_balance_epoch(void);
 void settings_get_wifi_ssid(uint8_t* dest, size_t dest_size);
 uint8_t settings_get_wifi_ssid_len(void);
 void settings_get_wifi_password(uint8_t* dest, size_t dest_size);
 uint8_t settings_get_wifi_pass_len(void);
-void settings_set_wifi_ip(const char* ip);
 void settings_get_wifi_ip(char* dest, size_t dest_size);
 void settings_get_mqtt_uri(char* dest, size_t dest_size);
 void settings_get_mqtt_user(char* dest, size_t dest_size);
@@ -140,6 +147,7 @@ void settings_get_mqtt_topic_settings(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_edge_state_balance(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_edge_state_normal(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_edge_state_safe(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_edge_phase(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_edge_handshake(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_heartbeat(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_new_firmware(char* dest, size_t dest_size);

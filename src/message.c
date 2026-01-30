@@ -1,3 +1,9 @@
+/**
+* @file message.c
+ * @brief Implementación de serialización y deserialización MPack.
+ */
+
+
 #include "Message/message.h"
 #include <esp_log.h>
 #include "OTA/ota.h"
@@ -11,8 +17,20 @@
 #include "Monitor/monitor.h"
 #include "Setting/settings.h"
 #include "System/system.h"
+#include "esp_sleep.h"
+#include "esp_wifi.h"
+#include "driver/rtc_io.h"
+#include "KY037/ky037.h"
 
 
+/**
+ * @brief Genera un paquete MPack con los datos de los sensores.
+ * Asigna memoria dinámica para el payload que debe ser liberada por el llamador.
+ *
+ * @param data Estructura con los valores de sensores.
+ * @param packet Puntero a la estructura donde se guardará el payload y longitud.
+ * @return true si se generó correctamente, false si hubo error de memoria.
+ */
 bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
@@ -59,6 +77,9 @@ bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet) {
 }
 
 
+/**
+ * @brief Genera mensaje de alerta de calidad de aire (MQ135).
+ */
 bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert) {
     packet->payload = NULL;
     packet->len = 0;
@@ -98,6 +119,9 @@ bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert) {
 }
 
 
+/**
+ * @brief Genera mensaje de alerta de temperatura (DHT11).
+ */
 bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t temp_a) {
     packet->payload = NULL;
     packet->len = 0;
@@ -139,6 +163,9 @@ bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t 
 }
 
 
+/**
+ * @brief Genera mensaje con estadísticas de monitoreo del sistema (RAM, Stack, Uptime).
+ */
 bool generate_message_monitor(mqtt_packet_t *packet, stats_monitor_t stats) {
     packet->payload = NULL;
     packet->len = 0;
@@ -191,6 +218,9 @@ bool generate_message_monitor(mqtt_packet_t *packet, stats_monitor_t stats) {
 }
 
 
+/**
+ * @brief Genera respuesta de confirmación de configuración recibida.
+ */
 bool generate_message_setting_ok(mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
@@ -228,6 +258,9 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
 }
 
 
+/**
+ * @brief Genera reporte de estado de actualización de firmware (OTA).
+ */
 bool generate_message_firmware_ok(mqtt_packet_t *packet, const bool is_ok) {
     packet->payload = NULL;
     packet->len = 0;
@@ -267,6 +300,9 @@ bool generate_message_firmware_ok(mqtt_packet_t *packet, const bool is_ok) {
 }
 
 
+/**
+ * @brief Genera handshake para sincronización en modo balanceo.
+ */
 bool generate_message_balance_mode_handshake(mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
@@ -304,6 +340,9 @@ bool generate_message_balance_mode_handshake(mqtt_packet_t *packet) {
 }
 
 
+/**
+ * @brief Genera reporte completo de la configuración actual del nodo.
+ */
 bool generate_message_settings(mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
@@ -346,65 +385,112 @@ bool generate_message_settings(mqtt_packet_t *packet) {
 }
 
 
-// --------------------------------------------------------------------------------------
+/* --- Funciones de Parseo (Deserialización) --- */
 
 
-bool parse_message_state_normal(const char* data, size_t len) {
-    return true;
-}
-
-
-bool parse_message_state_balance(const char* data, size_t len) {
-    uint8_t flags = 0x0;
+/**
+ * @brief Parsea mensaje de cambio a estado NORMAL.
+ */
+bool parse_message_state_normal(const char* data, const size_t len) {
     mpack_reader_t reader;
     mpack_reader_init_data(&reader, data, len);
 
-    uint32_t map_size = mpack_expect_map(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok) {
-        return false;
-    }
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) return false;
 
+    char id_edge[MAC];
     char key[32];
     char value[32];
+
+    // Variables de validación temporal
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool state_ok = false;
+
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+
     for (uint32_t i = 0; i < map_size; i++) {
         mpack_expect_cstr(&reader, key, sizeof(key));
 
         if (strcmp(key, "sender_user_id") == 0) {
             mpack_expect_cstr(&reader, value, sizeof(value));
-            if (strcmp(value, "Server0") == 0) {
-                flags |= FLAG_SERVER_VALID;
-            }
+            if (strcmp(value, id_edge) == 0) sender_ok = true;
         }
         else if (strcmp(key, "destination_id") == 0) {
             mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x01) && (strcmp(value, "all") == 0)) {
-                flags |= FLAG_ITS_ALL;
-            }
+            if (strcmp(value, "all") == 0) dest_ok = true;
         }
         else if (strcmp(key, "state") == 0) {
             mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x06) && (strcmp(value, "balance_mode") == 0)) {
-                flags |= FLAG_STATE_OK;
-            }
+            if (strcmp(value, "normal") == 0) state_ok = true;
+        }
+        else {
+            mpack_discard(&reader); // Ignorar claves desconocidas
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) return false;
+    }
+
+    // Validación final conjunta
+    if (sender_ok && dest_ok && state_ok) {
+        uint32_t flag = STATE_NORMAL;
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
+    }
+
+    return (mpack_reader_destroy(&reader) == mpack_ok);
+}
+
+
+/**
+ * @brief Parsea mensaje de cambio a estado BALANCE.
+ * Extrae epoch y duración.
+ */
+bool parse_message_state_balance(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char id_edge[MAC];
+    char key[32];
+    char value[32];
+    uint32_t epoch = 0;
+    uint32_t duration = 0;
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool state_ok = false;
+    bool balance_ok = false;
+    bool duration_ok = false;
+
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, id_edge) == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "all") == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "state") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "balance_mode") == 0) state_ok = true;
         }
         else if (strcmp(key, "balance_epoch") == 0) {
-            uint32_t val = mpack_expect_u32(&reader);
-            if (flags == 0x0d) {
-                flags |= FLAG_EPOCH_VALID;
-                uint32_t balance = settings_get_balance_epoch();
-                if (balance < val) {
-                    settings_set_balance_epoch(val);
-                    setting_save_to_nvs();
-                }
-            }
+            const uint32_t val = mpack_expect_u32(&reader);
+            balance_ok = true;
+            epoch = val;
         }
         else if (strcmp(key, "duration") == 0) {
-            uint32_t val = mpack_expect_u32(&reader);
-            if (flags == 0x1d) {
-                uint32_t flag = STATE_BALANCE_MODE;
-                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-                atomic_store(&msg_data.duration, val);
-            }
+            const uint32_t val = mpack_expect_u32(&reader);
+            duration = val;
+            duration_ok = true;
         }
         else {
             mpack_discard(&reader);
@@ -415,32 +501,377 @@ bool parse_message_state_balance(const char* data, size_t len) {
         }
     }
 
+    if (sender_ok && dest_ok && state_ok && balance_ok && duration_ok) {
+        const uint32_t balance = settings_get_balance_epoch();
+        if (balance < epoch) {
+            settings_set_balance_epoch(epoch);
+        }
+        const uint32_t flag = STATE_BALANCE_MODE;
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
+        atomic_store(&msg_data.duration, duration);
+        setting_save_to_nvs();
+    }
+
     return (mpack_reader_destroy(&reader) == mpack_ok);
 }
 
 
-bool parse_message_state_safe(const char* data, size_t len) {
-    return true;
+/**
+ * @brief Parsea mensaje de cambio a estado SAFE.
+ * Extrae duración, frecuencia y jitter.
+ */
+bool parse_message_state_safe(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char id_edge[MAC];
+    char key[32];
+    char value[32];
+    uint32_t duration = 0;
+    uint32_t frequency = 0;
+    uint32_t jitter = 0;
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool state_ok = false;
+    bool frequency_ok = false;
+    bool duration_ok = false;
+    bool jitter_ok = false;
+
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, id_edge) == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "all") == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "state") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "safe_mode") == 0) state_ok = true;
+        }
+        else if (strcmp(key, "duration") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            duration = val;
+            duration_ok = true;
+        }
+        else if (strcmp(key, "frequency") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            frequency = val;
+            frequency_ok = true;
+        }
+        else if (strcmp(key, "jitter") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            jitter = val;
+            jitter_ok = true;
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    if (sender_ok && dest_ok && state_ok && frequency_ok && duration_ok && jitter_ok) {
+        atomic_store(&msg_data.duration, duration);
+        atomic_store(&msg_data.frequency, frequency);
+        atomic_store(&msg_data.jitter, jitter);
+        uint32_t flag = STATE_BALANCE_MODE;
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
 }
 
 
-bool parse_message_handshake(const char* data, size_t len) {
-    return true;
+/**
+ * @brief Parsea configuración de fase (Alert, Data, Monitor).
+ */
+bool parse_message_phase(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char id_edge[MAC];
+    char key[32];
+    char value[32];
+    uint32_t balance = 0;
+    uint32_t frequency = 0;
+    uint32_t jitter = 0;
+    uint8_t phase = 0;
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool state_ok = false;
+    bool frequency_ok = false;
+    bool balance_ok = false;
+    bool jitter_ok = false;
+
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, id_edge) == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "all") == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "state") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "balance_mode") == 0) state_ok = true;
+        }
+        else if (strcmp(key, "epoch") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            balance = val;
+            balance_ok = true;
+        }
+        else if (strcmp(key, "phase") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "alert") == 0) {
+                phase = FLAG_PHASE_ALERT;
+            }
+            if (strcmp(value, "data") == 0) {
+                phase = FLAG_PHASE_DATA;
+            }
+            if (strcmp(value, "monitor") == 0) {
+                phase = FLAG_PHASE_MONITOR;
+            }
+        }
+        else if (strcmp(key, "frequency") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            frequency = val;
+            frequency_ok = true;
+        }
+        else if (strcmp(key, "jitter") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            jitter = val;
+            jitter_ok = true;
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    if (sender_ok && dest_ok && state_ok && frequency_ok && balance_ok && jitter_ok) {
+        atomic_store(&msg_data.balance, balance);
+        atomic_store(&msg_data.frequency, frequency);
+        atomic_store(&msg_data.jitter, jitter);
+        if (phase == FLAG_PHASE_ALERT) {
+            const uint32_t flag = PHASE_ALERT;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+        }
+        if (phase == FLAG_PHASE_DATA) {
+            const uint32_t flag = PHASE_DATA;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+        }
+        if (phase == FLAG_PHASE_MONITOR) {
+            const uint32_t flag = PHASE_MONITOR;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+        }
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
 }
 
 
-bool parse_message_heartbeat(const char* data, size_t len) {
-    return true;
+/**
+ * @brief Parsea mensaje de Handshake del servidor.
+ */
+bool parse_message_handshake(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char id_edge[MAC];
+    char key[32];
+    char value[32];
+    uint32_t epoch = 0;
+    uint32_t duration = 0;
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool duration_ok = false;
+    bool balance_ok = false;
+
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, id_edge) == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "all") == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "balance_epoch") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            epoch = val;
+            balance_ok = true;
+        }
+        else if (strcmp(key, "duration") == 0) {
+            const uint32_t val = mpack_expect_u32(&reader);
+            duration = val;
+            duration_ok = true;
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    if (sender_ok && dest_ok && duration_ok && balance_ok) {
+        const uint32_t balance = settings_get_balance_epoch();
+        if (balance < epoch) {
+            settings_set_balance_epoch(epoch);
+        }
+        uint32_t flag = HANDSHAKE_REQUEST;
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+        atomic_store(&msg_data.duration, duration);
+        setting_save_to_nvs();
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
 }
 
 
-bool parse_message_new_firmware(const char* data, size_t len) {
-    return true;
+/**
+ * @brief Parsea mensaje de Heartbeat (latido) del servidor.
+ */
+bool parse_message_heartbeat(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char id_edge[MAC];
+    char key[32];
+    char value[32];
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool beat_ok = false;
+
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, id_edge) == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "all") == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "beat") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "true") == 0) beat_ok = true;
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    if (sender_ok && dest_ok && beat_ok) {
+        uint32_t flag = HEARTBEAT_INCOMING;
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
 }
 
 
-bool parse_message_setting(const char* data, size_t len) {
-    uint8_t flags = 0x0;
+/**
+ * @brief Parsea comando de actualización de firmware (OTA).
+ */
+bool parse_message_new_firmware(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char network[ID_NETWORK];
+    char key[32];
+    char value[32];
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool network_ok = false;
+
+    settings_get_network(network, sizeof(network));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "Server0") == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, settings.node.mac_address) == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "network") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, network) == 0) network_ok = true;
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    if (sender_ok && dest_ok && network_ok) {
+        esp_restart();
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
+}
+
+
+/**
+ * @brief Parsea nueva configuración completa (WiFi, MQTT, Sampling).
+ * Guarda los cambios en NVS si la validación es exitosa.
+ */
+bool parse_message_setting(const char* data, const size_t len) {
     mpack_reader_t reader;
     mpack_reader_init_data(&reader, data, len);
 
@@ -450,62 +881,56 @@ bool parse_message_setting(const char* data, size_t len) {
     }
 
     char val_buf[55];
+    char id_network[ID_NETWORK];
+    char wifi_ssid[WIFI_SSID];
+    char wifi_password[WIFI_PASSWORD];
+    char mqtt_uri[MQTT_URI];
+    char device[DEVICE_NAME];
+    uint32_t sample = 0;
+    energy_mode_t energy_mode = 0;
+    bool sender_ok = false;
+    bool apply = false;
+
     for (uint32_t i = 0; i < map_size; i++) {
         char key[55];
         mpack_expect_cstr(&reader, key, sizeof(key));
 
         if (strcmp(key, "sender_user_id") == 0) {
             mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (strcmp(val_buf, "Server0") == 0) flags |= FLAG_SERVER_VALID;
+            if (strcmp(val_buf, "Server0") == 0) sender_ok = true;
         }
         else if (strcmp(key, "destination_id") == 0) {
             mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x3) {
-                if (strcmp(val_buf, settings.node.mac_address) == 0) flags |= FLAG_ITS_ME;
-                if (strcmp(val_buf, "all") == 0) flags |= FLAG_ITS_ALL;
-            }
+            if (strcmp(val_buf, settings.node.mac_address) == 0) apply = true;
+            if (strcmp(val_buf, "all") == 0) apply = true;
         }
         else if (strcmp(key, "network") == 0) {
             mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_strcpy((char *)settings.network.id_network, val_buf, sizeof(settings.network.id_network));
-            }
+            safe_strcpy(id_network, val_buf, sizeof(id_network));
         }
         else if (strcmp(key, "wifi_ssid") == 0) {
             mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_strcpy((char *)settings.wifi.ssid, val_buf, sizeof(settings.wifi.ssid));
-            }
+            safe_strcpy(wifi_ssid, val_buf, sizeof(wifi_ssid));
         }
         else if (strcmp(key, "wifi_password") == 0) {
             mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_strcpy((char *)settings.wifi.password, val_buf, sizeof(settings.wifi.password));
-            }
+            safe_strcpy(wifi_password, val_buf, sizeof(wifi_password));
         }
         else if (strcmp(key, "mqtt_uri") == 0) {
             mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.uri, val_buf, sizeof(settings.mqtt.uri));
-            }
+            safe_string_copy(mqtt_uri, val_buf, sizeof(mqtt_uri));
         }
         else if (strcmp(key, "device_name") == 0) {
             mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7) {
-                safe_string_copy(settings.node.device_name, val_buf, sizeof(settings.node.device_name));
-            }
+            safe_string_copy(device, val_buf, sizeof(device));
         }
         else if (strcmp(key, "sample") == 0) {
             uint32_t val = mpack_expect_u32(&reader);
-            if (flags == 0x7 || flags == 0xB) {
-                settings.node.sample_rate = val;
-            }
+            sample = val;
         }
         else if (strcmp(key, "energy_mode") == 0) {
             uint8_t val = mpack_expect_u8(&reader);
-            if (flags == 0x7 || flags == 0xB) {
-                settings.node.energy_mode = val;
-            }
+            energy_mode = val;
         }
         else {
             mpack_discard(&reader);
@@ -520,48 +945,55 @@ bool parse_message_setting(const char* data, size_t len) {
         return false;
     }
 
-    esp_err_t ret = setting_save_to_nvs();
-    if (ret != ESP_OK) {
-        return false;
+    if (sender_ok && apply) {
+        safe_strcpy(settings.network.id_network, id_network, sizeof(settings.network.id_network));
+        safe_strcpy((char *)settings.wifi.ssid, wifi_ssid, sizeof(settings.wifi.ssid));
+        safe_strcpy((char *)settings.wifi.password, wifi_password, sizeof(settings.wifi.password));
+        safe_string_copy(settings.mqtt.uri, mqtt_uri, sizeof(settings.mqtt.uri));
+        safe_string_copy(settings.node.device_name, device, sizeof(settings.node.device_name));
+        settings.node.sample_rate = sample;
+        settings.node.energy_mode = energy_mode;
+        const esp_err_t ret = setting_save_to_nvs();
+        if (ret != ESP_OK) {
+            return false;
+        }
     }
     return true;
 }
 
 
-bool parse_message_setting_ok(const char* data, size_t len) {
-    uint8_t flags = 0x0;
+/**
+ * @brief Parsea confirmación de recepción de configuración (Setting OK).
+ */
+bool parse_message_setting_ok(const char* data, const size_t len) {
     mpack_reader_t reader;
     mpack_reader_init_data(&reader, data, len);
 
-    uint32_t map_size = mpack_expect_map(&reader);
+    const uint32_t map_size = mpack_expect_map(&reader);
     if (mpack_reader_error(&reader) != mpack_ok) {
         return false;
     }
 
     char key[32];
     char value[32];
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool hand_ok = false;
+
     for (uint32_t i = 0; i < map_size; i++) {
         mpack_expect_cstr(&reader, key, sizeof(key));
 
         if (strcmp(key, "sender_user_id") == 0) {
             mpack_expect_cstr(&reader, value, sizeof(value));
-            if (strcmp(value, "SERVER0") == 0) {
-                flags |= FLAG_SERVER_VALID;
-            }
+            if (strcmp(value, "Server0") == 0) sender_ok = true;
         }
         else if (strcmp(key, "destination_id") == 0) {
             mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x03) && (strcmp(value, settings.node.mac_address) == 0)) {
-                flags |= FLAG_ITS_ME;
-            }
+            if (strcmp(value, settings.node.mac_address) == 0) dest_ok = true;
         }
         else if (strcmp(key, "handshake") == 0) {
             mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x07) && (strcmp(value, "true") == 0)) {
-                if (task_handle.send_settings_handle != NULL) {
-                    xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_DESTROY, eSetBits);
-                }
-            }
+            if (strcmp(value, "true") == 0) hand_ok = true;
         }
         else {
             mpack_discard(&reader);
@@ -572,15 +1004,144 @@ bool parse_message_setting_ok(const char* data, size_t len) {
         }
     }
 
+    if (sender_ok && dest_ok && hand_ok) {
+        if (task_handle.send_settings_handle != NULL) {
+            xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_DESTROY, eSetBits);
+        }
+    }
     return (mpack_reader_destroy(&reader) == mpack_ok);
 }
 
 
-bool parse_message_delete(const char* data, size_t len) {
-    return true;
+/**
+ * @brief Parsea comando de borrado lógico (de la red) del Hub.
+ * Además, setea el Hub en modo deep sleep. Por lo que solo se activará
+ * nuevamente con un reset físico.
+ */
+bool parse_message_delete(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char network[ID_NETWORK];
+    char key[32];
+    char value[32];
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool net_ok = false;
+
+    settings_get_network(network, sizeof(network));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "Server0") == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, settings.node.mac_address) == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "network") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, network) == 0) net_ok = true;
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    if (sender_ok && dest_ok && net_ok) {
+        settings_empty_network();
+        setting_save_to_nvs();
+        esp_wifi_stop();
+        rtc_gpio_isolate(DHT11_PIN);
+        rtc_gpio_isolate(KY037_PIN);
+        esp_deep_sleep_start();
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
 }
 
 
-bool parse_message_active(const char* data, size_t len) {
-    return true;
+/**
+ * @brief Parsea comando de activación/desactivación del Hub.
+ */
+bool parse_message_active(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t map_size = mpack_expect_map(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        return false;
+    }
+
+    char network[ID_NETWORK];
+    char key[32];
+    char value[32];
+    bool sender_ok = false;
+    bool dest_ok = false;
+    bool net_ok = false;
+    bool is_active = false;
+
+    settings_get_network(network, sizeof(network));
+
+    for (uint32_t i = 0; i < map_size; i++) {
+        mpack_expect_cstr(&reader, key, sizeof(key));
+
+        if (strcmp(key, "sender_user_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "Server0") == 0) sender_ok = true;
+        }
+        else if (strcmp(key, "destination_id") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, settings.node.mac_address) == 0) dest_ok = true;
+        }
+        else if (strcmp(key, "network") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, network) == 0) net_ok = true;
+        }
+        else if (strcmp(key, "active") == 0) {
+            mpack_expect_cstr(&reader, value, sizeof(value));
+            if (strcmp(value, "true") == 0) is_active = true;
+            if (strcmp(value, "false") == 0) is_active = false;
+        }
+        else {
+            mpack_discard(&reader);
+        }
+
+        if (mpack_reader_error(&reader) != mpack_ok) {
+            return false;
+        }
+    }
+
+    if (sender_ok && dest_ok && net_ok) {
+        if (!is_active) {
+            xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_STOP, eSetBits);
+            xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_STOP, eSetBits);
+            xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
+            xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_STOP, eSetBits);
+            if (task_handle.send_settings_handle != NULL) {
+                xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_STOP, eSetBits);
+            }
+        }
+        if (is_active) {
+            xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
+            xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_START, eSetBits);
+            xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_START, eSetBits);
+            xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_START, eSetBits);
+            if (task_handle.send_settings_handle != NULL) {
+                xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_START, eSetBits);
+            }
+        }
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
 }

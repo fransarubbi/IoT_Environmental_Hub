@@ -70,6 +70,8 @@ void fsm_task(void *pvParameter) {
     fsm.flag = 0;
     msg_data.duration = ATOMIC_VAR_INIT(0);
     msg_data.balance = ATOMIC_VAR_INIT(settings_get_balance_epoch());
+    msg_data.jitter = ATOMIC_VAR_INIT(0);
+    msg_data.frequency = ATOMIC_VAR_INIT(0);
     Event event;
 
     action_entry_check_firmware(&fsm);

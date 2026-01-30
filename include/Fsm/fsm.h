@@ -21,6 +21,10 @@
 #define TIMEOUT_SAFE_MODE 0x2000         // Flag de fin de timer para SAFE_MODE
 #define UPDATE_FLAG 0x4000               // Flag de actualizacion de firmware disponible
 #define UPDATE_OK 0x8000                 // Flag de actualizacion de firmware correcta
+#define PHASE_ALERT 1
+#define PHASE_DATA 2
+#define PHASE_MONITOR 3
+#define HEARTBEAT_INCOMING 0x80
 
 #define NOTIFY_CMD_START  0x01
 #define NOTIFY_CMD_STOP   0x02
@@ -95,6 +99,8 @@ typedef struct {
 typedef struct {
     atomic_uint_fast32_t duration;
     atomic_uint_fast32_t balance;
+    atomic_uint_fast32_t jitter;
+    atomic_uint_fast32_t frequency;
 } message_variable_t;
 
 extern message_variable_t msg_data;

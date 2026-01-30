@@ -19,6 +19,7 @@ typedef struct {
     char topic_state_normal[MAX_TOPIC];
     char topic_state_balance[MAX_TOPIC];
     char topic_state_safe[MAX_TOPIC];
+    char topic_state_phase[MAX_TOPIC];
     char topic_handshake[MAX_TOPIC];
     char topic_heartbeat[MAX_TOPIC];
     char topic_new_firmware[MAX_TOPIC];
@@ -37,6 +38,7 @@ static void get_all_topics(topics *topics) {
     settings_get_mqtt_topic_edge_state_normal(topics->topic_state_normal, sizeof(topics->topic_state_normal));
     settings_get_mqtt_topic_edge_state_balance(topics->topic_state_balance, sizeof(topics->topic_state_balance));
     settings_get_mqtt_topic_edge_state_safe(topics->topic_state_safe, sizeof(topics->topic_state_safe));
+    settings_get_mqtt_topic_edge_phase(topics->topic_state_phase, sizeof(topics->topic_state_phase));
     settings_get_mqtt_topic_edge_handshake(topics->topic_handshake, sizeof(topics->topic_handshake));
     settings_get_mqtt_topic_heartbeat(topics->topic_heartbeat, sizeof(topics->topic_heartbeat));
     settings_get_mqtt_topic_new_firmware(topics->topic_new_firmware, sizeof(topics->topic_new_firmware));
@@ -78,6 +80,11 @@ void parser_task(void *pvParameter) {
             else if (strcmp(to_parse.topic, topics.topic_state_safe) == 0) {
                 if (!parse_message_state_safe(to_parse.payload, to_parse.len)) {
                     ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de state_safe");
+                }
+            }
+            else if (strcmp(to_parse.topic, topics.topic_state_phase) == 0) {
+                if (!parse_message_phase(to_parse.payload, to_parse.len)) {
+                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de phase");
                 }
             }
             else if (strcmp(to_parse.topic, topics.topic_handshake) == 0) {

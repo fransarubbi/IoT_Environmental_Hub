@@ -1,3 +1,13 @@
+/**
+* @file message.h
+ * @brief Generación y Parseo de mensajes MPack sobre MQTT.
+ *
+ * Este módulo define las funciones para serializar estructuras de datos del sistema
+ * a formato MPack (MessagePack) para su transmisión, y para deserializar
+ * payloads entrantes y extraer comandos o configuraciones.
+ */
+
+
 #ifndef MESSAGE_H
 #define MESSAGE_H
 
@@ -9,11 +19,9 @@
 
 #define NOTIFY_CMD_DESTROY  0x02
 
-#define FLAG_SERVER_VALID    0x01
-#define FLAG_ITS_ME          0x02
-#define FLAG_ITS_ALL         0x04
-#define FLAG_STATE_OK        0x08
-#define FLAG_EPOCH_VALID     0x10
+#define FLAG_PHASE_ALERT     1
+#define FLAG_PHASE_DATA      2
+#define FLAG_PHASE_MONITOR   3
 
 bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet);
 bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert);
@@ -24,10 +32,10 @@ bool generate_message_firmware_ok(mqtt_packet_t *packet, bool is_ok);
 bool generate_message_balance_mode_handshake(mqtt_packet_t *packet);
 bool generate_message_settings(mqtt_packet_t *packet);
 
-
 bool parse_message_state_normal(const char* data, size_t len);
 bool parse_message_state_balance(const char* data, size_t len);
 bool parse_message_state_safe(const char* data, size_t len);
+bool parse_message_phase(const char* data, size_t len);
 bool parse_message_handshake(const char* data, size_t len);
 bool parse_message_heartbeat(const char* data, size_t len);
 bool parse_message_new_firmware(const char* data, size_t len);
