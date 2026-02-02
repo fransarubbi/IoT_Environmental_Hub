@@ -10,6 +10,7 @@
 #define STACK_HEALTH    8000
 #define STACK_PARSER    8000
 #define STACK_CONVERTER 8000
+#define STACK_HEARTBEAT 8000
 #define STACK_DHT11     8000
 #define STACK_MIC       8000
 #define STACK_COLLECTOR 8000
@@ -19,6 +20,7 @@
 #define STACK_SEND_SETT 8000
 
 
+#define QUEUE_HEART     5
 #define QUEUE_HEALTH    5
 #define QUEUE_PARSER    5
 #define QUEUE_GENERAL   10
@@ -34,6 +36,7 @@
 
 /* Estructura que contiene todas las colas del sistema */
 typedef struct {
+    QueueHandle_t heartbeat;
     QueueHandle_t parser;
     QueueHandle_t health;
     QueueHandle_t general;
@@ -65,6 +68,7 @@ typedef struct {
     TaskHandle_t health_handle;
     TaskHandle_t parser_handle;
     TaskHandle_t converter_handle;
+    TaskHandle_t heartbeat_handle;
     TaskHandle_t dht11_handle;
     TaskHandle_t ky037_handle;
     TaskHandle_t mq135_handle;
@@ -93,6 +97,10 @@ typedef struct {
         StackType_t stack[STACK_FSM];
         StaticTask_t tcb;
     } converter;
+    struct {
+        StackType_t stack[STACK_HEARTBEAT];
+        StaticTask_t tcb;
+    } heartbeat;
     struct {
         StackType_t stack[STACK_DHT11];
         StaticTask_t tcb;

@@ -21,7 +21,8 @@
 #define TIMEOUT_HEARTBEAT_SAFE_MODE     120000000  // 120 seg
 #define TIMEOUT_INIT_SYSTEM             15000000  // 15 seg
 #define TIMEOUT_COOLING_TIMER           30000000  // 30 seg
-#define TIMEOUT_PING_TIME               10000000  // 10 seg
+#define TIMEOUT_BYPASS_TIMER            40000000  // 40 seg
+#define TIMEOUT_SAFE_MODE_TIMER         5000000  //  50 seg
 
 #include <esp_timer.h>
 
@@ -40,7 +41,8 @@ typedef enum {
     ALL_BALANCE_TIMER,
     INIT_SYSTEM_TIMER,
     COOLING_TIMER,
-    PING_TIMER
+    BYPASS_TIMER,
+    SAFE_MODE_TIMER,
 } timer_types_t;
 
 

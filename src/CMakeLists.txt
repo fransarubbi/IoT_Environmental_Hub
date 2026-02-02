@@ -18,6 +18,7 @@ idf_component_register(
         "timer.c"
         "healthscore.c"
         "parser.c"
+        "heartbeat.c"
         INCLUDE_DIRS
         "."
         REQUIRES

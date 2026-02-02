@@ -22,7 +22,45 @@ typedef struct {
 static const char *TAG = "MQTT";
 static char mac_addr[18];
 static mqtt_client_t mqtt;
+static bool subscribe = false;
 
+
+static void subscribe_to_all_topics(esp_mqtt_client_handle_t client) {
+    char topic_buff[MAX_TOPIC];
+
+    settings_get_mqtt_topic_edge_state_normal(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_state_balance(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_state_safe(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_phase(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_handshake(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_heartbeat(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_new_firmware(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_new_settings(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_edge_setting_ok(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_delete_hub(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_active_hub(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+}
 
 
 /**
@@ -49,17 +87,16 @@ static esp_err_t get_mac_address(void) {
  * @return ESP_OK si el evento fue procesado correctamente
  */
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
-    char topic_settings[MAX_TOPIC];
-    char topic_handshake[MAX_TOPIC];
-
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             xEventGroupSetBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupClearBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
-            settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
-            settings_get_mqtt_topic_settings(topic_handshake, sizeof(topic_handshake));
-            esp_mqtt_client_subscribe(event->client, topic_settings, 1);
-            esp_mqtt_client_subscribe(event->client, topic_handshake, 1);
+
+            if (subscribe) {
+                subscribe_to_all_topics(event->client);
+            } else {
+                ESP_LOGI(TAG, "Conectado a MQTT (Suscripciones en espera de INIT_SYSTEM)");
+            }
             break;
 
         case MQTT_EVENT_DISCONNECTED: {
@@ -174,7 +211,7 @@ esp_err_t mqtt_init(void) {
         mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad
         mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5
         mqtt.config.network.timeout_ms = 30000;   // Timeout de 30 seg
-        mqtt.config.session.disable_clean_session = false;  //  No guarda sesion entre desconexiones
+        mqtt.config.session.disable_clean_session = true;  //  No guarda sesion entre desconexiones
 
         /* ---- Last Will Testament ----
          * Si el ESP32 se desconecta inesperadamente, el broker publicará "offline" en el tópico status con QoS 1 y
@@ -217,3 +254,12 @@ int mqtt_publish(const char *topic, const char *payload, int len, int qos, int r
     return msg_id;
 }
 
+
+void mqtt_enable_subscribe_topics(void) {
+    if (!subscribe) {
+        subscribe = true;
+        if (xEventGroupGetBits(event_group.mqtt_event_group) & MQTT_CONNECTED_BIT) {
+            subscribe_to_all_topics(mqtt.client);
+        }
+    }
+}

@@ -74,18 +74,18 @@ void timer_generic_callback(void *arg) {
 
     switch (timer) {
         case HEARTBEAT_NORMAL_TIMER: {
-            uint32_t flag = 0;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            uint32_t flag = TIMEOUT_HEARTBEAT;
+            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(0));
             break;
         }
         case HEARTBEAT_BALANCE_MODE_TIMER: {
-            uint32_t flag = 0;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            uint32_t flag = TIMEOUT_HEARTBEAT;
+            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(0));
             break;
         }
         case HEARTBEAT_SAFE_MODE_TIMER: {
-            uint32_t flag = 0;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            uint32_t flag = TIMEOUT_HEARTBEAT;
+            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(0));
             break;
         }
         case INIT_SYSTEM_TIMER: {
@@ -94,17 +94,22 @@ void timer_generic_callback(void *arg) {
             break;
         }
         case ALL_BALANCE_TIMER: {
-            uint32_t flag = 0;
+            uint32_t flag = TIMEOUT_BALANCE;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
             break;
         }
         case COOLING_TIMER: {
-            uint32_t flag = 0;
+            uint32_t flag = TIMEOUT_COOLING;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
             break;
         }
-        case PING_TIMER: {
-            uint32_t flag = 0;
+        case BYPASS_TIMER: {
+            uint32_t flag = TIMEOUT_BYPASS;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            break;
+        }
+        case SAFE_MODE_TIMER: {
+            uint32_t flag = TIMEOUT_SAFE_MODE;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
             break;
         }
@@ -151,7 +156,7 @@ void init_timer(timer_types_t type) {
         }
         case HEARTBEAT_SAFE_MODE_TIMER: {
             timeout = TIMEOUT_HEARTBEAT_SAFE_MODE;
-            periodic = false;
+            periodic = true;
             const esp_timer_create_args_t timer_safe_mode = {
                 .callback = &timer_generic_callback,
                 .arg = (void*) HEARTBEAT_SAFE_MODE_TIMER
@@ -189,14 +194,24 @@ void init_timer(timer_types_t type) {
             ESP_ERROR_CHECK(esp_timer_create(&timer_cooling, &timer_handle));
             break;
         }
-        case PING_TIMER: {
-            timeout = TIMEOUT_PING_TIME;
+        case BYPASS_TIMER: {
+            timeout = TIMEOUT_BYPASS_TIMER;
             periodic = false;
-            const esp_timer_create_args_t timer_ping = {
+            const esp_timer_create_args_t timer_bypass = {
                 .callback = &timer_generic_callback,
-                .arg = (void*) PING_TIMER
+                .arg = (void*) BYPASS_TIMER
             };
-            ESP_ERROR_CHECK(esp_timer_create(&timer_ping, &timer_handle));
+            ESP_ERROR_CHECK(esp_timer_create(&timer_bypass, &timer_handle));
+            break;
+        }
+        case SAFE_MODE_TIMER: {
+            timeout = TIMEOUT_SAFE_MODE_TIMER;
+            periodic = false;
+            const esp_timer_create_args_t timer_safe_mode = {
+                .callback = &timer_generic_callback,
+                .arg = (void*) SAFE_MODE_TIMER
+            };
+            ESP_ERROR_CHECK(esp_timer_create(&timer_safe_mode, &timer_handle));
             break;
         }
         default: {}

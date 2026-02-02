@@ -12,6 +12,7 @@
 #include <esp_log.h>
 #include "Converter/converter.h"
 #include "Healthscore/healthscore.h"
+#include "Heartbeat/heartbeat.h"
 #include "Parser/parser.h"
 
 
@@ -24,6 +25,7 @@ static const char *TAG = "System";
  * retorno fue false, el sistema se reiniciara.
  */
 bool init_queues(void) {
+    queues.heartbeat         = xQueueCreate(QUEUE_HEART, sizeof(uint32_t));
     queues.parser            = xQueueCreate(QUEUE_PARSER, sizeof(mqtt_msg_to_parse_t));
     queues.health            = xQueueCreate(QUEUE_HEALTH, sizeof(health_event_t));
     queues.general           = xQueueCreate(QUEUE_GENERAL, sizeof(mqtt_packet_t));
@@ -39,7 +41,7 @@ bool init_queues(void) {
     queues.mq135_buffer      = xQueueCreate(QUEUE, sizeof(mq135_data_t));
     queues.dht11_to_mq135    = xQueueCreate(QUEUE, dht11_struct_get_size());
 
-    if (!queues.health || !queues.general || !queues.flag || !queues.event ||
+    if (!queues.heartbeat || !queues.health || !queues.general || !queues.flag || !queues.event ||
         !queues.data_buffer || !queues.monitor_buffer || !queues.dht11_buffer ||
         !queues.ky037_buffer || !queues.mq135_buffer || !queues.dht11_to_mq135 ||
         !queues.alert_air_buffer || !queues.alert_temp_buffer || !queues.settings_buffer) {
@@ -108,6 +110,7 @@ void start_application_tasks(void) {
     task_handle.health_handle = xTaskCreateStaticPinnedToCore(health_score_task, "Health", STACK_HEALTH, NULL, PRIO_SENSORS, mem.health.stack, &mem.health.tcb, CORE_1);
     task_handle.parser_handle = xTaskCreateStaticPinnedToCore(parser_task, "Parser", STACK_PARSER, NULL, PRIO_SENSORS, mem.parser.stack, &mem.parser.tcb, CORE_1);
     task_handle.converter_handle = xTaskCreateStaticPinnedToCore(flag_converter_task, "Converter", STACK_CONVERTER, NULL, PRIO_SENSORS, mem.converter.stack, &mem.converter.tcb, CORE_1);
+    task_handle.heartbeat_handle = xTaskCreateStaticPinnedToCore(heartbeat_task, "Heartbeat", STACK_HEARTBEAT, NULL, PRIO_SENSORS, mem.heartbeat.stack, &mem.heartbeat.tcb, CORE_1);
     task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_1);
     task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);
     task_handle.mq135_handle = xTaskCreateStaticPinnedToCore(mq135_task, "MQ135", STACK_MQ135, NULL, PRIO_SENSORS, mem.mq135.stack, &mem.mq135.tcb, CORE_0);

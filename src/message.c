@@ -505,11 +505,17 @@ bool parse_message_state_balance(const char* data, const size_t len) {
         const uint32_t balance = settings_get_balance_epoch();
         if (balance < epoch) {
             settings_set_balance_epoch(epoch);
+            const uint32_t flag = STATE_BALANCE_MODE;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
+            atomic_store(&msg_data.duration, duration);
+            atomic_store(&msg_data.balance, epoch);
+            setting_save_to_nvs();
+        } else if (balance == epoch) {
+            const uint32_t flag = STATE_BALANCE_MODE;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
+            atomic_store(&msg_data.duration, duration);
         }
-        const uint32_t flag = STATE_BALANCE_MODE;
-        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
-        atomic_store(&msg_data.duration, duration);
-        setting_save_to_nvs();
+
     }
 
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -674,20 +680,29 @@ bool parse_message_phase(const char* data, const size_t len) {
     }
 
     if (sender_ok && dest_ok && state_ok && frequency_ok && balance_ok && jitter_ok) {
-        atomic_store(&msg_data.balance, balance);
-        atomic_store(&msg_data.frequency, frequency);
-        atomic_store(&msg_data.jitter, jitter);
-        if (phase == FLAG_PHASE_ALERT) {
-            const uint32_t flag = PHASE_ALERT;
+        const uint32_t epoch = atomic_load(&msg_data.balance);
+        if (epoch < balance) {
+            atomic_store(&msg_data.balance, balance);
+            const uint32_t flag = NEWER_EPOCH;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            settings_set_balance_epoch(epoch);
+            setting_save_to_nvs();
         }
-        if (phase == FLAG_PHASE_DATA) {
-            const uint32_t flag = PHASE_DATA;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-        }
-        if (phase == FLAG_PHASE_MONITOR) {
-            const uint32_t flag = PHASE_MONITOR;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+        else if (epoch == balance){
+            atomic_store(&msg_data.frequency, frequency);
+            atomic_store(&msg_data.jitter, jitter);
+            if (phase == FLAG_PHASE_ALERT) {
+                const uint32_t flag = PHASE_ALERT;
+                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            }
+            if (phase == FLAG_PHASE_DATA) {
+                const uint32_t flag = PHASE_DATA;
+                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            }
+            if (phase == FLAG_PHASE_MONITOR) {
+                const uint32_t flag = PHASE_MONITOR;
+                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            }
         }
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -751,12 +766,17 @@ bool parse_message_handshake(const char* data, const size_t len) {
     if (sender_ok && dest_ok && duration_ok && balance_ok) {
         const uint32_t balance = settings_get_balance_epoch();
         if (balance < epoch) {
+            atomic_store(&msg_data.balance, balance);
+            const uint32_t flag = NEWER_EPOCH;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             settings_set_balance_epoch(epoch);
+            setting_save_to_nvs();
         }
-        uint32_t flag = HANDSHAKE_REQUEST;
-        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-        atomic_store(&msg_data.duration, duration);
-        setting_save_to_nvs();
+        else if (epoch == balance) {
+            uint32_t flag = HANDSHAKE_REQUEST;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            atomic_store(&msg_data.duration, duration);
+        }
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
 }
@@ -809,7 +829,7 @@ bool parse_message_heartbeat(const char* data, const size_t len) {
 
     if (sender_ok && dest_ok && beat_ok) {
         uint32_t flag = HEARTBEAT_INCOMING;
-        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+        xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(100));
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
 }

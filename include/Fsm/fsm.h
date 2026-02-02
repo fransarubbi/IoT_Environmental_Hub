@@ -4,27 +4,34 @@
 #include <stdint.h>
 #include <stdatomic.h>
 
-#define TIMEOUT_INIT 0x01                // Flag de timeout en INIT_SYSTEM
-#define STATE_SAFE_MODE 0x02             // Flag de mensaje de estado "SAFE_MODE"
-#define STATE_BALANCE_MODE 0x04          // Flag de mensaje de estado "BALANCE_MODE"
-#define STATE_NORMAL 0x08                // Flag de mensaje de estado "NORMAL"
-#define EDGE_WORKING 0x10                // Flag de edge funcionando
-#define HANDSHAKE_REQUEST 0x20           // Flag de peticion de handshake
-#define TIMEOUT_HEARTBEAT 0x40           // Flag de heartbeat no recibido
-#define INIT_BALANCE 0x80                // Flag de iniciar modo de balanceo
-#define MESSAGE_ALERT 0x100              // Flag de mensaje de alerta
-#define HANDSHAKE_OK 0x200               // Flag de handshake correcto
-#define HEALTH_SCORE_DEGRADED 0x400      // Flag de salud de la conexion degradada
-#define HEALTH_SCORE_CRITICAL 0x800      // Flag de salud de la conexion critica
-#define HEALTH_SCORE_UNAVAILABLE 0x1000  // Flag de salud de la conexion nefasta
-#define HEALTH_SCORE_HEALTHY     0x2000  // Flag de salud de la conexion saludable
-#define TIMEOUT_SAFE_MODE 0x2000         // Flag de fin de timer para SAFE_MODE
-#define UPDATE_FLAG 0x4000               // Flag de actualizacion de firmware disponible
-#define UPDATE_OK 0x8000                 // Flag de actualizacion de firmware correcta
-#define PHASE_ALERT 1
-#define PHASE_DATA 2
-#define PHASE_MONITOR 3
-#define HEARTBEAT_INCOMING 0x80
+
+#define TIMEOUT_INIT              0x01    // Flag de timeout en INIT_SYSTEM
+#define UPDATE_FLAG               0x8000  // Flag de actualizacion de firmware disponible
+#define STATE_SAFE_MODE           0x02    // Flag de mensaje de estado "SAFE_MODE"
+#define STATE_BALANCE_MODE        0x04    // Flag de mensaje de estado "BALANCE_MODE"
+#define STATE_NORMAL              0x08    // Flag de mensaje de estado "NORMAL"
+#define UPDATE_OK                 0x10000 // Flag de actualizacion de firmware correcta
+#define HANDSHAKE_REQUEST         0x20    // Flag de peticion de handshake
+
+#define TIMEOUT_HEARTBEAT         0x40    // Flag de heartbeat no recibido
+#define INIT_BALANCE              0x80    // Flag de iniciar modo de balanceo
+#define MESSAGE_ALERT             0x100   // Flag de mensaje de alerta
+#define HANDSHAKE_OK              0x200   // Flag de handshake correcto
+#define HEALTH_SCORE_DEGRADED     0x400   // Flag de salud de la conexion degradada
+#define HEALTH_SCORE_CRITICAL     0x800   // Flag de salud de la conexion critica
+#define HEALTH_SCORE_UNAVAILABLE  0x1000  // Flag de salud de la conexion nefasta
+#define HEALTH_SCORE_HEALTHY      0x2000  // Flag de salud de la conexion saludable
+#define TIMEOUT_COOLING           0x4000
+#define TIMEOUT_BALANCE           0x10000
+#define TIMEOUT_BYPASS            0x20000
+#define TIMEOUT_SAFE_MODE         0x40000
+#define NEWER_EPOCH               0x8000
+
+#define PHASE_ALERT               0x20000 // Flag de inicio de fase ALERT
+#define PHASE_DATA                0x40000 // Flag de inicio de fase DATA
+#define PHASE_MONITOR             0x80000 // Flag de inicio de fase MONITOR
+#define HEARTBEAT_INCOMING        0x100000 // Flag de latido entrante
+
 
 #define NOTIFY_CMD_START  0x01
 #define NOTIFY_CMD_STOP   0x02
@@ -43,7 +50,6 @@ typedef enum {
     NORMAL,
     STORE,
     COOLING_TIME,
-    PING,
     UPDATE_SCORE,
     BYPASS,
     SAFE_MODE,
@@ -61,32 +67,32 @@ typedef enum {
     eFromInitToNormal,
     eFromNormalToCooling,
     eFromNormalToBalance,
+    eFromInitBalanceToStore,
     eFromInitBalanceToInHandshake,
     eFromInitBalanceToAlert,
     eFromInitBalanceToData,
     eFromInitBalanceToMonitor,
     eFromInHandshakeToAlert,
-    eFromInHandshakeToInitBalance,
+    eFromInHandshakeToStore,
     eFromAlertToData,
-    eFromAlertToInitBalance,
+    eFromAlertToStore,
     eFromDataToMonitor,
-    eFromDataToInitBalance,
+    eFromDataToStore,
     eFromMonitorToOutHandshake,
-    eFromMonitorToInitBalance,
-    eFromBalanceToNormal,
-    eFromBalanceToStore,
-    eFromOutHandshakeToInitBalance,
-    eFromCoolingToPing,
-    eFromPingToCooling,
-    eFromPingToUpdateScore,
+    eFromMonitorToStore,
+    eFromOutHandshakeToStore,
+    eFromOutHandshakeToNormal,
+    eFromCoolingToUpdateScore,
     eFromUpdateScoreToCooling,
-    eFromScoreToNormal,
+    eFromUpdateScoreToNormal,
     eToBypass,
     eFromStoreToBalance,
+    eFromStoreToBypass,
     eFromBypassToNormal,
     eFromBypassToBalance,
     eFromSafeToStore,
     eFromSafeToNormal,
+    eNewerEpoch,
 } Event;
 
 
@@ -103,10 +109,9 @@ typedef struct {
     atomic_uint_fast32_t frequency;
 } message_variable_t;
 
-extern message_variable_t msg_data;
+
 
 void fsm_task(void *pvParameter);
-
 typedef void (*Action)(Fsm *fsm);
 void action_entry_check_firmware(Fsm *fsm);
 void action_entry_update(Fsm *fsm);
@@ -121,7 +126,6 @@ void action_entry_out_handshake(Fsm *fsm);
 void action_entry_normal(Fsm *fsm);
 void action_entry_store(Fsm *fsm);
 void action_entry_cooling(Fsm *fsm);
-void action_entry_ping(Fsm *fsm);
 void action_entry_update_score(Fsm *fsm);
 void action_entry_bypass(Fsm *fsm);
 void action_entry_safe(Fsm *fsm);
@@ -137,7 +141,10 @@ typedef struct {
 
 extern const StateTable table[];
 extern const uint8_t SIZE_TABLE;
+extern message_variable_t msg_data;
 
+typedef _Atomic(State) AtomicState;
+extern AtomicState shared_state;
 
 
 #endif //FSM_H

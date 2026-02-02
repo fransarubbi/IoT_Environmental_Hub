@@ -8,8 +8,12 @@
 #include "components/mpack/include/mpack.h"
 #include "Message/message.h"
 #include "Timer/timer.h"
+#include <stdatomic.h>
+
 
 message_variable_t msg_data;
+AtomicState shared_state = CHECK_FIRMWARE;
+
 
 const StateTable table[] = {
     {CHECK_FIRMWARE, eUpdate, UPDATE, action_entry_update},
@@ -20,30 +24,34 @@ const StateTable table[] = {
     {INIT_SYSTEM, eFromInitToNormal, NORMAL, action_entry_normal},
     {INIT_SYSTEM, eFromInitToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
     {INIT_SYSTEM, eFromInitToSafe, SAFE_MODE, action_entry_safe},
+    {STORE, eFromStoreToBypass, BYPASS, action_entry_bypass},
+    {STORE, eFromStoreToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
     {NORMAL, eFromNormalToCooling, COOLING_TIME, action_entry_cooling},
     {NORMAL, eFromNormalToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {INIT_BALANCE_MODE, eFromInitBalanceToStore, STORE, action_entry_store},
     {INIT_BALANCE_MODE, eFromInitBalanceToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {INIT_BALANCE_MODE, eFromInitBalanceToAlert, ALERT, action_entry_alert},
     {INIT_BALANCE_MODE, eFromInitBalanceToData, DATA, action_entry_data},
     {INIT_BALANCE_MODE, eFromInitBalanceToMonitor, MONITOR, action_entry_monitor},
+    {IN_HANDSHAKE, eFromInHandshakeToStore, STORE, action_entry_store},
     {IN_HANDSHAKE, eFromInHandshakeToAlert, ALERT, action_entry_alert},
-    {IN_HANDSHAKE, eFromInHandshakeToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {IN_HANDSHAKE, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {ALERT, eFromAlertToStore, STORE, action_entry_store},
     {ALERT, eFromAlertToData, DATA, action_entry_data},
-    {ALERT, eFromAlertToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {ALERT, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {DATA, eFromDataToStore, STORE, action_entry_store},
     {DATA, eFromDataToMonitor, MONITOR, action_entry_monitor},
-    {DATA, eFromDataToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {DATA, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {MONITOR, eFromMonitorToStore, STORE, action_entry_store},
     {MONITOR, eFromMonitorToOutHandshake, OUT_HANDSHAKE, action_entry_out_handshake},
-    {MONITOR, eFromMonitorToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
-    {OUT_HANDSHAKE, eFromBalanceToNormal, NORMAL, action_entry_normal},
-    {OUT_HANDSHAKE, eFromBalanceToStore, STORE, action_entry_store},
-    {OUT_HANDSHAKE, eFromOutHandshakeToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
-    {COOLING_TIME, eFromCoolingToPing, PING, action_entry_ping},
+    {MONITOR, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {OUT_HANDSHAKE, eFromOutHandshakeToNormal, NORMAL, action_entry_normal},
+    {OUT_HANDSHAKE, eFromOutHandshakeToStore, STORE, action_entry_store},
+    {OUT_HANDSHAKE, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {COOLING_TIME, eFromCoolingToUpdateScore, UPDATE_SCORE, action_entry_update_score},
     {COOLING_TIME, eToBypass, BYPASS, action_entry_bypass},
-    {PING, eFromPingToCooling, COOLING_TIME, action_entry_cooling},
-    {PING, eFromPingToUpdateScore, UPDATE_SCORE, action_entry_update_score},
-    {PING, eToBypass, BYPASS, action_entry_bypass},
     {UPDATE_SCORE, eFromUpdateScoreToCooling, COOLING_TIME, action_entry_cooling},
-    {UPDATE_SCORE, eFromScoreToNormal, NORMAL, action_entry_normal},
+    {UPDATE_SCORE, eFromUpdateScoreToNormal, NORMAL, action_entry_normal},
     {UPDATE_SCORE, eToBypass, BYPASS, action_entry_bypass},
     {BYPASS, eFromBypassToNormal, NORMAL, action_entry_normal},
     {BYPASS, eFromBypassToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
@@ -58,6 +66,7 @@ static void event_processor(Fsm *fsm, const Event event) {
         if (table[i].current == fsm->state && table[i].event == event) {
             if (table[i].action) table[i].action(fsm);
             fsm->state = table[i].next;
+            atomic_store(&shared_state, fsm->state);
             return;
         }
     }
@@ -65,9 +74,7 @@ static void event_processor(Fsm *fsm, const Event event) {
 
 
 void fsm_task(void *pvParameter) {
-    Fsm fsm;
-    fsm.state = CHECK_FIRMWARE;
-    fsm.flag = 0;
+    Fsm fsm = {CHECK_FIRMWARE, 0};
     msg_data.duration = ATOMIC_VAR_INIT(0);
     msg_data.balance = ATOMIC_VAR_INIT(settings_get_balance_epoch());
     msg_data.jitter = ATOMIC_VAR_INIT(0);
@@ -77,7 +84,7 @@ void fsm_task(void *pvParameter) {
     action_entry_check_firmware(&fsm);
 
     while (1) {
-        if (xQueueReceive(queues.event, &event, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (xQueueReceive(queues.event, &event, portMAX_DELAY) == pdTRUE) {
             event_processor(&fsm, event);
         }
     }
@@ -91,7 +98,7 @@ void action_entry_check_firmware(Fsm *fsm) {
 
 void action_entry_update(Fsm *fsm) {
     if (ota_from_github() == ESP_OK) {
-        uint32_t flag = UPDATE_FLAG;
+        const uint32_t flag = UPDATE_OK;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     } else {
         mqtt_packet_t packet;
@@ -105,6 +112,7 @@ void action_entry_update(Fsm *fsm) {
 
 void action_entry_init_system(Fsm *fsm) {
     init_timer(INIT_SYSTEM_TIMER);
+    mqtt_enable_subscribe_topics();
 }
 
 
@@ -119,6 +127,9 @@ void action_entry_notify_ok(Fsm *fsm) {
 
 
 void action_entry_init_balance_mode(Fsm *fsm) {
+    delete_timer(HEARTBEAT_NORMAL_TIMER);
+    delete_timer(INIT_SYSTEM_TIMER);
+    delete_timer(BYPASS_TIMER);
     init_timer(HEARTBEAT_BALANCE_MODE_TIMER);
     init_timer(ALL_BALANCE_TIMER);
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_STOP, eSetBits);
@@ -162,6 +173,11 @@ void action_entry_out_handshake(Fsm *fsm) {
 
 
 void action_entry_normal(Fsm *fsm) {
+    delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
+    delete_timer(ALL_BALANCE_TIMER);
+    delete_timer(BYPASS_TIMER);
+    delete_timer(SAFE_MODE_TIMER);
+    delete_timer(INIT_SYSTEM_TIMER);
     init_timer(HEARTBEAT_NORMAL_TIMER);
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_START, eSetBits);
@@ -175,27 +191,28 @@ void action_entry_normal(Fsm *fsm) {
 
 void action_entry_store(Fsm *fsm) {
     // MODIFICAR SAMPLE RATE AL DOBLE
+    delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
+    delete_timer(HEARTBEAT_SAFE_MODE_TIMER);
+    delete_timer(SAFE_MODE_TIMER);
+    delete_timer(ALL_BALANCE_TIMER);
 }
 
 
 void action_entry_cooling(Fsm *fsm) {
+    delete_timer(HEARTBEAT_NORMAL_TIMER);
     init_timer(COOLING_TIMER);
 }
 
 
-void action_entry_ping(Fsm *fsm) {
-    init_timer(PING_TIMER);
-    // ENVIAR MENSAJE PING
-}
-
-
 void action_entry_update_score(Fsm *fsm) {
+    delete_timer(COOLING_TIMER);
     // INCREMENTAR HEALTH SCORE
     // SI CUMPLE LA CONDICION, GENERAR FLAG PARA LUEGO OBTENER EVENTO Y CAMBIAR DE ESTADO
 }
 
 
 void action_entry_bypass(Fsm *fsm) {
+    delete_timer(COOLING_TIMER);
     // CREAR CONEXION HTTPS CON EL SERVIDOR
     xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_STOP, eSetBits);
@@ -206,6 +223,7 @@ void action_entry_bypass(Fsm *fsm) {
 
 
 void action_entry_safe(Fsm *fsm) {
+    delete_timer(INIT_SYSTEM_TIMER);
     init_timer(HEARTBEAT_SAFE_MODE_TIMER);
     // CAMBIAR FRECUENCIA DE SAMPLEO
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
