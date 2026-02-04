@@ -39,26 +39,25 @@ static health_state_t get_state_of_score(const uint8_t *current_score) {
 /**
  * @brief Notifica a la FSM central sobre el estado actual de salud.
  *
- * Envía un flag a la cola de eventos del sistema solo si corresponde al estado actual.
- * Esta función se llama únicamente cuando se detecta un cambio de categoría en el score.
+ * Envía un flag a la cola de eventos del sistema.
  *
  * @param current_score Puntero al puntaje actual.
  */
-static void send_flag_when_score_changes(const uint8_t *current_score) {
+static void send_flag(const uint8_t *current_score) {
     if (get_state_of_score(current_score) == HEALTHY) {
-        uint32_t flag = HEALTH_SCORE_HEALTHY;
+        const uint32_t flag = HEALTH_SCORE_HEALTHY;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
     if (55 <= *current_score && *current_score <= 79) {
-        uint32_t flag = HEALTH_SCORE_DEGRADED;
+        const uint32_t flag = HEALTH_SCORE_DEGRADED;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
     if (20 <= *current_score && *current_score <= 54) {
-        uint32_t flag = HEALTH_SCORE_CRITICAL;
+        const uint32_t flag = HEALTH_SCORE_CRITICAL;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
     if (0 < *current_score && *current_score <= 19) {
-        uint32_t flag = HEALTH_SCORE_UNAVAILABLE;
+        const uint32_t flag = HEALTH_SCORE_UNAVAILABLE;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
 }
@@ -92,7 +91,7 @@ static void add_pending_msg(pending_t *msg_pending, int32_t id, int64_t timestam
  * @param id ID del mensaje a buscar (proveniente del PUBACK).
  * @return Índice en el array (0 a MAX-1) o -1 si no se encuentra.
  */
-static int find_msg_index(pending_t *msg_pending, int32_t id) {
+static int find_msg_index(const pending_t *msg_pending, const int32_t id) {
     for (uint8_t i = 0; i < MAX_PENDING_MSGS; i++) {
         if (msg_pending->msg[i].msg_id == id && msg_pending->msg[i].active == true) {
             return i;
@@ -112,7 +111,6 @@ static int find_msg_index(pending_t *msg_pending, int32_t id) {
  * @param rtt Latencia medida en milisegundos.
  */
 static void update_score_rtt(uint8_t *current_score, const int64_t rtt) {
-    const uint8_t old_score = *current_score;
     if (rtt >= 1000) {
         if (*current_score >= HIGH_LATENCY) {
             *current_score -= HIGH_LATENCY;
@@ -129,10 +127,9 @@ static void update_score_rtt(uint8_t *current_score, const int64_t rtt) {
         }
     }
 
-    const health_state_t state_of_score = get_state_of_score(current_score);
-    const health_state_t state_of_old_score = get_state_of_score(&old_score);
-    if (state_of_score != state_of_old_score) {
-        send_flag_when_score_changes(current_score);
+    const State state = atomic_load(&shared_state);
+    if (state == NORMAL || state == UPDATE_SCORE) {
+        send_flag(current_score);
     }
 }
 
@@ -141,14 +138,12 @@ static void update_score_rtt(uint8_t *current_score, const int64_t rtt) {
  * @brief Penaliza el score por errores de socket o buffer lleno.
  */
 static void update_score_socket_error(uint8_t *current_score) {
-    const uint8_t old_score = *current_score;
     if (*current_score >= SOCKET_ERROR) {
         *current_score -= SOCKET_ERROR;
     }
-    const health_state_t state_of_score = get_state_of_score(current_score);
-    const health_state_t state_of_old_score = get_state_of_score(&old_score);
-    if (state_of_score != state_of_old_score) {
-        send_flag_when_score_changes(current_score);
+    const State state = atomic_load(&shared_state);
+    if (state == NORMAL || state == UPDATE_SCORE) {
+        send_flag(current_score);
     }
 }
 
@@ -157,12 +152,10 @@ static void update_score_socket_error(uint8_t *current_score) {
  * @brief Resetea el score a 0 debido a una desconexión crítica.
  */
 static void update_score_disconnected(uint8_t *current_score) {
-    const uint8_t old_score = *current_score;
     *current_score = 0;
-    const health_state_t state_of_score = get_state_of_score(current_score);
-    const health_state_t state_of_old_score = get_state_of_score(&old_score);
-    if (state_of_score != state_of_old_score) {
-        send_flag_when_score_changes(current_score);
+    const State state = atomic_load(&shared_state);
+    if (state == NORMAL || state == UPDATE_SCORE) {
+        send_flag(current_score);
     }
 }
 
@@ -171,14 +164,12 @@ static void update_score_disconnected(uint8_t *current_score) {
  * @brief Penaliza el score cuando un mensaje expira sin recibir ACK.
  */
 static void update_score_timeout(uint8_t *current_score) {
-    const uint8_t old_score = *current_score;
     if (*current_score >= TIMEOUT_QOS_1) {
         *current_score -= TIMEOUT_QOS_1;
     }
-    const health_state_t state_of_score = get_state_of_score(current_score);
-    const health_state_t state_of_old_score = get_state_of_score(&old_score);
-    if (state_of_score != state_of_old_score) {
-        send_flag_when_score_changes(current_score);
+    const State state = atomic_load(&shared_state);
+    if (state == NORMAL || state == UPDATE_SCORE) {
+        send_flag(current_score);
     }
 }
 
@@ -235,7 +226,7 @@ void health_score_task(void *pvParam) {
             if (msg_pending.msg[i].active) {
                 if ((now - msg_pending.msg[i].start_time) > MSG_TIMEOUT_US) {
                     update_score_timeout(&current_score);
-                    msg_pending.msg[i].active = false; // Liberamos slot
+                    msg_pending.msg[i].active = false;
                 }
             }
         }

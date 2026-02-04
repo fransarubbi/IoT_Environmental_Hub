@@ -10,6 +10,9 @@
 
 #include "Data/data.h"
 #include "MQ135/mq135.h"
+
+#include <esp_random.h>
+
 #include "MQTT/mqtt.h"
 #include "DHT11/dht11.h"
 #include "Setting/settings.h"

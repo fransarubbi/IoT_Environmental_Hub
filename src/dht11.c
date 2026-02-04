@@ -11,6 +11,9 @@
 
 #include "Data/data.h"
 #include "DHT11/dht11.h"
+
+#include <esp_random.h>
+
 #include "MQTT/mqtt.h"
 #include "Setting/settings.h"
 #include "System/system.h"

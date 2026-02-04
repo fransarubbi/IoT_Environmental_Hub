@@ -9,6 +9,8 @@
 #include "Converter/converter.h"
 #include "System/system.h"
 #include "Fsm/fsm.h"
+#include "Message/message.h"
+#include "MQTT/mqtt.h"
 #include "Timer/timer.h"
 
 
@@ -100,6 +102,10 @@ void flag_converter_task(void *pvParameters) {
                         Event event = eFromInitBalanceToMonitor;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
+                    if (flag == STATE_SAFE_MODE) {
+                        Event event = eFromInitBalanceToSafe;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
                     break;
 
                 case IN_HANDSHAKE:
@@ -115,10 +121,14 @@ void flag_converter_task(void *pvParameters) {
                         Event event = eNewerEpoch;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
+                    if (flag == STATE_SAFE_MODE) {
+                        Event event = eFromInHandshakeToSafe;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
                     break;
 
                 case ALERT:
-                    if (flag == TIMEOUT_HEARTBEAT || flag == TIMEOUT_BALANCE) {
+                    if (flag == TIMEOUT_HEARTBEAT) {
                         Event event = eFromAlertToStore;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
@@ -133,7 +143,7 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case DATA:
-                    if (flag == TIMEOUT_HEARTBEAT || flag == TIMEOUT_BALANCE) {
+                    if (flag == TIMEOUT_HEARTBEAT) {
                         Event event = eFromDataToStore;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
@@ -145,20 +155,33 @@ void flag_converter_task(void *pvParameters) {
                         Event event = eNewerEpoch;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
+                    if (flag == DATA_EMPTY_QUEUE) {
+                        xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
+                        xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_START, eSetBits);
+                        xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_START, eSetBits);
+                        mqtt_msg_general_t packet;
+                        generate_message_empty_queue(&packet, DATA);
+                        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+                    }
                     break;
 
                 case MONITOR:
-                    if (flag == TIMEOUT_HEARTBEAT || flag == TIMEOUT_BALANCE) {
+                    if (flag == TIMEOUT_HEARTBEAT) {
                         Event event = eFromMonitorToStore;
-                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
-                    }
-                    if (flag == HANDSHAKE_REQUEST) {
-                        Event event = eFromMonitorToOutHandshake;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     if (flag == NEWER_EPOCH) {
                         Event event = eNewerEpoch;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == MONITOR_EMPTY_QUEUE) {
+                        xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
+                        xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_START, eSetBits);
+                        xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_START, eSetBits);
+                        xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_START, eSetBits);
+                        mqtt_msg_general_t packet;
+                        generate_message_empty_queue(&packet, MONITOR);
+                        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
                     }
                     break;
 
@@ -173,6 +196,10 @@ void flag_converter_task(void *pvParameters) {
                     }
                     if (flag == NEWER_EPOCH) {
                         Event event = eNewerEpoch;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == STATE_SAFE_MODE) {
+                        Event event = eFromOutHandshakeToSafe;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     break;
@@ -238,12 +265,17 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case SAFE_MODE:
-                    if (flag == TIMEOUT_HEARTBEAT) {
-                        Event event = eFromSafeToStore;
+                    if (flag == STATE_NORMAL) {
+                        Event event = eFromSafeToNormal;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
-                    if (flag == TIMEOUT_SAFE_MODE) {
-                        Event event = eFromSafeToNormal;
+                    if (flag == SAFE_MODE_EMPTY_QUEUE) {
+                        mqtt_msg_general_t packet;
+                        generate_message_empty_queue(&packet, SAFE_MODE);
+                        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == TIMEOUT_HEARTBEAT) {
+                        Event event = eFromSafeToStore;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     break;

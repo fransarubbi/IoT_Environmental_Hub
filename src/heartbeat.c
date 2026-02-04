@@ -46,7 +46,7 @@ static void check_beat(state_heartbeat *heartbeat, const uint32_t heart) {
         }
     }
     if (heartbeat->count_beat == 0) {
-        uint32_t flag = TIMEOUT_HEARTBEAT;
+        const uint32_t flag = TIMEOUT_HEARTBEAT;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
 }
@@ -66,22 +66,41 @@ static void check_beat(state_heartbeat *heartbeat, const uint32_t heart) {
 void heartbeat_task(void *pvParameter) {
     static uint32_t heart;
     static state_heartbeat heartbeat;
+    uint32_t notification = 0;
 
     heartbeat.old_state = CHECK_FIRMWARE;
 
     while (1) {
-        if (xQueueReceive(queues.heartbeat, &heart, portMAX_DELAY) == pdTRUE) {
-            heartbeat.new_state = atomic_load(&shared_state);
-            switch (heartbeat.new_state) {
-                case NORMAL: check_beat(&heartbeat, heart); break;
-                case SAFE_MODE: check_beat(&heartbeat, heart); break;
-                case INIT_BALANCE_MODE: check_beat(&heartbeat, heart); break;
-                case IN_HANDSHAKE: check_beat(&heartbeat, heart); break;
-                case ALERT: check_beat(&heartbeat, heart); break;
-                case DATA: check_beat(&heartbeat, heart); break;
-                case MONITOR: check_beat(&heartbeat, heart); break;
-                case OUT_HANDSHAKE: check_beat(&heartbeat, heart); break;
-                default: break;
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+        if (notification & NOTIFY_CMD_START) {
+            xQueueReset(queues.heartbeat);
+            bool running = true;
+
+            while (running) {
+                if (xQueueReceive(queues.heartbeat, &heart, pdMS_TO_TICKS(100)) == pdTRUE) {
+                    heartbeat.new_state = atomic_load(&shared_state);
+                    switch (heartbeat.new_state) {
+                        case NORMAL: check_beat(&heartbeat, heart); break;
+                        case SAFE_MODE: check_beat(&heartbeat, heart); break;
+                        case INIT_BALANCE_MODE: check_beat(&heartbeat, heart); break;
+                        case IN_HANDSHAKE: check_beat(&heartbeat, heart); break;
+                        case ALERT: check_beat(&heartbeat, heart); break;
+                        case DATA: check_beat(&heartbeat, heart); break;
+                        case MONITOR: check_beat(&heartbeat, heart); break;
+                        case OUT_HANDSHAKE: check_beat(&heartbeat, heart); break;
+                        default: break;
+                    }
+                }
+
+                uint32_t stop_signal = 0;
+                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0);
+
+                if (result == pdTRUE) {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        running = false;
+                    }
+                }
             }
         }
     }

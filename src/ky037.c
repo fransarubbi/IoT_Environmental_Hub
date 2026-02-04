@@ -97,10 +97,10 @@ void ky037_task(void *pvParameters) {
                 uint32_t sample_rate = settings_get_node_sample_rate();
                 if(sample_rate == 0) sample_rate = 1;
 
-                TickType_t delay_ticks = pdMS_TO_TICKS(sample_rate * 60000);
+                const TickType_t delay_ticks = pdMS_TO_TICKS(sample_rate * 60000);
 
                 uint32_t stop_signal = 0;
-                BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, delay_ticks);
+                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, delay_ticks);
 
                 if (result == pdFALSE) {
                     portENTER_CRITICAL(&spinlock);

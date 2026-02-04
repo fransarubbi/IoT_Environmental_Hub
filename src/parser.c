@@ -8,6 +8,8 @@
 #include "Parser/parser.h"
 #include "Message/message.h"
 #include <esp_log.h>
+
+#include "Fsm/fsm.h"
 #include "MQTT/mqtt.h"
 #include "System/system.h"
 
@@ -64,67 +66,86 @@ void parser_task(void *pvParameter) {
     mqtt_msg_to_parse_t to_parse;
     static topics topics;
     get_all_topics(&topics);
+    uint32_t notification = 0;
 
     while (1) {
-        if (xQueueReceive(queues.parser, &to_parse, portMAX_DELAY) == pdTRUE) {
-            if (strcmp(to_parse.topic, topics.topic_state_normal) == 0) {
-                if (!parse_message_state_normal(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de state_normal");
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+        if (notification & NOTIFY_CMD_START) {
+            xQueueReset(queues.parser);
+            bool running = true;
+
+            while (running) {
+                if (xQueueReceive(queues.parser, &to_parse, pdMS_TO_TICKS(100)) == pdTRUE) {
+                    if (strcmp(to_parse.topic, topics.topic_state_normal) == 0) {
+                        if (!parse_message_state_normal(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de state_normal");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_state_balance) == 0) {
+                        if (!parse_message_state_balance(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de state_balance");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_state_safe) == 0) {
+                        if (!parse_message_state_safe(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de state_safe");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_state_phase) == 0) {
+                        if (!parse_message_phase(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de phase");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_handshake) == 0) {
+                        if (!parse_message_handshake(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de handshake");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_heartbeat) == 0) {
+                        if (!parse_message_heartbeat(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de heartbeat");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_new_firmware) == 0) {
+                        if (!parse_message_new_firmware(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de new_firmware");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_new_settings_to_hub) == 0) {
+                        if (!parse_message_setting(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de new_settings");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_setting_ok) == 0) {
+                        if (!parse_message_setting_ok(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de settings_ok");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_delete_hub) == 0) {
+                        if (!parse_message_delete(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de delete");
+                        }
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_active_hub) == 0) {
+                        if (!parse_message_active(to_parse.payload, to_parse.len)) {
+                            ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de active");
+                        }
+                    }
+                    if (to_parse.payload != NULL) {
+                        free(to_parse.payload);
+                        to_parse.payload = NULL;
+                    }
                 }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_state_balance) == 0) {
-                if (!parse_message_state_balance(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de state_balance");
+
+                uint32_t stop_signal = 0;
+                BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0);
+
+                if (result == pdTRUE) {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        running = false;
+                    }
                 }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_state_safe) == 0) {
-                if (!parse_message_state_safe(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de state_safe");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_state_phase) == 0) {
-                if (!parse_message_phase(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de phase");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_handshake) == 0) {
-                if (!parse_message_handshake(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de handshake");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_heartbeat) == 0) {
-                if (!parse_message_heartbeat(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de heartbeat");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_new_firmware) == 0) {
-                if (!parse_message_new_firmware(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de new_firmware");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_new_settings_to_hub) == 0) {
-                if (!parse_message_setting(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de new_settings");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_setting_ok) == 0) {
-                if (!parse_message_setting_ok(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de settings_ok");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_delete_hub) == 0) {
-                if (!parse_message_delete(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de delete");
-                }
-            }
-            else if (strcmp(to_parse.topic, topics.topic_active_hub) == 0) {
-                if (!parse_message_active(to_parse.payload, to_parse.len)) {
-                    ESP_LOGE("Parser", "ERROR: No se pudo parsear mensaje de active");
-                }
-            }
-            if (to_parse.payload != NULL) {
-                free(to_parse.payload);
-                to_parse.payload = NULL;
             }
         }
     }

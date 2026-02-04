@@ -1,7 +1,6 @@
 #ifndef MONITOR_H
 #define MONITOR_H
 
-#define MPACK_MONITOR_SIZE 1024
 
 #include "Wifi/wifi.h"
 #include "Setting/settings.h"

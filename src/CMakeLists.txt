@@ -19,6 +19,7 @@ idf_component_register(
         "healthscore.c"
         "parser.c"
         "heartbeat.c"
+        "https_bypass.c"
         INCLUDE_DIRS
         "."
         REQUIRES

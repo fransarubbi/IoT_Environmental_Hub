@@ -22,6 +22,13 @@ typedef struct {
 } mqtt_msg_to_parse_t;
 
 
+typedef struct {
+    topic_general topic;
+    char *payload;
+    size_t len;
+} mqtt_msg_general_t;
+
+
 esp_err_t mqtt_init(void);
 int mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain);
 void mqtt_enable_subscribe_topics(void);

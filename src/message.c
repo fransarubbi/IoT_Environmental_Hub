@@ -34,7 +34,7 @@
 bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_DATA_SIZE;
+    const size_t buffer_size = MPACK_DATA_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -83,7 +83,7 @@ bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet) {
 bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_MQ135_ALERT_SIZE;
+    const size_t buffer_size = MPACK_MQ135_ALERT_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -92,6 +92,8 @@ bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert) {
     }
 
     char mac[MAC];
+    char network[ID_NETWORK];
+    settings_get_network(network, sizeof(network));
     settings_get_node_mac(mac, sizeof(mac));
     const uint64_t time = get_time();
 
@@ -100,9 +102,9 @@ bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert) {
 
     mpack_start_map(&writer, 6);
     mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, mac);
-    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
-    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
+    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "Server0");
     mpack_write_cstr(&writer, "timestamp");         mpack_write_u64(&writer, time);
+    mpack_write_cstr(&writer, "network");           mpack_write_cstr(&writer, network);
     mpack_write_cstr(&writer, "co2_ppm_initial");   mpack_write_float(&writer, alert.co2ppm_i);
     mpack_write_cstr(&writer, "co2_ppm_rightnow");  mpack_write_float(&writer, alert.co2ppm_a);
     mpack_finish_map(&writer);
@@ -125,7 +127,7 @@ bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert) {
 bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t temp_a) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_DHT11_ALERT_SIZE;
+    const size_t buffer_size = MPACK_DHT11_ALERT_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -169,7 +171,7 @@ bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t 
 bool generate_message_monitor(mqtt_packet_t *packet, stats_monitor_t stats) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_MONITOR_SIZE;
+    const size_t buffer_size = MPACK_MONITOR_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -224,7 +226,7 @@ bool generate_message_monitor(mqtt_packet_t *packet, stats_monitor_t stats) {
 bool generate_message_setting_ok(mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_SETTINGS_SIZE;
+    const size_t buffer_size = MPACK_SETTINGS_OK_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -261,10 +263,10 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
 /**
  * @brief Genera reporte de estado de actualización de firmware (OTA).
  */
-bool generate_message_firmware_ok(mqtt_packet_t *packet, const bool is_ok) {
+bool generate_message_firmware_ok(mqtt_msg_general_t *packet, const bool is_ok) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_DATA_SIZE;
+    const size_t buffer_size = MPACK_FIRMWARE_OK_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -296,6 +298,7 @@ bool generate_message_firmware_ok(mqtt_packet_t *packet, const bool is_ok) {
         return false;
     }
     packet->len = used;
+    packet->topic = FIRMWARE_OK;
     return true;
 }
 
@@ -303,10 +306,10 @@ bool generate_message_firmware_ok(mqtt_packet_t *packet, const bool is_ok) {
 /**
  * @brief Genera handshake para sincronización en modo balanceo.
  */
-bool generate_message_balance_mode_handshake(mqtt_packet_t *packet) {
+bool generate_message_balance_mode_handshake(mqtt_msg_general_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_SETTINGS_SIZE;
+    const size_t buffer_size = MPACK_HANDSHAKE_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -336,6 +339,7 @@ bool generate_message_balance_mode_handshake(mqtt_packet_t *packet) {
     }
 
     packet->len = mpack_writer_buffer_used(&writer);
+    packet->topic = HANDSHAKE;
     return true;
 }
 
@@ -346,7 +350,7 @@ bool generate_message_balance_mode_handshake(mqtt_packet_t *packet) {
 bool generate_message_settings(mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
-    size_t buffer_size = MPACK_SETTINGS_SIZE;
+    const size_t buffer_size = MPACK_SETTINGS_SIZE;
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
@@ -381,6 +385,106 @@ bool generate_message_settings(mqtt_packet_t *packet) {
         return false;
     }
     packet->len = used;
+    return true;
+}
+
+
+/**
+ * @brief Genera respuesta de confirmación de configuración recibida.
+ */
+bool generate_message_ping(mqtt_msg_general_t *packet) {
+    packet->payload = NULL;
+    packet->len = 0;
+    const size_t buffer_size = MPACK_PING_SIZE;
+    packet->payload = malloc(buffer_size);
+
+    if (packet->payload == NULL) {
+        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        return false;
+    }
+
+    char mac[MAC];
+    settings_get_node_mac(mac, sizeof(mac));
+    const uint64_t time = get_time();
+
+    mpack_writer_t writer;
+    mpack_writer_init(&writer, packet->payload, buffer_size);
+
+    mpack_start_map(&writer, 4);
+    mpack_write_cstr(&writer, "sender_user_id");    mpack_write_cstr(&writer, mac);
+    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "Server0");
+    mpack_write_cstr(&writer, "timestamp");         mpack_write_u64(&writer, time);
+    mpack_write_cstr(&writer, "ping");              mpack_write_bool(&writer, true);
+    mpack_finish_map(&writer);
+
+    if (mpack_writer_destroy(&writer) != mpack_ok) {
+        ESP_LOGE("Data", "- ERROR: Error codificando MPack -");
+        free(packet->payload);
+        packet->payload = NULL;
+        return false;
+    }
+
+    packet->len = mpack_writer_buffer_used(&writer);
+    packet->topic = PING;
+    return true;
+}
+
+
+/**
+ * @brief Genera reporte de colas vacias (usada en Balance y en Safe).
+ */
+bool generate_message_empty_queue(mqtt_msg_general_t *packet, const State current_phase) {
+    packet->payload = NULL;
+    packet->len = 0;
+    const size_t buffer_size = MPACK_EMPTY_SIZE;
+    packet->payload = malloc(buffer_size);
+
+    if (packet->payload == NULL) {
+        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        return false;
+    }
+
+    char mac[MAC];
+    char id_edge[ID_EDGE];
+    settings_get_node_mac(mac, sizeof(mac));
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+    const uint64_t time = get_time();
+
+    mpack_writer_t writer;
+    mpack_writer_init(&writer, packet->payload, buffer_size);
+
+    mpack_start_map(&writer, 6);
+    mpack_write_cstr(&writer, "sender_user_id");    mpack_write_cstr(&writer, mac);
+    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, id_edge);
+    mpack_write_cstr(&writer, "timestamp");         mpack_write_u64(&writer, time);
+    mpack_write_cstr(&writer, "state");             mpack_write_cstr(&writer, "balance_mode");
+    if (current_phase == ALERT) {
+        mpack_write_cstr(&writer, "phase");         mpack_write_cstr(&writer, "alert");
+        mpack_write_cstr(&writer, "queue_empty");   mpack_write_bool(&writer, true);
+    }
+    if (current_phase == DATA) {
+        mpack_write_cstr(&writer, "phase");         mpack_write_cstr(&writer, "data");
+        mpack_write_cstr(&writer, "queue_empty");   mpack_write_bool(&writer, true);
+    }
+    if (current_phase == MONITOR) {
+        mpack_write_cstr(&writer, "phase");         mpack_write_cstr(&writer, "monitor");
+        mpack_write_cstr(&writer, "queue_empty");   mpack_write_bool(&writer, true);
+    }
+    if (current_phase == SAFE_MODE) {
+        mpack_write_cstr(&writer, "state");         mpack_write_cstr(&writer, "safe_mode");
+        mpack_write_cstr(&writer, "queue_empty");   mpack_write_bool(&writer, true);
+    }
+    mpack_finish_map(&writer);
+
+    if (mpack_writer_destroy(&writer) != mpack_ok) {
+        ESP_LOGE("Data", "- ERROR: Error codificando MPack -");
+        free(packet->payload);
+        packet->payload = NULL;
+        return false;
+    }
+
+    packet->len = mpack_writer_buffer_used(&writer);
+    packet->topic = QUEUE_EMPTY;
     return true;
 }
 
@@ -502,20 +606,20 @@ bool parse_message_state_balance(const char* data, const size_t len) {
     }
 
     if (sender_ok && dest_ok && state_ok && balance_ok && duration_ok) {
-        const uint32_t balance = settings_get_balance_epoch();
-        if (balance < epoch) {
+        const uint32_t bal = settings_get_balance_epoch();
+        const uint32_t diff = epoch - bal;
+        if (diff == 0) {
+            const uint32_t flag = STATE_BALANCE_MODE;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
+            atomic_store(&balance.duration, duration);
+        }
+        else if (diff < 0x80000000UL) {   // 0x80000000 es 2^31
             settings_set_balance_epoch(epoch);
             const uint32_t flag = STATE_BALANCE_MODE;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
-            atomic_store(&msg_data.duration, duration);
-            atomic_store(&msg_data.balance, epoch);
-            setting_save_to_nvs();
-        } else if (balance == epoch) {
-            const uint32_t flag = STATE_BALANCE_MODE;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
-            atomic_store(&msg_data.duration, duration);
+            atomic_store(&balance.duration, duration);
+            atomic_store(&balance.balance, epoch);
         }
-
     }
 
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -590,9 +694,9 @@ bool parse_message_state_safe(const char* data, const size_t len) {
     }
 
     if (sender_ok && dest_ok && state_ok && frequency_ok && duration_ok && jitter_ok) {
-        atomic_store(&msg_data.duration, duration);
-        atomic_store(&msg_data.frequency, frequency);
-        atomic_store(&msg_data.jitter, jitter);
+        atomic_store(&safe_mode.duration, duration);
+        atomic_store(&safe_mode.frequency, frequency);
+        atomic_store(&safe_mode.jitter, jitter);
         uint32_t flag = STATE_BALANCE_MODE;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
@@ -615,10 +719,10 @@ bool parse_message_phase(const char* data, const size_t len) {
     char id_edge[MAC];
     char key[32];
     char value[32];
-    uint32_t balance = 0;
+    uint32_t bal = 0;
     uint32_t frequency = 0;
     uint32_t jitter = 0;
-    uint8_t phase = 0;
+    uint8_t phase_number = 0;
     bool sender_ok = false;
     bool dest_ok = false;
     bool state_ok = false;
@@ -645,19 +749,19 @@ bool parse_message_phase(const char* data, const size_t len) {
         }
         else if (strcmp(key, "epoch") == 0) {
             const uint32_t val = mpack_expect_u32(&reader);
-            balance = val;
+            bal = val;
             balance_ok = true;
         }
         else if (strcmp(key, "phase") == 0) {
             mpack_expect_cstr(&reader, value, sizeof(value));
             if (strcmp(value, "alert") == 0) {
-                phase = FLAG_PHASE_ALERT;
+                phase_number = FLAG_PHASE_ALERT;
             }
             if (strcmp(value, "data") == 0) {
-                phase = FLAG_PHASE_DATA;
+                phase_number = FLAG_PHASE_DATA;
             }
             if (strcmp(value, "monitor") == 0) {
-                phase = FLAG_PHASE_MONITOR;
+                phase_number = FLAG_PHASE_MONITOR;
             }
         }
         else if (strcmp(key, "frequency") == 0) {
@@ -680,29 +784,30 @@ bool parse_message_phase(const char* data, const size_t len) {
     }
 
     if (sender_ok && dest_ok && state_ok && frequency_ok && balance_ok && jitter_ok) {
-        const uint32_t epoch = atomic_load(&msg_data.balance);
-        if (epoch < balance) {
-            atomic_store(&msg_data.balance, balance);
+        const uint32_t epoch = atomic_load(&phase.balance);
+        const uint32_t diff = epoch - bal;
+        if (diff == 0) {
+            atomic_store(&phase.frequency, frequency);
+            atomic_store(&phase.jitter, jitter);
+            if (phase_number == FLAG_PHASE_ALERT) {
+                const uint32_t flag = PHASE_ALERT;
+                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            }
+            if (phase_number == FLAG_PHASE_DATA) {
+                const uint32_t flag = PHASE_DATA;
+                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            }
+            if (phase_number == FLAG_PHASE_MONITOR) {
+                const uint32_t flag = PHASE_MONITOR;
+                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            }
+        }
+        else if (diff < 0x80000000UL) {   // 0x80000000 es 2^31
+            atomic_store(&phase.balance, bal);
             const uint32_t flag = NEWER_EPOCH;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             settings_set_balance_epoch(epoch);
             setting_save_to_nvs();
-        }
-        else if (epoch == balance){
-            atomic_store(&msg_data.frequency, frequency);
-            atomic_store(&msg_data.jitter, jitter);
-            if (phase == FLAG_PHASE_ALERT) {
-                const uint32_t flag = PHASE_ALERT;
-                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-            }
-            if (phase == FLAG_PHASE_DATA) {
-                const uint32_t flag = PHASE_DATA;
-                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-            }
-            if (phase == FLAG_PHASE_MONITOR) {
-                const uint32_t flag = PHASE_MONITOR;
-                xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-            }
         }
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -716,7 +821,7 @@ bool parse_message_handshake(const char* data, const size_t len) {
     mpack_reader_t reader;
     mpack_reader_init_data(&reader, data, len);
 
-    uint32_t map_size = mpack_expect_map(&reader);
+    const uint32_t map_size = mpack_expect_map(&reader);
     if (mpack_reader_error(&reader) != mpack_ok) {
         return false;
     }
@@ -764,18 +869,19 @@ bool parse_message_handshake(const char* data, const size_t len) {
     }
 
     if (sender_ok && dest_ok && duration_ok && balance_ok) {
-        const uint32_t balance = settings_get_balance_epoch();
-        if (balance < epoch) {
-            atomic_store(&msg_data.balance, balance);
+        const uint32_t bal = settings_get_balance_epoch();
+        const uint32_t diff = epoch - bal;
+        if (diff == 0) {
+            const uint32_t flag = HANDSHAKE_REQUEST;
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+            atomic_store(&balance.duration, duration);
+        }
+        else if (diff < 0x80000000UL) {   // 0x80000000 es 2^31
+            atomic_store(&balance.balance, bal);
             const uint32_t flag = NEWER_EPOCH;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             settings_set_balance_epoch(epoch);
             setting_save_to_nvs();
-        }
-        else if (epoch == balance) {
-            uint32_t flag = HANDSHAKE_REQUEST;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-            atomic_store(&msg_data.duration, duration);
         }
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);

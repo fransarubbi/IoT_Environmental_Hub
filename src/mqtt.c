@@ -25,6 +25,10 @@ static mqtt_client_t mqtt;
 static bool subscribe = false;
 
 
+/**
+ * @brief Subscribe el broker a todos los topicos de recepción.
+ * @param client Handler del cliente mqtt.
+ */
 static void subscribe_to_all_topics(esp_mqtt_client_handle_t client) {
     char topic_buff[MAX_TOPIC];
 
@@ -212,11 +216,6 @@ esp_err_t mqtt_init(void) {
         mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5
         mqtt.config.network.timeout_ms = 30000;   // Timeout de 30 seg
         mqtt.config.session.disable_clean_session = true;  //  No guarda sesion entre desconexiones
-
-        /* ---- Last Will Testament ----
-         * Si el ESP32 se desconecta inesperadamente, el broker publicará "offline" en el tópico status con QoS 1 y
-         * retain (permanece hasta nueva publicación)
-         */
         mqtt.config.session.last_will.topic = "/devices/esp32/status";
         mqtt.config.session.last_will.msg = "offline";
         mqtt.config.session.last_will.qos = 1;
@@ -240,21 +239,27 @@ esp_err_t mqtt_init(void) {
 
 /**
  * @brief Publica el mensaje al broker.
- * @param topic
- * @param payload
- * @param qos
- * @param retain
+ * @param topic Tópico de publicación.
+ * @param payload Contenido del mensaje.
+ * @param len Longitud del mensaje.
+ * @param qos Quality Of Service del mensaje.
+ * @param retain Mensaje retenido o no retenido.
  * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
  */
-int mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain) {
+int mqtt_publish(const char *topic, const char *payload, const int len, const int qos, const int retain) {
     if (!mqtt.client) return -1;
-
-    int msg_id = esp_mqtt_client_publish(mqtt.client, topic,payload,
-                                         len, qos, retain);
+    const int msg_id = esp_mqtt_client_publish(mqtt.client,
+                                               topic,payload,
+                                               len,
+                                               qos,
+                                               retain);
     return msg_id;
 }
 
 
+/**
+ * @brief Permite habilitar la suscripción a topicos para no recibir mensajes antes de tiempo.
+ */
 void mqtt_enable_subscribe_topics(void) {
     if (!subscribe) {
         subscribe = true;

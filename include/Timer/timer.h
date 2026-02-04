@@ -16,13 +16,12 @@
 #define MAX_SIMULTANEOUS_TIMERS         3
 #define TIMEOUT_HEARTBEAT_NORMAL        50000000  // 50 seg
 #define TIMEOUT_HEARTBEAT_BALANCE_MODE  45000000  // 45 seg
-#define TIMEOUT_HEARTBEAT_SAFE_MODE     120000000  // 120 seg
-#define TIMEOUT_HEARTBEAT_SAFE_MODE     120000000  // 120 seg
-#define TIMEOUT_HEARTBEAT_SAFE_MODE     120000000  // 120 seg
+#define TIMEOUT_HEARTBEAT_SAFE_MODE     120000000 // 120 seg
 #define TIMEOUT_INIT_SYSTEM             15000000  // 15 seg
 #define TIMEOUT_COOLING_TIMER           30000000  // 30 seg
 #define TIMEOUT_BYPASS_TIMER            40000000  // 40 seg
-#define TIMEOUT_SAFE_MODE_TIMER         5000000  //  50 seg
+#define TIMEOUT_INIT_BALANCE_TIMER      20000000  // 20 seg
+#define TIMEOUT_HANDSHAKE               40000000  // 40 seg
 
 #include <esp_timer.h>
 
@@ -38,11 +37,11 @@ typedef enum {
     HEARTBEAT_NORMAL_TIMER,
     HEARTBEAT_BALANCE_MODE_TIMER,
     HEARTBEAT_SAFE_MODE_TIMER,
-    ALL_BALANCE_TIMER,
     INIT_SYSTEM_TIMER,
     COOLING_TIMER,
     BYPASS_TIMER,
-    SAFE_MODE_TIMER,
+    INIT_BALANCE_TIMER,
+    HANDSHAKE_TIMER,
 } timer_types_t;
 
 
@@ -63,7 +62,7 @@ typedef struct {
 } timers_t;
 
 
-void init_timer(timer_types_t timer);
+void init_timer(timer_types_t type);
 void delete_timer(timer_types_t type);
 
 

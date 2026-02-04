@@ -4,6 +4,7 @@
 #include "esp_err.h"
 #include "driver/uart.h"
 #include <string.h>
+#include <stdatomic.h>
 
 
 /* ---- Configuraciones del sistema ---- */
@@ -15,7 +16,6 @@
 #define MAX_FREQ                      240
 #define MID_FREQ                      160
 #define MIN_FREQ                      80
-#define MPACK_SETTINGS_SIZE           1024
 
 
 /* ---- Macros de longitudes ---- */
@@ -23,6 +23,7 @@
 #define DEVICE_NAME   20
 #define ID_NETWORK    20
 #define ID_EDGE       20
+#define URL_HTTPS     60
 #define WIFI_SSID     32
 #define WIFI_PASSWORD 64
 #define WIFI_IP       16
@@ -37,6 +38,7 @@
 #define CMD_SET_WIFI_PASS            "W_PASS"
 #define CMD_SET_MQTT_URI             "M_URI"
 #define CMD_SET_NETWORK              "NET"
+#define CMD_SET_URL_HTTPS            "URL_BYPASS"
 #define CMD_SET_EDGE                 "EDGE"
 #define CMD_SET_DEVICE_NAME          "NAME"
 #define CMD_SET_SAMPLE               "SAMPLE"
@@ -55,23 +57,32 @@ typedef enum {
 } energy_mode_t;
 
 
+typedef enum {
+    FIRMWARE_OK,
+    HANDSHAKE,
+    PING,
+    QUEUE_EMPTY
+} topic_general;
+
+
 typedef struct {
     struct {
         char mac_address[MAC];
         char device_name[DEVICE_NAME];
-        uint32_t sample_rate;
-        energy_mode_t energy_mode;
+        atomic_uint_fast32_t sample_rate;
+        _Atomic energy_mode_t energy_mode;
     } node;
     struct {
         char id_network[ID_NETWORK];
         char id_edge[ID_EDGE];
-        uint32_t balance_epoch;
+        atomic_uint_fast32_t balance_epoch;
+        char url_https[URL_HTTPS];
     } network;
     struct {
         uint8_t ssid[WIFI_SSID];
-        uint8_t ssid_len;
+        atomic_uint_fast8_t ssid_len;
         uint8_t password[WIFI_PASSWORD];
-        uint8_t pass_len;
+        atomic_uint_fast8_t pass_len;
         char ip[WIFI_IP];
     } wifi;
     struct {
@@ -86,6 +97,8 @@ typedef struct {
         char topic_settings_ok[MAX_TOPIC];
         char topic_hub_firmware_ok[MAX_TOPIC];
         char topic_handshake_to_edge[MAX_TOPIC];
+        char topic_ping[MAX_TOPIC];
+        char topic_empty_queue[MAX_TOPIC];
 
         // Escucha
         char topic_edge_state_normal[MAX_TOPIC];
@@ -117,7 +130,7 @@ void settings_init(void);
 void settings_set_node_mac(const char* mac);
 void settings_set_energy_mode(energy_mode_t mode);
 void settings_empty_network(void);
-void settings_set_balance_epoch(uint32_t balance);
+void settings_set_balance_epoch(uint32_t bal);
 void settings_set_wifi_ip(const char* ip);
 
 // Getters
@@ -128,6 +141,7 @@ energy_mode_t settings_get_node_energy_mode(void);
 void settings_get_network(char* dest, size_t dest_size);
 void settings_get_network_id_edge(char* dest, size_t dest_size);
 uint32_t settings_get_balance_epoch(void);
+void settings_get_url_https(char* dest, size_t dest_size);
 void settings_get_wifi_ssid(uint8_t* dest, size_t dest_size);
 uint8_t settings_get_wifi_ssid_len(void);
 void settings_get_wifi_password(uint8_t* dest, size_t dest_size);
@@ -155,6 +169,8 @@ void settings_get_mqtt_topic_new_settings(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_edge_setting_ok(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_delete_hub(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_active_hub(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_ping(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_empty_queue(char* dest, size_t dest_size);
 
 
 #endif //SETTINGS_H
