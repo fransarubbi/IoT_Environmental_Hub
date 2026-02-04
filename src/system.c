@@ -8,7 +8,13 @@
 #include "Wifi/wifi.h"
 #include "Data/data.h"
 #include "Monitor/monitor.h"
+#include "Fsm/fsm.h"
 #include <esp_log.h>
+#include "Converter/converter.h"
+#include "Healthscore/healthscore.h"
+#include "Heartbeat/heartbeat.h"
+#include "Https_bypass/https_bypass.h"
+#include "Parser/parser.h"
 
 
 static const char *TAG = "System";
@@ -20,17 +26,26 @@ static const char *TAG = "System";
  * retorno fue false, el sistema se reiniciara.
  */
 bool init_queues(void) {
-    queues.data_buffer     = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.alert_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.monitor_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.settings_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
-    queues.dht11_buffer    = xQueueCreate(QUEUE, dht11_struct_get_size());
-    queues.ky037_buffer    = xQueueCreate(QUEUE, ky037_get_size());
-    queues.mq135_buffer    = xQueueCreate(QUEUE, sizeof(mq135_data_t));
-    queues.dht11_to_mq135  = xQueueCreate(QUEUE, dht11_struct_get_size());
+    queues.heartbeat         = xQueueCreate(QUEUE_HEART, sizeof(uint32_t));
+    queues.parser            = xQueueCreate(QUEUE_PARSER, sizeof(mqtt_msg_to_parse_t));
+    queues.health            = xQueueCreate(QUEUE_HEALTH, sizeof(health_event_t));
+    queues.general           = xQueueCreate(QUEUE_GENERAL, sizeof(mqtt_msg_general_t));
+    queues.flag              = xQueueCreate(QUEUE_FLAG, sizeof(uint32_t));
+    queues.event             = xQueueCreate(QUEUE_EVENT, sizeof(int));
+    queues.data_buffer       = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.alert_air_buffer  = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.alert_temp_buffer = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.monitor_buffer    = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.settings_buffer   = xQueueCreate(QUEUE_LENGTH, sizeof(mqtt_packet_t));
+    queues.dht11_buffer      = xQueueCreate(QUEUE, dht11_struct_get_size());
+    queues.ky037_buffer      = xQueueCreate(QUEUE, ky037_get_size());
+    queues.mq135_buffer      = xQueueCreate(QUEUE, sizeof(mq135_data_t));
+    queues.dht11_to_mq135    = xQueueCreate(QUEUE, dht11_struct_get_size());
 
-    if (!queues.data_buffer || !queues.monitor_buffer || !queues.dht11_buffer || !queues.ky037_buffer ||
-        !queues.mq135_buffer || !queues.dht11_to_mq135 || !queues.alert_buffer || !queues.settings_buffer) {
+    if (!queues.heartbeat || !queues.health || !queues.general || !queues.flag || !queues.event ||
+        !queues.data_buffer || !queues.monitor_buffer || !queues.dht11_buffer ||
+        !queues.ky037_buffer || !queues.mq135_buffer || !queues.dht11_to_mq135 ||
+        !queues.alert_air_buffer || !queues.alert_temp_buffer || !queues.settings_buffer) {
         ESP_LOGE(TAG, "- ERROR: Error creando queues -");
         return false;
     }
@@ -92,11 +107,17 @@ void wait_for_sensors(void) {
  * @brief Creacion de todas las tareas del sistema.
  */
 void start_application_tasks(void) {
-    task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_SENSORS, mem.dht11.stack, &mem.dht11.tcb, CORE_1);
-    task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSORS, mem.ky037.stack, &mem.ky037.tcb, CORE_1);
-    task_handle.mq135_handle = xTaskCreateStaticPinnedToCore(mq135_task, "MQ135", STACK_MQ135, NULL, PRIO_SENSORS, mem.mq135.stack, &mem.mq135.tcb, CORE_0);
-    task_handle.data_ct_handle = xTaskCreateStaticPinnedToCore(data_collection_task, "Collector", STACK_COLLECTOR, NULL, PRIO_COMMS, mem.collector.stack, &mem.collector.tcb, CORE_1);
-    task_handle.data_pt_handle = xTaskCreateStaticPinnedToCore(data_publish_task, "Publisher", STACK_PUBLISHER, NULL, PRIO_COMMS, mem.publisher.stack, &mem.publisher.tcb, CORE_0);
-    task_handle.monitor_handle = xTaskCreateStaticPinnedToCore(stack_monitor_task, "Monitor", STACK_MONITOR, NULL, PRIO_SENSORS, mem.monitor.stack, &mem.monitor.tcb, CORE_0);
-    task_handle.send_settings_handle = xTaskCreateStaticPinnedToCore(send_settings_task, "Send_sett", STACK_SEND_SETT, NULL, PRIO_COMMS, mem.send_settings.stack, &mem.send_settings.tcb, CORE_0);
+    task_handle.fsm_handle = xTaskCreateStaticPinnedToCore(fsm_task, "FSM", STACK_FSM, NULL, PRIO_FSM, mem.fsm.stack, &mem.fsm.tcb, CORE_APP);
+    task_handle.https_handle = xTaskCreateStaticPinnedToCore(https_bypass_task, "Https Bypass", STACK_HTTPS, NULL, PRIO_HTTPS, mem.https.stack, &mem.https.tcb, CORE_PRO);
+    task_handle.health_handle = xTaskCreateStaticPinnedToCore(health_score_task, "Health", STACK_HEALTH, NULL, PRIO_HEALTH, mem.health.stack, &mem.health.tcb, CORE_APP);
+    task_handle.parser_handle = xTaskCreateStaticPinnedToCore(parser_task, "Parser", STACK_PARSER, NULL, PRIO_PARSER, mem.parser.stack, &mem.parser.tcb, CORE_PRO);
+    task_handle.converter_handle = xTaskCreateStaticPinnedToCore(flag_converter_task, "Converter", STACK_CONVERTER, NULL, PRIO_CONVERTER, mem.converter.stack, &mem.converter.tcb, CORE_APP);
+    task_handle.heartbeat_handle = xTaskCreateStaticPinnedToCore(heartbeat_task, "Heartbeat", STACK_HEARTBEAT, NULL, PRIO_HEARTBEAT, mem.heartbeat.stack, &mem.heartbeat.tcb, CORE_APP);
+    task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_DHT11, mem.dht11.stack, &mem.dht11.tcb, CORE_APP);
+    task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSOR, mem.ky037.stack, &mem.ky037.tcb, CORE_APP);
+    task_handle.mq135_handle = xTaskCreateStaticPinnedToCore(mq135_task, "MQ135", STACK_MQ135, NULL, PRIO_SENSOR, mem.mq135.stack, &mem.mq135.tcb, CORE_APP);
+    task_handle.data_ct_handle = xTaskCreateStaticPinnedToCore(data_collection_task, "Collector", STACK_COLLECTOR, NULL, PRIO_COLLECTOR, mem.collector.stack, &mem.collector.tcb, CORE_APP);
+    task_handle.data_pt_handle = xTaskCreateStaticPinnedToCore(data_publish_task, "Publisher", STACK_PUBLISHER, NULL, PRIO_PUBLISHER, mem.publisher.stack, &mem.publisher.tcb, CORE_PRO);
+    task_handle.monitor_handle = xTaskCreateStaticPinnedToCore(stack_monitor_task, "Monitor", STACK_MONITOR, NULL, PRIO_MONITOR, mem.monitor.stack, &mem.monitor.tcb, CORE_PRO);
+    task_handle.send_settings_handle = xTaskCreateStaticPinnedToCore(send_settings_task, "Send_sett", STACK_SEND_SETT, NULL, PRIO_SETTINGS, mem.send_settings.stack, &mem.send_settings.tcb, CORE_PRO);
 }

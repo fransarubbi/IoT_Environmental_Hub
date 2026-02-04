@@ -3,9 +3,13 @@
 #include "Setting/settings.h"
 #include "esp_log.h"
 #include <esp_mac.h>
+#include <esp_timer.h>
+
 #include "certs/ca_crt.h"
 #include "certs/client1_crt.h"
 #include "certs/client1_key.h"
+#include "Healthscore/healthscore.h"
+#include "Message/message.h"
 #include "System/system.h"
 
 
@@ -18,7 +22,49 @@ typedef struct {
 static const char *TAG = "MQTT";
 static char mac_addr[18];
 static mqtt_client_t mqtt;
+static bool subscribe = false;
 
+
+/**
+ * @brief Subscribe el broker a todos los topicos de recepción.
+ * @param client Handler del cliente mqtt.
+ */
+static void subscribe_to_all_topics(esp_mqtt_client_handle_t client) {
+    char topic_buff[MAX_TOPIC];
+
+    settings_get_mqtt_topic_edge_state_normal(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_state_balance(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_state_safe(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_phase(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_edge_handshake(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_heartbeat(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_new_firmware(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_new_settings(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_edge_setting_ok(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_delete_hub(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+
+    settings_get_mqtt_topic_active_hub(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 0);
+}
 
 
 /**
@@ -45,28 +91,41 @@ static esp_err_t get_mac_address(void) {
  * @return ESP_OK si el evento fue procesado correctamente
  */
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
-    char topic_settings[MAX_TOPIC];
-    char topic_handshake[MAX_TOPIC];
-
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             xEventGroupSetBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupClearBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
-            settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
-            settings_get_mqtt_topic_settings(topic_handshake, sizeof(topic_handshake));
-            esp_mqtt_client_subscribe(event->client, topic_settings, 1);
-            esp_mqtt_client_subscribe(event->client, topic_handshake, 1);
+
+            if (subscribe) {
+                subscribe_to_all_topics(event->client);
+            } else {
+                ESP_LOGI(TAG, "Conectado a MQTT (Suscripciones en espera de INIT_SYSTEM)");
+            }
             break;
 
-        case MQTT_EVENT_DISCONNECTED:
+        case MQTT_EVENT_DISCONNECTED: {
             xEventGroupClearBits(event_group.mqtt_event_group, MQTT_CONNECTED_BIT);
             xEventGroupSetBits(event_group.mqtt_event_group, MQTT_DISCONNECTED_BIT);
+            const health_event_t health = {
+                .event = HEALTH_EVT_DISCONNECT,
+                .msg_id = 0,
+                .timestamp = 0
+            };
+            xQueueSend(queues.health, &health, pdMS_TO_TICKS(0));
             ESP_LOGW(TAG, "- WARNING: Desconectado del broker -");
             break;
+        }
 
-        case MQTT_EVENT_PUBLISHED:
+        case MQTT_EVENT_PUBLISHED: {
+            const health_event_t health = {
+                .event = HEALTH_EVT_PUBACK,
+                .msg_id = event->msg_id,
+                .timestamp = esp_timer_get_time()
+            };
+            xQueueSend(queues.health, &health, pdMS_TO_TICKS(0));
             ESP_LOGI(TAG, "- INFO: Publicado msg_id = %d -", event->msg_id);
             break;
+        }
 
         case MQTT_EVENT_ERROR:
             ESP_LOGE(TAG, "- ERROR: Error tipo: %d -", event->error_handle->error_type);
@@ -80,21 +139,31 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             break;
 
         case MQTT_EVENT_DATA: {
-            char msg[event->data_len + 1];
-            memcpy(msg, event->data, event->data_len);
-            msg[event->data_len] = '\0';
+            mqtt_msg_to_parse_t new_msg;
 
-            settings_get_mqtt_topic_settings(topic_settings, sizeof(topic_settings));
-            //settings_get_mqtt_topic_handshake(topic_handshake, sizeof(topic_handshake));
-
-            if (event->topic_len == strlen(topic_settings) &&
-                strncmp(event->topic, topic_settings, event->topic_len) == 0) {
-                if (!parse_mpack_settings(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo settings -");
+            if (event->data_len > 0) {
+                if (event->topic_len < MAX_TOPIC) {
+                    memcpy(new_msg.topic, event->topic, event->topic_len);
+                    new_msg.topic[event->topic_len] = '\0';
+                } else {
+                    break;
                 }
-            else if (event->topic_len == strlen(topic_handshake) &&
-                     strncmp(event->topic, topic_handshake, event->topic_len) == 0) {
-                if (!parse_mpack_handshake(msg, event->data_len)) ESP_LOGE(TAG, "- ERROR: Fallo el parseo handshake -");
-                     }
+
+                new_msg.payload = malloc(event->data_len + 1);
+                if (new_msg.payload == NULL) {
+                    ESP_LOGE(TAG, "ERROR: No hay RAM para copiar mensaje MQTT");
+                    break;
+                }
+
+                memcpy(new_msg.payload, event->data, event->data_len);
+                new_msg.payload[event->data_len] = '\0';
+                new_msg.len = event->data_len;
+
+                if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(10)) != pdTRUE) {
+                    ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje.");
+                    free(new_msg.payload);  // Liberar si no se pudo encolar
+                }
+            }
             break;
         }
         default:
@@ -146,12 +215,7 @@ esp_err_t mqtt_init(void) {
         mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad
         mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5
         mqtt.config.network.timeout_ms = 30000;   // Timeout de 30 seg
-        mqtt.config.session.disable_clean_session = false;  //  No guarda sesion entre desconexiones
-
-        /* ---- Last Will Testament ----
-         * Si el ESP32 se desconecta inesperadamente, el broker publicará "offline" en el tópico status con QoS 1 y
-         * retain (permanece hasta nueva publicación)
-         */
+        mqtt.config.session.disable_clean_session = true;  //  No guarda sesion entre desconexiones
         mqtt.config.session.last_will.topic = "/devices/esp32/status";
         mqtt.config.session.last_will.msg = "offline";
         mqtt.config.session.last_will.qos = 1;
@@ -175,17 +239,32 @@ esp_err_t mqtt_init(void) {
 
 /**
  * @brief Publica el mensaje al broker.
- * @param topic
- * @param payload
- * @param qos
- * @param retain
+ * @param topic Tópico de publicación.
+ * @param payload Contenido del mensaje.
+ * @param len Longitud del mensaje.
+ * @param qos Quality Of Service del mensaje.
+ * @param retain Mensaje retenido o no retenido.
  * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
  */
-esp_err_t mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain) {
-    if (!mqtt.client) return ESP_FAIL;
-
-    int msg_id = esp_mqtt_client_publish(mqtt.client, topic,payload,
-                                         len, qos, retain);
-    return (msg_id >= 0) ? ESP_OK : ESP_FAIL;
+int mqtt_publish(const char *topic, const char *payload, const int len, const int qos, const int retain) {
+    if (!mqtt.client) return -1;
+    const int msg_id = esp_mqtt_client_publish(mqtt.client,
+                                               topic,payload,
+                                               len,
+                                               qos,
+                                               retain);
+    return msg_id;
 }
 
+
+/**
+ * @brief Permite habilitar la suscripción a topicos para no recibir mensajes antes de tiempo.
+ */
+void mqtt_enable_subscribe_topics(void) {
+    if (!subscribe) {
+        subscribe = true;
+        if (xEventGroupGetBits(event_group.mqtt_event_group) & MQTT_CONNECTED_BIT) {
+            subscribe_to_all_topics(mqtt.client);
+        }
+    }
+}

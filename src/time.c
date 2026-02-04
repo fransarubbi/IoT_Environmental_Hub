@@ -52,17 +52,9 @@ esp_err_t time_init(void) {
 
 /**
  * @brief Obtener la fecha y hora actual.
- * @param time_str String que almacenara la fecha y hora.
  */
-void get_time(char *time_str) {
+uint64_t get_time() {
     time_t now;
-    struct tm timeinfo;
     time(&now);
-    localtime_r(&now, &timeinfo);
-    strftime(time_str, TIME_MAX_LEN, "%d/%m/%Y %H:%M:%S", &timeinfo);
+    return (uint64_t)now;
 }
-
-
-
-
-

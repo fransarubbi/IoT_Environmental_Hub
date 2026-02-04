@@ -1,0 +1,107 @@
+/**
+* @file heartbeat.c
+ * @brief Implementación del sistema de vidas del Monitor de Vitalidad.
+ */
+
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "Heartbeat/heartbeat.h"
+#include "Fsm/fsm.h"
+#include "System/system.h"
+
+
+typedef struct {
+    uint8_t count_beat;
+    State old_state;
+    State new_state;
+} state_heartbeat;
+
+
+/**
+ * @brief Lógica central de gestión de vidas.
+ *
+ * Esta función aplica las reglas del watchdog:
+ * 1. Si la FSM cambió de estado, reinicia el contador a 2.
+ * 2. Si es un TIMEOUT, resta una vida (sin bajar de 0).
+ * 3. Si es un latido entrante (INCOMING), suma una vida (sin superar MAX_LIVES).
+ * 4. Si las vidas llegan a 0, dispara el evento de fallo.
+ *
+ * @param heartbeat Puntero a la estructura de estado.
+ * @param heart Tipo de evento recibido (TIMEOUT_HEARTBEAT o HEARTBEAT_INCOMING).
+ */
+static void check_beat(state_heartbeat *heartbeat, const uint32_t heart) {
+    if (heartbeat->old_state != heartbeat->new_state) {
+        heartbeat->old_state = heartbeat->new_state;
+        heartbeat->count_beat = 2;
+    }
+    if (heart == TIMEOUT_HEARTBEAT) {
+        if (heartbeat->count_beat > 0) {
+            heartbeat->count_beat -= 1;
+        }
+    }
+    if (heart == HEARTBEAT_INCOMING) {
+        if (heartbeat->count_beat < MAX_LIVES) {
+            heartbeat->count_beat += 1;
+        }
+    }
+    if (heartbeat->count_beat == 0) {
+        const uint32_t flag = TIMEOUT_HEARTBEAT;
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+    }
+}
+
+
+/**
+ * @brief Tarea principal (Loop infinito).
+ *
+ * Escucha la cola de eventos de heartbeat. Al recibir un evento:
+ * 1. Consulta el estado actual de la FSM de forma atómica.
+ * 2. Filtra la ejecución: Solo procesa latidos en estados específicos
+ * (NORMAL, SAFE, BALANCE, etc.) ignorando estados transitorios.
+ * 3. Invoca a check_beat() para actualizar el contador.
+ *
+ * @param pvParameter Parámetro de FreeRTOS.
+ */
+void heartbeat_task(void *pvParameter) {
+    static uint32_t heart;
+    static state_heartbeat heartbeat;
+    uint32_t notification = 0;
+
+    heartbeat.old_state = CHECK_FIRMWARE;
+
+    while (1) {
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+        if (notification & NOTIFY_CMD_START) {
+            xQueueReset(queues.heartbeat);
+            bool running = true;
+
+            while (running) {
+                if (xQueueReceive(queues.heartbeat, &heart, pdMS_TO_TICKS(100)) == pdTRUE) {
+                    heartbeat.new_state = atomic_load(&shared_state);
+                    switch (heartbeat.new_state) {
+                        case NORMAL: check_beat(&heartbeat, heart); break;
+                        case SAFE_MODE: check_beat(&heartbeat, heart); break;
+                        case INIT_BALANCE_MODE: check_beat(&heartbeat, heart); break;
+                        case IN_HANDSHAKE: check_beat(&heartbeat, heart); break;
+                        case ALERT: check_beat(&heartbeat, heart); break;
+                        case DATA: check_beat(&heartbeat, heart); break;
+                        case MONITOR: check_beat(&heartbeat, heart); break;
+                        case OUT_HANDSHAKE: check_beat(&heartbeat, heart); break;
+                        default: break;
+                    }
+                }
+
+                uint32_t stop_signal = 0;
+                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0);
+
+                if (result == pdTRUE) {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        running = false;
+                    }
+                }
+            }
+        }
+    }
+}

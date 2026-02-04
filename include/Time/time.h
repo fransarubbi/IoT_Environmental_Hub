@@ -7,6 +7,6 @@
 #include "esp_err.h"
 
 esp_err_t time_init(void);
-void get_time(char *time_str);
+uint64_t get_time();
 
 #endif

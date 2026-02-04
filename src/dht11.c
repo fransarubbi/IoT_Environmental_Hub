@@ -1,5 +1,19 @@
+/**
+* @file dht11.c
+ * @brief Driver y gestión de tareas para el sensor DHT11.
+ *
+ * Este archivo implementa la lectura del sensor DHT11 utilizando el periférico RMT
+ * del ESP32 para una decodificación precisa de los pulsos. Además, gestiona la
+ * lógica de negocio asociada: filtrado de datos (EMA), detección de anomalías
+ * y gestión de modos de energía (Low, Balanced, Performance).
+ */
+
+
 #include "Data/data.h"
 #include "DHT11/dht11.h"
+
+#include <esp_random.h>
+
 #include "MQTT/mqtt.h"
 #include "Setting/settings.h"
 #include "System/system.h"
@@ -12,8 +26,27 @@
 #include "esp32/rom/ets_sys.h"
 #include <string.h>
 #include <driver/rmt_rx.h>
-#include "components/mpack/include/mpack.h"
-#include "Time/time.h"
+#include "mpack.h"
+#include "Fsm/fsm.h"
+#include "Message/message.h"
+
+
+typedef enum {
+    INIT_DHT11,
+    NORMAL_DHT11,
+    ALERT_DHT11
+} state_dht11_t;
+
+
+typedef struct {
+    state_dht11_t state_dht11;
+    uint32_t counter;
+    float ema_temp;
+    float ema_error;
+    float temp_before_alert;
+    dht11_data_t dht11;
+    mqtt_packet_t packet;
+} data_t;
 
 
 static const char *TAG = "DHT11";
@@ -21,15 +54,15 @@ static QueueHandle_t g_receive_queue = NULL;
 static rmt_channel_handle_t g_rx_channel = NULL;
 static rmt_symbol_word_t g_rx_buffer[120];
 static uint8_t num_symbols;
-typedef enum {INIT_DHT11, NORMAL_DHT11, ALERT_DHT11} state_dht11_t;
 
 
-uint8_t dht11_get_temperature(dht11_data_t *dhtt) {
+
+uint8_t dht11_get_temperature(const dht11_data_t *dhtt) {
     return dhtt->temperature;
 }
 
 
-uint8_t dht11_get_humidity(dht11_data_t *dhtt) {
+uint8_t dht11_get_humidity(const dht11_data_t *dhtt) {
     return dhtt->humidity;
 }
 
@@ -41,16 +74,16 @@ size_t dht11_struct_get_size(void) {
 
 
 /**
- * @brief  Callback de interrupcion RMT para la recepcion de datos.
+ * @brief  Callback de interrupción RMT para la recepción de datos.
  *
- * Esta funcion es llamada automaticamente por el driver RMT una vez que
+ * Esta función es llamada automáticamente por el driver RMT una vez que
  * un paquete de datos ha sido recibido completamente. Su propósito es
  * pasar los datos recibidos a una cola de FreeRTOS para que sean procesados
  * por una tarea de mayor prioridad.
  *
- * @param  channel  El handle del canal RMT que activo el callback.
+ * @param  channel  El handle del canal RMT que activó el callback.
  * @param  edata    Puntero a la estructura de datos que contiene
- * la información del evento de recepcion, incluyendo los simbolos RMT.
+ * la información del evento de recepción, incluyendo los símbolos RMT.
  * @param  user_ctx El contexto de usuario pasado durante el registro del callback.
  * En este caso, se usa para pasar el handle de la cola de FreeRTOS.
  *
@@ -68,9 +101,12 @@ static bool IRAM_ATTR rmt_rx_done_callback(rmt_channel_handle_t channel,
 
 
 /**
- * @brief Configura GPIO con pull-up para DHT11
+ * @brief Configura GPIO con pull-up para DHT11.
  *
- * @return esp_err_t Devuelve ESP_OK si fue exitosa la configuracion, sino ESP_FAIL.
+ * Configura el pin en modo Open-Drain con resistencia de Pull-Up interna
+ * para garantizar la correcta comunicación one-wire.
+ *
+ * @return esp_err_t Devuelve ESP_OK si fue exitosa la configuración, sino ESP_FAIL.
  */
 static esp_err_t dht11_gpio_init(void) {
     gpio_config_t io_conf = {
@@ -92,9 +128,12 @@ static esp_err_t dht11_gpio_init(void) {
 
 
 /**
- * @brief Configura RMT para recepcion (RX).
+ * @brief Configura RMT para recepción (RX).
  *
- * @return esp_err_t Devuelve ESP_OK si la configuracion fue exitosa, sino ESP_FAIL.
+ * Inicializa el canal RMT, configura la resolución del reloj y asigna
+ * los buffers de memoria necesarios para capturar los pulsos del sensor.
+ *
+ * @return esp_err_t Devuelve ESP_OK si la configuración fue exitosa, sino ESP_FAIL.
  */
 static esp_err_t dht11_rmt_rx_config(void) {
     rmt_rx_channel_config_t rx_chan_cfg;
@@ -149,14 +188,14 @@ static esp_err_t dht11_rmt_rx_config(void) {
 
 
 /**
- * @brief Envia señal de inicio al DHT11 y luego recibe los datos a traves del RMT.
+ * @brief Envía señal de inicio al DHT11 y luego recibe los datos a través del RMT.
  *
- * Se realiza el handshake segun el protocolo que implementa el DHT11. Para poder
- * sincronizar la transmision, se realiza un pequeño polling del pin para poder recibir
- * los datos correctamente.
+ * Se realiza el handshake según el protocolo que implementa el DHT11. Para poder
+ * sincronizar la transmisión, se realiza un pequeño polling del pin para poder recibir
+ * los datos correctamente antes de habilitar el RMT.
  *
  * @return esp_err_t  Devuelve ESP_OK si la señal de inicio fue enviada correctamente
- * y se recibieron los datos. Si algo falla, se retorna el mensaje de error.
+ * y se recibieron los datos. Si algo falla (timeout o error RMT), se retorna el código de error.
  */
 static esp_err_t dht11_start_and_receive(void) {
 
@@ -166,7 +205,7 @@ static esp_err_t dht11_start_and_receive(void) {
         .flags.en_partial_rx = false
     };
     esp_err_t ret = ESP_OK;
-    uint32_t timeout_us; // Para los timeouts de espera
+    uint32_t timeout_us = 0; // Para los timeouts de espera
 
     gpio_set_direction(DHT11_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(DHT11_PIN, 0);
@@ -176,7 +215,6 @@ static esp_err_t dht11_start_and_receive(void) {
     gpio_set_direction(DHT11_PIN, GPIO_MODE_INPUT);   // liberar la linea
 
     // Esperar a que el sensor ponga la línea en BAJO (inicio del handshake)
-    timeout_us = 0;
     while (gpio_get_level(DHT11_PIN) == 1) {
         ets_delay_us(1); // Espera 1µs
         if (++timeout_us > 100) { // El sensor debe responder en ~50µs
@@ -225,11 +263,11 @@ static esp_err_t dht11_start_and_receive(void) {
 /**
  * @brief Decodifica los datos de los símbolos RMT del sensor DHT11.
  *
- * Esta funcion procesa los símbolos RMT recibidos y los convierte en los
- * 5 bytes de datos del sensor. Finalmente guarda los resultados en la estructura
- * global dht11_data_t.
+ * Esta función procesa los símbolos RMT recibidos y los convierte en los
+ * 5 bytes de datos del sensor interpretando la duración de los pulsos altos.
  *
- * @return esp_err_t  Devuelve ESP_OK si la decodificacion es exitosa y el checksum es valido.
+ * @param dht11_data Puntero donde se guardarán los datos decodificados.
+ * @return esp_err_t  Devuelve ESP_OK si la decodificación es exitosa y el checksum es válido.
  * Devuelve ESP_FAIL en caso de fallo.
  */
 static esp_err_t dht11_decode_data(dht11_data_t *dht11_data) {
@@ -274,11 +312,12 @@ static esp_err_t dht11_decode_data(dht11_data_t *dht11_data) {
 
 
 /**
- * @brief Funcion de lectura de datos
+ * @brief Función de lectura de datos completa.
  *
- * Llama a dos funciones, la que se encarga del handshake y transmision de datos
- * y la funcion que luego decodifica la informacion.
+ * Orquesta el proceso de lectura: llama al handshake/recepción, luego decodifica
+ * la información y limpia los buffers.
  *
+ * @param dht11_data Puntero donde se almacenarán los datos leídos.
  * @return esp_err_t Devuelve un ESP_OK si el proceso fue exitoso, sino ESP_FAIL.
  */
 static esp_err_t dht11_read_data(dht11_data_t *dht11_data) {
@@ -303,7 +342,10 @@ static esp_err_t dht11_read_data(dht11_data_t *dht11_data) {
 
 
 /**
- * @brief Funcion de inicializacion del DHT11.
+ * @brief Función de inicialización del DHT11.
+ *
+ * Configura los GPIOs necesarios y el periférico RMT.
+ * @return ESP_OK si todo fue exitoso.
  */
 esp_err_t dht11_init(void) {
     esp_err_t ret = dht11_gpio_init();
@@ -315,147 +357,187 @@ esp_err_t dht11_init(void) {
 
 
 /**
- * @brief Funcion que genera un JSON con la temperatura inicial y la actual.
+ * @brief Analiza los datos del sensor en busca de anomalías.
  *
- * Genera el JSON que sera enviado en caso de una alerta por aumento brusco de
- * temperatura. Por ello sen envia la primer temperatura estable y la temperatura actual.
+ * Utiliza un algoritmo de Media Móvil Exponencial (EMA) para detectar desviaciones
+ * bruscas en la temperatura.
+ * - En estado NORMAL: Si el error absoluto supera el umbral dinámico, pasa a ALERTA.
+ * - En estado ALERT: Si el error baja por debajo del umbral (con histéresis), vuelve a NORMAL.
  *
- * @param output_buffer String formateado en JSON.
- * @param buffer_size Tamaño del string.
- * @param temp_i Temperatura inicial.
- * @param temp_a Temperatura actual.
+ * Genera paquetes MQTT de alerta cuando se producen transiciones de estado.
+ *
+ * @param data Puntero a la estructura de contexto del sensor.
+ * @param get_data Indica si se debe realizar una nueva lectura física (true) o usar los datos existentes (false).
  */
-static bool serialize_mpack_alert(mqtt_packet_t *packet, uint8_t temp_i, uint8_t temp_a) {
-    packet->payload = NULL;
-    packet->len = 0;
-    size_t buffer_size = MPACK_DHT11_ALERT_SIZE;
-    packet->payload = malloc(buffer_size);
+static void alert_analysis(data_t *data, const bool get_data) {
 
-    if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
-        return false;
+    if (get_data) {
+        if (dht11_read_data(&data->dht11) != ESP_OK) {
+            return;
+        }
     }
+    const float temp_actual = data->dht11.temperature;
+    const float error_actual = temp_actual - data->ema_temp;
+    const float error_abs = fabsf(error_actual);
+    const float umbral_alerta_dinamico = (K_SENSIBILIDAD * data->ema_error) + UMBRAL_MINIMO_ABS;
 
-    char time[TIME_MAX_LEN];
-    char mac[MAC];
-    settings_get_node_mac(mac, sizeof(mac));
-    get_time(time);
+    switch (data->state_dht11) {
+        case INIT_DHT11:
+            data->ema_temp = data->dht11.temperature;
+            data->ema_error = 0.0f;
+            data->state_dht11 = NORMAL_DHT11;
+            break;
 
-    mpack_writer_t writer;
-    mpack_writer_init(&writer, packet->payload, buffer_size);
+        case NORMAL_DHT11:
+            if (error_abs > umbral_alerta_dinamico) {
+                data->state_dht11 = ALERT_DHT11;
+                data->temp_before_alert = data->ema_temp;   // Guardamos la "normalidad" previa
+                if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
+                    if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        free(data->packet.payload);
+                    }
+                } else {
+                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                }
+            } else {
+                data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
+            }
+            data->ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * data->ema_temp);
+            break;
 
-    mpack_start_map(&writer, 6);
-    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, mac);
-    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
-    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
-    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, time);
-    mpack_write_cstr(&writer, "temp_initial");      mpack_write_u8(&writer, temp_i);
-    mpack_write_cstr(&writer, "temp_rightnow");     mpack_write_u8(&writer, temp_a);
-    mpack_finish_map(&writer);
-
-    size_t used = mpack_writer_buffer_used(&writer);
-    if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("DHT11", "- ERROR: Error codificando MPack -");
-        free(packet->payload);
-        packet->payload = NULL;
-        return false;
+        case ALERT_DHT11:
+            if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
+                data->state_dht11 = NORMAL_DHT11;
+                if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
+                    if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        free(data->packet.payload);
+                    }
+                } else {
+                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                }
+                data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
+            }
+            data->ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * data->ema_temp);
+            break;
     }
-    packet->len = used;
-    return true;
 }
 
 
 /**
- * @brief Tarea que monitorea temperatura DHT11 y detecta cambios bruscos
+ * @brief Lógica para modos Balanced y Performance.
  *
- * Implementa una máquina de estados que detecta incrementos rapidos de temperatura
- * y publica alertas MQTT, tanto cuando se genera el aumento como cuando se estabiliza de nuevo
+ * En estos modos, se muestrea el sensor frecuentemente para analizar alertas,
+ * pero solo se envía el reporte periódico de datos cuando el contador alcanza 'slices'.
  *
- * Estados:
- * - INIT: Inicializacion, lee temperatura base.
- * - NORMAL: Monitoreo normal, cuando se detecta el aumento de temperatura se emite la alerta.
- * - ALERT: Permanece en este estado hasta que la temperatura se estabilice, luego emite una alerta.
- *
- * @param pvParameter Parámetro de la tarea (no usado).
+ * @param counter Puntero al contador de ciclos actual. Se reinicia al enviar datos.
+ * @param slices Número de ciclos necesarios para enviar un reporte periódico.
+ * @param data Puntero a la estructura de contexto.
  */
-void dht11_task(void *pvParameter) {
-    static state_dht11_t state_dht11 = INIT_DHT11;
-    static uint32_t counter = 0;
-    static float ema_temp = 20.0f;            // Media movil de la temperatura
-    static float ema_error = 0.0f;            // Media movil del error (ruido normal)
-    static float temp_before_alert = 0.0f;
-    static dht11_data_t dht11;
-    mqtt_packet_t packet;
+void dht11_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, data_t *data) {
 
-    TickType_t last_wake_time = xTaskGetTickCount();
+    bool flag_error = false;
 
-    while (1) {
+    if (dht11_read_data(&data->dht11) != ESP_OK) {
+        flag_error = true;
+    }
 
-        uint32_t slices = (settings_get_node_sample_rate() * 60)/(DHT11_DELAY/1000);
-        counter++;
-
-        if (counter >= slices) {
-            counter = 0;
-            if (dht11_read_data(&dht11) != ESP_OK) {
-                dht11.temperature = 0;
-                dht11.humidity = 0;
-            }
+    if (*counter >= slices) {
+        *counter = 0;
+        if (flag_error) {
+            dht11_data_t dht11;
+            dht11.temperature = 0;
+            dht11.humidity = 0;
             xQueueSend(queues.dht11_buffer, &dht11, portMAX_DELAY);
-            xEventGroupSetBits(event_group.collector_events, DHT11_DATA_READY);
         }
         else {
-            if (dht11_read_data(&dht11) != ESP_OK) {
-                dht11.temperature = 0;
-                dht11.humidity = 0;
-            }
-            float temp_actual = dht11.temperature;
-            float error_actual = temp_actual - ema_temp;
-            float error_abs = fabsf(error_actual);
-            float umbral_alerta_dinamico = (K_SENSIBILIDAD * ema_error) + UMBRAL_MINIMO_ABS;
+            xQueueSend(queues.dht11_buffer, &data->dht11, pdMS_TO_TICKS(100));
+        }
+        xEventGroupSetBits(event_group.collector_events, DHT11_DATA_READY);
+    }
 
-            switch (state_dht11) {
-            case INIT_DHT11:
-                    ema_temp = dht11.temperature;
-                    ema_error = 0.0f;
-                    state_dht11 = NORMAL_DHT11;
-                    break;
+    if (flag_error) {
+        return;
+    }
+    alert_analysis(data, false);
+}
 
-            case NORMAL_DHT11:
-                    if (error_abs > umbral_alerta_dinamico) {
-                        state_dht11 = ALERT_DHT11;
-                        temp_before_alert = ema_temp;   // Guardamos la "normalidad" previa
-                        if (serialize_mpack_alert(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
-                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                                free(packet.payload);
-                            }
-                        } else {
-                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
-                        }
-                    } else {
-                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+
+/**
+ * @brief Inicializa la estructura de datos local con valores por defecto.
+ * @param data Puntero a la estructura data_t.
+ */
+static void init_data(data_t *data) {
+    data->state_dht11 = INIT_DHT11;
+    data->counter = 0;
+    data->ema_temp = 20.0f;
+    data->ema_error = 0.0f;
+    data->temp_before_alert = 0.0f;
+}
+
+
+/**
+ * @brief Tarea principal (FreeRTOS Task) para la gestión del DHT11.
+ *
+ * Implementa un patrón de doble bucle: espera pasivamente una notificación START
+ * y luego entra en un bucle de trabajo activo. Ajusta dinámicamente el tiempo
+ * de muestreo según el modo de energía configurado (LOW, BALANCED, PERFORMANCE).
+ *
+ * @param pvParameter Parámetro de tarea (no utilizado).
+ */
+void dht11_task(void *pvParameter) {
+    static data_t data;
+    init_data(&data);
+
+    uint32_t counter = 0;
+    uint32_t notification = 0;
+    TickType_t dynamic_delay = pdMS_TO_TICKS(DHT11_LOW_DELAY); // Valor default seguro
+
+    while (1) {
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+        if (notification & NOTIFY_CMD_START) {
+            bool running = true;
+            counter = 0;
+
+            while (running) {
+                uint32_t sample_rate_min = settings_get_node_sample_rate();
+                if (sample_rate_min == 0) sample_rate_min = 1;
+
+                const energy_mode_t mode = settings_get_node_energy_mode();
+                counter++;
+
+                switch (mode) {
+                    case LOW_CONSUMPTION: {
+                        dynamic_delay = pdMS_TO_TICKS(DHT11_LOW_DELAY);
+                        counter = 0;
+                        alert_analysis(&data, true);
+                        break;
                     }
-                    ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * ema_temp);
-                    break;
-
-            case ALERT_DHT11:
-                    if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
-                        state_dht11 = NORMAL_DHT11;
-                        if (serialize_mpack_alert(&packet, (uint8_t)temp_before_alert, (uint8_t)temp_actual)) {
-                            if (xQueueSend(queues.alert_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                                free(packet.payload);
-                            }
-                        } else {
-                            ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
-                        }
-                        ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * ema_error);
+                    case BALANCED: {
+                        dynamic_delay = pdMS_TO_TICKS(DHT11_BALANCED_DELAY);
+                        const uint32_t slices = (sample_rate_min * 60) / (DHT11_BALANCED_DELAY / 1000);
+                        dht11_task_in_balanced_or_performance(&counter, slices, &data);
+                        break;
                     }
-                    ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * ema_temp);
-                    break;
+                    case PERFORMANCE: {
+                        dynamic_delay = pdMS_TO_TICKS(DHT11_PERFORMANCE_DELAY);
+                        const uint32_t slices = (sample_rate_min * 60) / (DHT11_PERFORMANCE_DELAY / 1000);
+                        dht11_task_in_balanced_or_performance(&counter, slices, &data);
+                        break;
+                    }
+                }
+
+                uint32_t stop_signal = 0;
+                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, dynamic_delay);
+
+                if (result == pdTRUE) {
+                    if (stop_signal & NOTIFY_CMD_STOP) {
+                        running = false;
+                    }
+                }
             }
         }
-        xQueueSend(queues.dht11_to_mq135, &dht11, portMAX_DELAY);
-        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(DHT11_DELAY));
     }
 }

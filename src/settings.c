@@ -11,57 +11,14 @@
 #include <ctype.h>
 #include "nvs_flash.h"
 #include "esp_pm.h"
-#include "Data/data.h"
-#include "Time/time.h"
 #include "System/system.h"
-#include "components/mpack/include/mpack.h"
+#include "mpack.h"
+#include "Fsm/fsm.h"
+#include "Message/message.h"
 #include "MQTT/mqtt.h"
 
 
-static struct {
-    struct {
-        char mac_address[MAC];
-        char device_name[DEVICE_NAME];
-        uint32_t sample_rate;
-        uint8_t energy_mode;
-    } node;
-    struct {
-        char id_network[ID_NETWORK];
-        char id_edge[ID_EDGE];
-    } network;
-    struct {
-        uint8_t ssid[WIFI_SSID];
-        uint8_t ssid_len;
-        uint8_t password[WIFI_PASSWORD];
-        uint8_t pass_len;
-        char ip[WIFI_IP];
-    } wifi;
-    struct {
-        char uri[MQTT_URI];
-
-        // Publica
-        char topic_data[MAX_TOPIC];
-        char topic_alert_air[MAX_TOPIC];
-        char topic_alert_temp[MAX_TOPIC];
-        char topic_monitor[MAX_TOPIC];
-        char topic_settings[MAX_TOPIC];
-        char topic_settings_ok[MAX_TOPIC];
-        char topic_hub_firmware_ok[MAX_TOPIC];
-        char topic_handshake_to_edge[MAX_TOPIC];
-
-        // Escucha
-        char topic_edge_state[MAX_TOPIC];
-        char topic_edge_handshake[MAX_TOPIC];
-        char topic_heartbeat[MAX_TOPIC];
-        char topic_new_firmware[MAX_TOPIC];
-        char topic_new_settings[MAX_TOPIC];
-        char topic_edge_setting_ok[MAX_TOPIC];
-        char topic_delete_hub[MAX_TOPIC];
-        char topic_active_hub[MAX_TOPIC];
-    } mqtt;
-} settings;
-
-
+settings_t settings;
 static const char *TAG = "Settings";
 static char uart_buffer[SETTINGS_BUFFER_SIZE];
 static TimerHandle_t one_shot_timer = NULL;
@@ -80,25 +37,25 @@ static void unlock(void) {
     xSemaphoreGive(settings_mutex);
 }
 
-static void safe_string_copy(char* dest, const char* src, size_t size) {
+void safe_string_copy(char* dest, const char* src, size_t size) {
     if (size == 0) return;
     strncpy(dest, src, size - 1);
     dest[size - 1] = '\0';
 }
 
-static inline void safe_strcpy(char *dest, const char *src, size_t dest_size) {
+void safe_strcpy(char *dest, const char *src, size_t dest_size) {
     if (!src) {
         dest[0] = '\0';
         return;
     }
-    size_t src_len = strlen(src);
-    size_t max_copy = dest_size - 1;
-    size_t actual_copy_len = (src_len < max_copy) ? src_len : max_copy;
+    const size_t src_len = strlen(src);
+    const size_t max_copy = dest_size - 1;
+    const size_t actual_copy_len = (src_len < max_copy) ? src_len : max_copy;
     memcpy(dest, src, actual_copy_len);
     dest[actual_copy_len] = '\0';
 }
 
-static inline void uart_send_text(const char *text) {
+static void uart_send_text(const char *text) {
     uart_write_bytes(SETTINGS_UART_PORT_NUM, text, strlen(text));
 }
 
@@ -132,171 +89,230 @@ void settings_set_wifi_ip(const char* ip) {
     unlock();
 }
 
+void settings_set_balance_epoch(const uint32_t bal) {
+    atomic_store(&settings.network.balance_epoch, bal);
+}
+
+void settings_set_energy_mode(const energy_mode_t mode) {
+    atomic_store(&settings.node.energy_mode, mode);
+}
+
+void settings_empty_network(void) {
+    lock();
+    memset(&settings.network.id_network, 0, sizeof(settings.network.id_network));
+    unlock();
+}
+
 
 /* ---- Getters ---- */
-void settings_get_node_mac(char* dest, size_t dest_size) {
+void settings_get_node_mac(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.node.mac_address, dest_size);
     unlock();
 }
 
-void settings_get_node_device_name(char* dest, size_t dest_size) {
+void settings_get_node_device_name(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.node.device_name, dest_size);
     unlock();
 }
 
+void settings_get_network(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.network.id_network, dest_size);
+    unlock();
+}
+
+void settings_get_network_id_edge(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.network.id_edge, dest_size);
+    unlock();
+}
+
+uint32_t settings_get_balance_epoch(void) {
+    const uint32_t val = atomic_load(&settings.network.balance_epoch);
+    return val;
+}
+
+void settings_get_url_https(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.network.url_https, dest_size);
+    unlock();
+}
+
 uint32_t settings_get_node_sample_rate(void) {
-    lock();
-    uint32_t val = settings.node.sample_rate;
-    unlock();
+    const uint32_t val = atomic_load(&settings.node.sample_rate);
     return val;
 }
 
-uint8_t settings_get_node_energy_mode(void) {
-    lock();
-    uint8_t val = settings.node.energy_mode;
-    unlock();
+energy_mode_t settings_get_node_energy_mode(void) {
+    const uint32_t val = atomic_load(&settings.node.energy_mode);
     return val;
 }
 
-void settings_get_wifi_ssid(uint8_t* dest, size_t dest_size) {
+void settings_get_wifi_ssid(uint8_t* dest, const size_t dest_size) {
     lock();
-    size_t current_len = settings.wifi.ssid_len;
-    size_t to_copy = (current_len >= dest_size) ? (dest_size - 1) : current_len;
+    const size_t current_len = atomic_load(&settings.wifi.ssid_len);
+    const size_t to_copy = (current_len >= dest_size) ? (dest_size - 1) : current_len;
     memcpy(dest, settings.wifi.ssid, to_copy);
     dest[to_copy] = 0;
     unlock();
 }
 
 uint8_t settings_get_wifi_ssid_len(void) {
-    lock();
-    uint8_t val = settings.wifi.ssid_len;
-    unlock();
+    const uint8_t val = atomic_load(&settings.wifi.ssid_len);
     return val;
 }
 
-void settings_get_wifi_password(uint8_t* dest, size_t dest_size) {
+void settings_get_wifi_password(uint8_t* dest, const size_t dest_size) {
     lock();
-    size_t current_len = settings.wifi.pass_len;
-    size_t to_copy = (current_len >= dest_size) ? (dest_size - 1) : current_len;
+    const size_t current_len = atomic_load(&settings.wifi.pass_len);
+    const size_t to_copy = (current_len >= dest_size) ? (dest_size - 1) : current_len;
     memcpy(dest, settings.wifi.password, to_copy);
     dest[to_copy] = 0;
     unlock();
 }
 
 uint8_t settings_get_wifi_pass_len(void) {
-    lock();
-    uint8_t val = settings.wifi.pass_len;
-    unlock();
+    const uint8_t val = atomic_load(&settings.wifi.pass_len);
     return val;
 }
 
-void settings_get_wifi_ip(char* dest, size_t dest_size) {
+void settings_get_wifi_ip(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.wifi.ip, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_uri(char* dest, size_t dest_size) {
+void settings_get_mqtt_uri(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.uri, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_data(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_data(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_data, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_alert_air(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_alert_air(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_alert_air, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_alert_temp(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_alert_temp(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_alert_temp, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_settings_ok(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_settings_ok(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_settings_ok, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_hub_firmware_ok(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_hub_firmware_ok(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_hub_firmware_ok, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_handshake_to_edge(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_handshake_to_edge(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_handshake_to_edge, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_monitor(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_monitor(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_monitor, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_settings(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_settings(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_settings, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_edge_state(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_edge_state_balance(char* dest, const size_t dest_size) {
     lock();
-    safe_string_copy(dest, settings.mqtt.topic_edge_state, dest_size);
+    safe_string_copy(dest, settings.mqtt.topic_edge_state_balance, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_edge_handshake(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_edge_state_normal(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_edge_state_normal, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_edge_state_safe(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_edge_state_safe, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_edge_phase(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_edge_phase, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_edge_handshake(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_edge_handshake, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_heartbeat(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_heartbeat(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_heartbeat, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_new_firmware(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_new_firmware(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_new_firmware, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_new_settings(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_new_settings(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_new_settings, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_edge_setting_ok(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_edge_setting_ok(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_edge_setting_ok, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_delete_hub(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_delete_hub(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_delete_hub, dest_size);
     unlock();
 }
 
-void settings_get_mqtt_topic_active_hub(char* dest, size_t dest_size) {
+void settings_get_mqtt_topic_active_hub(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_active_hub, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_ping(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_ping, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_empty_queue(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_empty_queue, dest_size);
     unlock();
 }
 
@@ -340,13 +356,13 @@ static void timeout_init(bool *timer_flag) {
  * @param flag Flag para permitir que entre en sueño ligero en idle
  * @return ESP_OK en caso de exito, otro en caso de fallo
  */
-static esp_err_t set_cpu_frequency(int mhz, bool flag) {
-    esp_pm_config_t pm_config = {
+static esp_err_t set_cpu_frequency(const int mhz, const bool flag) {
+    const esp_pm_config_t pm_config = {
         .max_freq_mhz = mhz,
         .min_freq_mhz = mhz,
         .light_sleep_enable = flag     // true para que duerma en idle (ahorra más bateria)
     };
-    esp_err_t ret = esp_pm_configure(&pm_config);
+    const esp_err_t ret = esp_pm_configure(&pm_config);
     return ret;
 }
 
@@ -393,16 +409,18 @@ static void show_help(void) {
     uart_send_text("| M_URI <uri>                  - Configura uri MQTT                                      |\r\n");
     uart_send_text("| NET <id_red>                 - Configura el id de la red a la que se conectara         |\r\n");
     uart_send_text("| EDGE <id_edge>               - Configura el id del edge al que se conectara            |\r\n");
+    uart_send_text("| URL_BYPASS <url>             - Configura url para conexion bypass                      |\r\n");
     uart_send_text("| NAME <name>                  - Configura nombre del dispositivo                        |\r\n");
     uart_send_text("| SAMPLE <rate>                - Configura frecuencia de envio de datos                  |\r\n");
-    uart_send_text("| E_MODE <energy>              - Configura modo de energia                               |\r\n");
+    uart_send_text("| ENERGY <energy>              - Configura modo de energia                               |\r\n");
     uart_send_text("| SHOW                         - Muestra configuracion actual                            |\r\n");
     uart_send_text("| EXIT                         - Salir                                                   |\r\n");
     uart_send_text("| HELP                         - Muestra mensaje de ayuda                                |\r\n");
     uart_send_text("| ====================================================================================== |\r\n");
     uart_send_text("| Info: SAMPLE setea cada cuantos minutos se envian los datos                            |\r\n");
-    uart_send_text("| Info: E_MODE [0 = Bajo consumo, 1 = Alto consumo]                                      |\r\n");
-    uart_send_text("| Info: Debe ingresar mqtts:// obligatoriamente en la uri de MQTT                        |\r\n");
+    uart_send_text("| Info: ENERGY [0 = Bajo consumo, 1 = Balanceado, 2 = Performance]                       |\r\n");
+    uart_send_text("| Info: Debe ingresar el prefijo https:// obligatoriamente en la uri de BYPASS           |\r\n");
+    uart_send_text("| Info: Debe ingresar el prefijo mqtts:// obligatoriamente en la uri de MQTT             |\r\n");
     uart_send_text("| ====================================================================================== |\r\n\r\n");
 }
 
@@ -425,11 +443,15 @@ void show_config(void) {
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| Edge:             %s\r\n", settings.network.id_edge);
     uart_send_text(temp_buffer);
+    sprintf(temp_buffer, "| Bypass URL:       %s\r\n", settings.network.url_https);
+    uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| Nombre Disp:      %s\r\n", settings.node.device_name);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Sample Rate:      %lu\r\n", settings.node.sample_rate);
+    const uint32_t sample = atomic_load(&settings.node.sample_rate);
+    sprintf(temp_buffer, "| Sample Rate:      %lu\r\n", sample);
     uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Modo Energia:     %u\r\n", settings.node.energy_mode);
+    const energy_mode_t energy = atomic_load(&settings.node.energy_mode);
+    sprintf(temp_buffer, "| Modo Energia:     %u\r\n", energy);
     uart_send_text(temp_buffer);
     uart_send_text("|============================================|\r\n\r\n");
 }
@@ -473,11 +495,16 @@ static void show_menu_change_settings(void) {
  * @return bool  Devuelve true cuando la configuracion esta completa. Sino retorna false.
  */
 static bool setting_is_device_configured(void) {
-    if (settings.wifi.ssid_len > 0 && settings.wifi.pass_len > 0
+    const uint8_t wifi_ssid_len = atomic_load(&settings.wifi.ssid_len);
+    const uint8_t wifi_pass_len = atomic_load(&settings.wifi.pass_len);
+    const uint32_t sample = atomic_load(&settings.node.sample_rate);
+    const energy_mode_t energy = atomic_load(&settings.node.energy_mode);
+
+    if (wifi_ssid_len > 0 && wifi_pass_len > 0
         && strlen(settings.mqtt.uri) > 0 && strlen(settings.node.device_name) > 0
         && strlen(settings.network.id_network) > 0 && strlen(settings.network.id_edge) > 0
-        && settings.node.sample_rate > 0 &&
-        (settings.node.energy_mode == 0 || settings.node.energy_mode == 1)) {
+        && strlen(settings.network.url_https) > 0 && sample > 0 &&
+        (energy == 0 || energy == 1 || energy == 2)) {
         return true;
         }
     return false;
@@ -488,7 +515,7 @@ static bool setting_is_device_configured(void) {
  * @brief Guardar en memoria no volatil (NVS) la configuracion.
  * @return esp_err_t  Devuelve ESP_OK cuando el almacenamiento fue correcto.
  */
-static esp_err_t setting_save_to_nvs(void) {
+esp_err_t setting_save_to_nvs(void) {
     nvs_handle_t h;
     esp_err_t ret = nvs_open("device_setting", NVS_READWRITE, &h);
     if (ret != ESP_OK) return ret;
@@ -598,7 +625,8 @@ static bool process_command(const char *command) {
             return false;
         }
         safe_strcpy((char*)settings.wifi.ssid, param, sizeof(settings.wifi.ssid));
-        settings.wifi.ssid_len = strlen((char *)settings.wifi.ssid);
+        const uint8_t len = strlen((char *)settings.wifi.ssid);
+        atomic_store(&settings.wifi.ssid_len, len);
         uart_send_text("- INFO: SSID configurado correctamente -\r\n");
         return false;
     }
@@ -609,7 +637,8 @@ static bool process_command(const char *command) {
             return false;
         }
         safe_strcpy((char*)settings.wifi.password, param, sizeof(settings.wifi.password));
-        settings.wifi.pass_len = strlen((char *)settings.wifi.password);
+        const uint8_t len = strlen((char *)settings.wifi.password);
+        atomic_store(&settings.wifi.pass_len, len);
         uart_send_text("- INFO: Password WiFi configurado correctamente -\r\n");
         return false;
     }
@@ -636,9 +665,6 @@ static bool process_command(const char *command) {
         }
         safe_strcpy(settings.network.id_network, param, sizeof(settings.network.id_network));
         uart_send_text("- INFO: Red configurada correctamente -\r\n");
-
-        // todo
-
         return false;
     }
 
@@ -649,6 +675,16 @@ static bool process_command(const char *command) {
         }
         safe_strcpy(settings.network.id_edge, param, sizeof(settings.network.id_edge));
         uart_send_text("- INFO: Edge configurado correctamente -\r\n");
+        return false;
+    }
+
+    if (strcmp(cmd, CMD_SET_URL_HTTPS) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <url> -\r\n");
+            return false;
+        }
+        safe_strcpy(settings.network.url_https, param, sizeof(settings.network.url_https));
+        uart_send_text("- INFO: Bypass url configurado correctamente -\r\n");
         return false;
     }
 
@@ -668,12 +704,12 @@ static bool process_command(const char *command) {
             return false;
         }
         errno = 0;
-        unsigned long val = strtoul(param, &endptr, 10);
+        const unsigned long val = strtoul(param, &endptr, 10);
         if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
             uart_send_text("- ERROR: Ingrese un numero de muestreo valido -\r\n");
         }
         if (val > 0) {
-            settings.node.sample_rate = val;
+            atomic_store(&settings.node.sample_rate, val);
             uart_send_text("- INFO: Muestreo configurado correctamente -\r\n");
         } else {
             uart_send_text("- ERROR: Ingrese un numero de muestreo valido -\r\n");
@@ -687,23 +723,31 @@ static bool process_command(const char *command) {
             return false;
         }
         errno = 0;
-        unsigned long val = strtoul(param, &endptr, 10);
+        const unsigned long val = strtoul(param, &endptr, 10);
         if (endptr == param || (errno == ERANGE)) {
             uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
         }
-        if (val == 0 || val == 1) {
-            settings.node.energy_mode = val;
-            if (val) set_cpu_frequency(MAX_FREQ, false);
-            else set_cpu_frequency(MIN_FREQ, true);
-            uart_send_text("- INFO: Modo de energia configurado correctamente -\r\n");
-        } else {
-            uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
+        switch (val) {
+            case 0: atomic_store(&settings.node.energy_mode, val);
+                    set_cpu_frequency(MIN_FREQ, true);
+                    uart_send_text("- INFO: Modo de energia configurado correctamente. LOW_CONSUMPTION -\r\n");
+                    break;
+            case 1: atomic_store(&settings.node.energy_mode, val);
+                    set_cpu_frequency(MID_FREQ, false);
+                    uart_send_text("- INFO: Modo de energia configurado correctamente. BALANCED -\r\n");
+                    break;
+            case 2: atomic_store(&settings.node.energy_mode, val);
+                    set_cpu_frequency(MAX_FREQ, false);
+                    uart_send_text("- INFO: Modo de energia configurado correctamente. PERFORMANCE -\r\n");
+                    break;
+            default: uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
+                     break;
         }
         return false;
     }
 
     if (strcmp(cmd, CMD_EXIT) == 0 && setting_is_device_configured()) {
-        esp_err_t ret = setting_save_to_nvs();
+        const esp_err_t ret = setting_save_to_nvs();
         if (ret == ESP_OK) {
             uart_send_text("\n- INFO: Configuracion guardada correctamente. Saliendo del modo configuracion -\r\n");
             return true;
@@ -750,8 +794,17 @@ void create_mqtt_topics() {
     snprintf(settings.mqtt.topic_settings, sizeof(settings.mqtt.topic_settings),
         "iot/%s/hub/%s/setting", settings.network.id_network, settings.node.mac_address);
 
-    snprintf(settings.mqtt.topic_edge_state, sizeof(settings.mqtt.topic_edge_state),
-        "iot/%s/state", settings.network.id_edge);
+    snprintf(settings.mqtt.topic_edge_state_balance, sizeof(settings.mqtt.topic_edge_state_balance),
+        "iot/%s/state/balance", settings.network.id_edge);
+
+    snprintf(settings.mqtt.topic_edge_state_normal, sizeof(settings.mqtt.topic_edge_state_normal),
+        "iot/%s/state/normal", settings.network.id_edge);
+
+    snprintf(settings.mqtt.topic_edge_state_safe, sizeof(settings.mqtt.topic_edge_state_safe),
+        "iot/%s/state/safe", settings.network.id_edge);
+
+    snprintf(settings.mqtt.topic_edge_phase, sizeof(settings.mqtt.topic_edge_phase),
+        "iot/%s/state/phase", settings.network.id_edge);
 
     snprintf(settings.mqtt.topic_edge_handshake, sizeof(settings.mqtt.topic_edge_handshake),
         "iot/%s/handshake", settings.network.id_edge);
@@ -773,230 +826,12 @@ void create_mqtt_topics() {
 
     snprintf(settings.mqtt.topic_active_hub, sizeof(settings.mqtt.topic_active_hub),
         "iot/%s/active_hub", settings.network.id_network);
-}
 
+    snprintf(settings.mqtt.topic_ping, sizeof(settings.mqtt.topic_ping),
+        "iot/%s/hub/%s/ping", settings.network.id_network, settings.node.mac_address);
 
-/**
- * @brief Genera un json con los datos de la configuracion del dispositivo
- * @param packet
- */
-static bool serialize_mpack_settings(mqtt_packet_t *packet) {
-    packet->payload = NULL;
-    packet->len = 0;
-    size_t buffer_size = MPACK_SETTINGS_SIZE;
-    packet->payload = malloc(buffer_size);
-
-    if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
-        return false;
-    }
-
-    char time[TIME_MAX_LEN];
-    get_time(time);
-
-    mpack_writer_t writer;
-    mpack_writer_init(&writer, packet->payload, buffer_size);
-
-    // El mapa tiene 17 elementos
-    mpack_start_map(&writer, 17);
-
-    mpack_write_cstr(&writer, "ID");                mpack_write_cstr(&writer, settings.node.mac_address);
-    mpack_write_cstr(&writer, "destination_type");  mpack_write_cstr(&writer, "SERVER");
-    mpack_write_cstr(&writer, "destination_id");    mpack_write_cstr(&writer, "SERVER0");
-    mpack_write_cstr(&writer, "timestamp");         mpack_write_cstr(&writer, time);
-    mpack_write_cstr(&writer, "wifi_ssid");         mpack_write_str(&writer, (const char*)settings.wifi.ssid, strnlen((const char*)settings.wifi.ssid, sizeof(settings.wifi.ssid)));
-    mpack_write_cstr(&writer, "wifi_password");     mpack_write_str(&writer, (const char*)settings.wifi.password, strnlen((const char*)settings.wifi.password, sizeof(settings.wifi.password)));
-    mpack_write_cstr(&writer, "mqtt_uri");          mpack_write_cstr(&writer, settings.mqtt.uri);
-    mpack_write_cstr(&writer, "topic_data");        mpack_write_cstr(&writer, settings.mqtt.topic_data);
-    mpack_write_cstr(&writer, "topic_monitor");     mpack_write_cstr(&writer, settings.mqtt.topic_monitor);
-    mpack_write_cstr(&writer, "topic_settings");    mpack_write_cstr(&writer, settings.mqtt.topic_settings);
-    mpack_write_cstr(&writer, "device_name");       mpack_write_cstr(&writer, settings.node.device_name);
-    mpack_write_cstr(&writer, "sample");            mpack_write_u32(&writer, settings.node.sample_rate);
-    mpack_write_cstr(&writer, "energy_mode");       mpack_write_u8(&writer, settings.node.energy_mode);
-
-    mpack_finish_map(&writer);
-
-    size_t used = mpack_writer_buffer_used(&writer);
-    if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE(TAG, "- ERROR: Error codificando MPack -");
-        free(packet->payload);
-        packet->payload = NULL;
-        return false;
-    }
-    packet->len = used;
-    return true;
-}
-
-
-/**
- * @brief Procesar comando recibido por MQTT para modificar la configuracion del sistema.
- * @param data Mensaje mpack.
- * @param len Longitud del mensaje mpack.
- */
-bool parse_mpack_settings(const char* data, size_t len) {
-    uint8_t flags = 0x0;
-    mpack_reader_t reader;
-    mpack_reader_init_data(&reader, data, len);
-
-    uint32_t map_size = mpack_expect_map(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok) {
-        return false;
-    }
-
-    char val_buf[55];
-    for (uint32_t i = 0; i < map_size; i++) {
-        char key[55];
-        mpack_expect_cstr(&reader, key, sizeof(key));
-
-        if (strcmp(key, "ID") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (strcmp(val_buf, "SERVER0") == 0) flags |= FLAG_SERVER_VALID;
-        }
-        else if (strcmp(key, "destination_type") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x1 && strcmp(val_buf, "NODE") == 0) {
-                flags |= FLAG_CLIENT_VALID;
-            }
-        }
-        else if (strcmp(key, "destination_id") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x3) {
-                if (strcmp(val_buf, settings.node.mac_address) == 0) flags |= FLAG_ITS_ME;
-                if (strcmp(val_buf, "all") == 0) flags |= FLAG_ITS_ALL;
-            }
-        }
-        else if (strcmp(key, "wifi_ssid") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_strcpy((char *)settings.wifi.ssid, val_buf, sizeof(settings.wifi.ssid));
-            }
-        }
-        else if (strcmp(key, "wifi_password") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_strcpy((char *)settings.wifi.password, val_buf, sizeof(settings.wifi.password));
-            }
-        }
-        else if (strcmp(key, "mqtt_uri") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.uri, val_buf, sizeof(settings.mqtt.uri));
-            }
-        }
-
-        else if (strcmp(key, "topic_data") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.topic_data, val_buf, sizeof(settings.mqtt.topic_data));
-            }
-        }
-        else if (strcmp(key, "topic_monitor") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.topic_monitor, val_buf, sizeof(settings.mqtt.topic_monitor));
-            }
-        }
-        else if (strcmp(key, "topic_settings") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7 || flags == 0xB) {
-                safe_string_copy(settings.mqtt.topic_settings, val_buf, sizeof(settings.mqtt.topic_settings));
-            }
-        }
-        else if (strcmp(key, "device_name") == 0) {
-            mpack_expect_cstr(&reader, val_buf, sizeof(val_buf));
-            if (flags == 0x7) {
-                safe_string_copy(settings.node.device_name, val_buf, sizeof(settings.node.device_name));
-            }
-        }
-        else if (strcmp(key, "sample") == 0) {
-            uint32_t val = mpack_expect_u32(&reader);
-            if (flags == 0x7 || flags == 0xB) {
-                settings.node.sample_rate = val;
-            }
-        }
-        else if (strcmp(key, "energy_mode") == 0) {
-            uint8_t val = mpack_expect_u8(&reader);
-            if (flags == 0x7 || flags == 0xB) {
-                settings.node.energy_mode = val;
-            }
-        }
-        else {
-            mpack_discard(&reader);
-        }
-
-        if (mpack_reader_error(&reader) != mpack_ok) {
-            return false;
-        }
-    }
-
-    if (mpack_reader_destroy(&reader) != mpack_ok) {
-        return false;
-    }
-
-    esp_err_t ret = setting_save_to_nvs();
-    if (ret != ESP_OK) {
-        return false;
-    }
-    return true;
-}
-
-
-/**
- * @brief Procesar comando recibido por MQTT para confirmar recepcion de datos.
- * @param data Mensaje mpack recibido.
- * @param len Longitud del mensaje.
- */
-bool parse_mpack_handshake(const char* data, size_t len) {
-    uint8_t flags = 0x0;
-    mpack_reader_t reader;
-    mpack_reader_init_data(&reader, data, len);
-
-    uint32_t map_size = mpack_expect_map(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok) {
-        return false;
-    }
-
-    char key[32];
-    char value[32];
-    for (uint32_t i = 0; i < map_size; i++) {
-        mpack_expect_cstr(&reader, key, sizeof(key));
-
-        if (strcmp(key, "ID") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if (strcmp(value, "SERVER0") == 0) {
-                flags |= FLAG_SERVER_VALID;
-            }
-        }
-        else if (strcmp(key, "destination_type") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == FLAG_SERVER_VALID) && (strcmp(value, "NODE") == 0)) {
-                flags |= FLAG_CLIENT_VALID;
-            }
-        }
-        else if (strcmp(key, "destination_id") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x03) && (strcmp(value, settings.node.mac_address) == 0)) {
-                flags |= FLAG_ITS_ME;
-            }
-        }
-        else if (strcmp(key, "setting_received") == 0) {
-            mpack_expect_cstr(&reader, value, sizeof(value));
-            if ((flags == 0x07) && (strcmp(value, "true") == 0)) {
-                if (task_handle.send_settings_handle != NULL) {
-                    xTaskNotifyGive(task_handle.send_settings_handle);
-                }
-            }
-        }
-        else {
-            mpack_discard(&reader);
-        }
-
-        if (mpack_reader_error(&reader) != mpack_ok) {
-            return false;
-        }
-    }
-
-    return (mpack_reader_destroy(&reader) == mpack_ok);
+    snprintf(settings.mqtt.topic_empty_queue, sizeof(settings.mqtt.topic_empty_queue),
+        "iot/%s/hub/%s/empty_queue", settings.network.id_network, settings.node.mac_address);
 }
 
 
@@ -1005,22 +840,51 @@ bool parse_mpack_handshake(const char* data, size_t len) {
  * @param pvParameter
  */
 void send_settings_task(void *pvParameter) {
-    const TickType_t loop_delay = pdMS_TO_TICKS(settings.node.sample_rate * 2 * MS_TO_MIN);
     mqtt_packet_t packet;
+    uint32_t notification = 0;
 
     while (1) {
-        if (serialize_mpack_settings(&packet)) {
-            if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                free(packet.payload);
+        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+
+        if (notification & NOTIFY_CMD_START) {
+            ESP_LOGI("Settings", "Tarea de envio de mensajes.");
+            bool running = true;
+
+            while (running) {
+                uint32_t rate = settings_get_node_sample_rate();
+                if (rate == 0) rate = 1;
+                const TickType_t loop_delay = pdMS_TO_TICKS(rate * 2 * 60000);
+
+                if (generate_message_settings(&packet)) {
+                    if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        ESP_LOGW("Settings", "Cola llena, descartando paquete");
+                        free(packet.payload);
+                    }
+                } else {
+                    ESP_LOGE("Settings", "Error RAM al generar paquete");
+                }
+
+                uint32_t signal = 0;
+                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &signal, loop_delay);
+
+                if (result == pdTRUE) {
+                    if (signal & NOTIFY_CMD_DESTROY) {
+                        ESP_LOGW("Settings", "Orden de destrucción recibida.");
+                        goto delete_task;
+                    }
+
+                    if (signal & NOTIFY_CMD_STOP) {
+                        ESP_LOGI("Settings", "Orden de PAUSA recibida. Deteniendo envíos.");
+                        running = false;
+                    }
+                }
             }
         }
-        else {
-            ESP_LOGE(TAG, "- ERROR: Fallo al generar paquete (RAM) -");
-        }
-        uint32_t flag = ulTaskNotifyTake(pdTRUE, loop_delay);
-        if (flag > 0) vTaskDelete(NULL);
     }
+
+delete_task:
+    ESP_LOGI("Settings", "Tarea Eliminada.");
+    vTaskDelete(NULL);
 }
 
 
@@ -1038,7 +902,7 @@ static bool setting_mode_start(void) {
     uart_send_text(buffer_aux);
 
     while (1) {
-        int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, portMAX_DELAY);
+        const int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, portMAX_DELAY);
 
         if (bytes > 0) {
             if (c == '\n') {
@@ -1088,7 +952,7 @@ static bool setting_mode_change(void) {
             return false;
         }
 
-        int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, pdMS_TO_TICKS(100));
+        const int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, pdMS_TO_TICKS(100));
 
         if (bytes > 0) {
             if (c == '\n') {

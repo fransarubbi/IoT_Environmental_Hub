@@ -11,10 +11,19 @@ idf_component_register(
         "time.c"
         "monitor.c"
         "system.c"
+        "fsm.c"
+        "ota.c"
+        "message.c"
+        "converter.c"
+        "timer.c"
+        "healthscore.c"
+        "parser.c"
+        "heartbeat.c"
+        "https_bypass.c"
         INCLUDE_DIRS
         "."
-        "../components/mpack/include"
         REQUIRES
         mbedtls
         esp_driver_rmt
+        mpack
 )
