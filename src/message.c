@@ -31,7 +31,7 @@
  * @param packet Puntero a la estructura donde se guardará el payload y longitud.
  * @return true si se generó correctamente, false si hubo error de memoria.
  */
-bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet) {
+bool generate_message_data(const data_sensors_t data, mqtt_packet_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
     const size_t buffer_size = MPACK_DATA_SIZE;

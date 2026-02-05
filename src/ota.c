@@ -8,8 +8,8 @@
 #include "System/system.h"
 
 
-#define URL_VERSION "https://https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/refs/heads/master/version.txt"
-#define URL_BIN     "https://raw.githubusercontent.com/TuUsuario/Repo/main/firmware.bin"
+#define URL_VERSION "https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/master/version.txt"
+#define URL_BIN     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v0.5.0/firmware.bin"
 #define MAX_HTTP_OUTPUT_BUFFER 64
 
 
@@ -25,6 +25,22 @@ typedef struct {
 
 
 /**
+ * @brief Función para eliminar saltos de linea y espacios de un string.
+ * @param str String al que se le aplicará la limpieza.
+ */
+static void sanitize_string(char *str) {
+    char *p = str;
+    while (*p) {
+        if (*p == '\r' || *p == '\n' || *p == ' ') {
+            *p = '\0';
+            break;
+        }
+        p++;
+    }
+}
+
+
+/**
  * @brief Handler de eventos para el cliente HTTP.
  * * Se ejecuta automáticamente cuando el cliente HTTP recibe datos o cambia de estado.
  * Su objetivo principal es capturar el cuerpo de la respuesta (la versión) y guardarlo en el buffer.
@@ -36,7 +52,7 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
         if (!esp_http_client_is_chunked_response(evt->client)) {
             version_data_t *vdata = (version_data_t *)evt->user_data;
             // Calculamos cuánto espacio queda
-            int space_left = vdata->buffer_len - vdata->data_len - 1;
+            const int space_left = vdata->buffer_len - vdata->data_len - 1;
             int copy_len = evt->data_len;
 
             if (copy_len > space_left) copy_len = space_left;
@@ -53,35 +69,43 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 
 
 /**
- * @brief Compara dos versiones en formato Semantic Versioning (X.Y.Z).
- * * @param new_ver Cadena con la nueva versión (ej: "1.0.1").
- * @param current_ver Cadena con la versión actual (ej: "1.0.0").
- * * @return int
- * > 0 : La nueva versión es mayor (Actualizar).
- * 0   : Las versiones son iguales.
- * < 0 : La versión actual es mayor.
+ * @brief Compara versiones semánticas.
+ * Retorna 1 si remote > local (Actualizar).
+ * Retorna -1 si remote < local.
+ * Retorna 0 si son iguales.
  */
-static int compare_semver(const char *new_ver, const char *current_ver) {
-    char v1[32], v2[32];
+static int compare_semver(const char *remote_version, const char *local_version) {
+    char remote[32], local[32];
+    char *saveptr_rem = NULL;
+    char *saveptr_loc = NULL;
 
-    strncpy(v1, new_ver, sizeof(v1) - 1);
-    v1[sizeof(v1) - 1] = '\0';
+    strncpy(remote, remote_version, sizeof(remote) - 1);
+    remote[sizeof(remote) - 1] = '\0';
+    strncpy(local, local_version, sizeof(local) - 1);
+    local[sizeof(local) - 1] = '\0';
 
-    strncpy(v2, current_ver, sizeof(v2) - 1);
-    v2[sizeof(v2) - 1] = '\0';
+    sanitize_string(remote);
+    sanitize_string(local);
 
-    char *token1 = strtok(v1, ".");
-    char *token2 = strtok(v2, ".");
+    ESP_LOGI(TAG, "Comparando: Remoto='%s' vs Local='%s'", remote, local);
 
-    while (token1 != NULL && token2 != NULL) {
-        int num1 = atoi(token1);
-        int num2 = atoi(token2);
-        if (num1 != num2) {
-            return num1 - num2;
-        }
-        token1 = strtok(NULL, ".");
-        token2 = strtok(NULL, ".");
+    char *token_rem = strtok_r(remote, ".", &saveptr_rem);
+    char *token_loc = strtok_r(local, ".", &saveptr_loc);
+
+    while (token_rem != NULL && token_loc != NULL) {
+        const int num_rem = atoi(token_rem);
+        const int num_loc = atoi(token_loc);
+
+        if (num_rem > num_loc) return 1;
+        if (num_rem < num_loc) return -1;
+
+        token_rem = strtok_r(NULL, ".", &saveptr_rem);
+        token_loc = strtok_r(NULL, ".", &saveptr_loc);
     }
+
+    if (token_rem != NULL) return 1;
+    if (token_loc != NULL) return -1;
+
     return 0;
 }
 
@@ -100,7 +124,7 @@ esp_err_t get_repository_version() {
         .data_len = 0
     };
 
-    esp_http_client_config_t config = {
+    const esp_http_client_config_t config = {
         .url = URL_VERSION,
         .timeout_ms = 10000,
         .event_handler = http_event_handler,
@@ -109,14 +133,17 @@ esp_err_t get_repository_version() {
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_err_t err = esp_http_client_perform(client);
+    if (client == NULL) return ESP_FAIL;
 
+    esp_err_t err = esp_http_client_perform(client);
     if (err == ESP_OK) {
         if (esp_http_client_get_status_code(client) != 200) {
+            ESP_LOGW(TAG, "HTTP Status: %d", esp_http_client_get_status_code(client));
             err = ESP_FAIL;
         }
+    } else {
+        ESP_LOGE(TAG, "Fallo HTTP: %s", esp_err_to_name(err));
     }
-
     esp_http_client_cleanup(client);
     return err;
 }
@@ -139,39 +166,36 @@ esp_err_t ota_from_github() {
         .keep_alive_enable = true,
     };
 
-    esp_https_ota_config_t ota_config = {
+    const esp_https_ota_config_t ota_config = {
         .http_config = &config,
         .partial_http_download = true,
     };
-
     esp_https_ota_handle_t https_ota_handle = NULL;
     esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "ERROR: Fallo al iniciar OTA: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error OTA Begin: %s", esp_err_to_name(err));
         return err;
     }
 
     while (1) {
-        err = esp_https_ota_perform(https_ota_handle);  // Descarga un fragmento y lo escribe en flash
-        if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
-            break;
-        }
-        esp_task_wdt_reset();
+        err = esp_https_ota_perform(https_ota_handle);
+        if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) break;
     }
-
-    // Validar imagen
-    esp_err_t ota_finish_err = esp_https_ota_finish(https_ota_handle);
 
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "ERROR: Descarga interrumpida: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error OTA Download: %s", esp_err_to_name(err));
+        esp_https_ota_finish(https_ota_handle); // Limpiar
         return err;
     }
+
+    esp_err_t ota_finish_err = esp_https_ota_finish(https_ota_handle);
     if (ota_finish_err != ESP_OK) {
-        ESP_LOGE(TAG, "ERROR: Validación final fallida: %s", esp_err_to_name(ota_finish_err));
+        ESP_LOGE(TAG, "Error OTA Finish: %s", esp_err_to_name(ota_finish_err));
         return ota_finish_err;
     }
 
-    ESP_LOGI(TAG, "INFO: OTA Completo y Validado");
+    ESP_LOGI(TAG, "OTA Completo y Validado");
     return ESP_OK;
 }
 
@@ -181,20 +205,22 @@ esp_err_t ota_from_github() {
  */
 void check_update(void) {
     if (get_repository_version() == ESP_OK) {
-        if (compare_semver(response_buffer, CURRENT_FIRMWARE_VERSION) > 0) {
-            ESP_LOGW(TAG, "WARNING: Actualizacion encontrada");
-            uint32_t flag = UPDATE_FLAG;
+
+        const int result = compare_semver(response_buffer, CURRENT_FIRMWARE_VERSION);
+
+        if (result == 1) {   // Remoto > Local
+            ESP_LOGW(TAG, "WARNING: Actualizacion REAL encontrada. Iniciando...");
+            const uint32_t flag = UPDATE_FLAG;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         }
-        else {
-            ESP_LOGI(TAG, "INFO: El sistema esta actualizado.");
-            uint32_t flag = 0;
+        if (result <= 0) {
+            ESP_LOGI(TAG, "INFO: Sistema actualizado (Remoto <= Local). No se requiere OTA.");
+            const uint32_t flag = 0;    // Salir de estado CHECK_FIRMWARE
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         }
-    }
-    else {
+    } else {
         ESP_LOGE(TAG, "ERROR: No se pudo verificar la version");
-        uint32_t flag = 0;
+        const uint32_t flag = 0;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
 }

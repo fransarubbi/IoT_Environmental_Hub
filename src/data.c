@@ -198,7 +198,7 @@ static void get_data_from_queue_data_buffer(mqtt_packet_t *packet_data, const to
  * @brief Procesa la cola de monitor (métricas del sistema).
  */
 static void get_data_from_queue_monitor_buffer(mqtt_packet_t *packet_monitor, const topic *topics) {
-    if (xQueueReceive(queues.monitor_buffer, &packet_monitor, 0)) {
+    if (xQueueReceive(queues.monitor_buffer, packet_monitor, 0)) {
         const esp_err_t ret = mqtt_publish(topics->topic_monitor, packet_monitor->payload, (int)packet_monitor->len, QOS_MONITOR, NOT_RETAIN);
         free(packet_monitor->payload);
         update_health_score(ret, QOS_MONITOR);
@@ -210,7 +210,7 @@ static void get_data_from_queue_monitor_buffer(mqtt_packet_t *packet_monitor, co
  * @brief Procesa la cola de settings.
  */
 static void get_data_from_queue_settings_buffer(mqtt_packet_t *packet_settings, const topic *topics) {
-    if (xQueueReceive(queues.settings_buffer, &packet_settings, 0)) {
+    if (xQueueReceive(queues.settings_buffer, packet_settings, 0)) {
         const esp_err_t ret = mqtt_publish(topics->topic_settings, packet_settings->payload, (int)packet_settings->len, QOS_SETTING, NOT_RETAIN);
         free(packet_settings->payload);
         update_health_score(ret, QOS_SETTING);
@@ -222,7 +222,7 @@ static void get_data_from_queue_settings_buffer(mqtt_packet_t *packet_settings, 
  * @brief Procesa la cola de alertas de aire (Gas/CO2).
  */
 static void get_data_from_queue_alert_air_buffer(mqtt_packet_t *packet_alert, const topic *topics) {
-    if (xQueueReceive(queues.alert_air_buffer, &packet_alert, 0)) {
+    if (xQueueReceive(queues.alert_air_buffer, packet_alert, 0)) {
         const State state = atomic_load(&shared_state);
         if (state != BYPASS) {
             const esp_err_t ret = mqtt_publish(topics->topic_alert_air, packet_alert->payload, (int)packet_alert->len, QOS_ALERT, NOT_RETAIN);
@@ -237,7 +237,7 @@ static void get_data_from_queue_alert_air_buffer(mqtt_packet_t *packet_alert, co
  * @brief Procesa la cola de alertas de temperatura.
  */
 static void get_data_from_queue_alert_temp_buffer(mqtt_packet_t *packet_alert, const topic *topics) {
-    if (xQueueReceive(queues.alert_temp_buffer, &packet_alert, 0)) {
+    if (xQueueReceive(queues.alert_temp_buffer, packet_alert, 0)) {
         const State state = atomic_load(&shared_state);
         if (state != BYPASS) {
             const esp_err_t ret = mqtt_publish(topics->topic_alert_temp, packet_alert->payload, (int)packet_alert->len, QOS_ALERT, NOT_RETAIN);
@@ -252,7 +252,7 @@ static void get_data_from_queue_alert_temp_buffer(mqtt_packet_t *packet_alert, c
  * @brief Procesa la cola de alertas de temperatura.
  */
 static void get_data_from_queue_general_buffer(mqtt_msg_general_t *packet_general, const topic *topics) {
-    if (xQueueReceive(queues.general, &packet_general, 0)) {
+    if (xQueueReceive(queues.general, packet_general, 0)) {
         switch (packet_general->topic) {
             case FIRMWARE_OK: {
                 const esp_err_t ret = mqtt_publish(topics->topic_firmware, packet_general->payload, (int)packet_general->len, QOS_FIRMWARE, NOT_RETAIN);
@@ -425,6 +425,9 @@ void data_publish_task(void *pvParameter) {
                 get_data_from_queue_monitor_buffer(&packet_monitor, &topics);
                 vTaskDelay(pdMS_TO_TICKS((frequency + jitter) * 1000));
             }
+        }
+        else {
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
 }

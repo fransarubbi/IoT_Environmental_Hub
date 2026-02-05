@@ -108,8 +108,8 @@ void fsm_task(void *pvParameter) {
 
     while (1) {
         if (xQueueReceive(queues.event, &event, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI("FSM", "Estado actual: %d", fsm.state);
             event_processor(&fsm, event);
+            ESP_LOGI("FSM", "Estado actual: %d", fsm.state);
         }
     }
 }
