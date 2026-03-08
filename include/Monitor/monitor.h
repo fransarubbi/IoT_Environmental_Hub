@@ -27,11 +27,6 @@ typedef struct {
     } stack;
     wifi_stats_t wifi_stats;
     uint8_t energy_mode;
-    struct {
-        uint32_t hours;
-        uint32_t minutes;
-        uint32_t seconds;
-    } uptime;
 } stats_monitor_t;
 
 

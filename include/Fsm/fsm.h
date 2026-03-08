@@ -153,7 +153,6 @@ typedef struct {
  * Permiten lectura/escritura segura entre tareas.
  */
 typedef struct {
-    atomic_uint_fast32_t duration;
     atomic_uint_fast32_t frequency;
     atomic_uint_fast32_t jitter;
 } safe_mode_parameters_t;

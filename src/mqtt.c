@@ -4,12 +4,10 @@
 #include "esp_log.h"
 #include <esp_mac.h>
 #include <esp_timer.h>
-
 #include "certs/ca_crt.h"
 #include "certs/client1_crt.h"
 #include "certs/client1_key.h"
 #include "Healthscore/healthscore.h"
-#include "Message/message.h"
 #include "System/system.h"
 
 
@@ -74,7 +72,7 @@ static void subscribe_to_all_topics(esp_mqtt_client_handle_t client) {
 static esp_err_t get_mac_address(void) {
     uint8_t mac[6];
 
-    esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    const esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
     if (ret == ESP_OK) {
         snprintf(mac_addr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -139,29 +137,43 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             break;
 
         case MQTT_EVENT_DATA: {
-            mqtt_msg_to_parse_t new_msg;
+            static char *rx_buffer = NULL;
+            static int rx_total_len = 0;
 
-            if (event->data_len > 0) {
-                if (event->topic_len < MAX_TOPIC) {
-                    memcpy(new_msg.topic, event->topic, event->topic_len);
-                    new_msg.topic[event->topic_len] = '\0';
-                } else {
+            if (event->current_data_offset == 0) {
+                rx_total_len = event->total_data_len;
+                rx_buffer = malloc(rx_total_len + 1);
+
+                if (rx_buffer == NULL) {
+                    ESP_LOGE(TAG, "ERROR: No hay RAM para reensamblar mensaje MQTT");
                     break;
                 }
+            }
 
-                new_msg.payload = malloc(event->data_len + 1);
-                if (new_msg.payload == NULL) {
-                    ESP_LOGE(TAG, "ERROR: No hay RAM para copiar mensaje MQTT");
-                    break;
-                }
+            if (rx_buffer != NULL) {
+                memcpy(rx_buffer + event->current_data_offset, event->data, event->data_len);
+            }
 
-                memcpy(new_msg.payload, event->data, event->data_len);
-                new_msg.payload[event->data_len] = '\0';
-                new_msg.len = event->data_len;
+            if (event->current_data_offset + event->data_len >= rx_total_len) {
+                if (rx_buffer != NULL) {
+                    rx_buffer[rx_total_len] = '\0'; // Aseguramos finalización
+                    mqtt_msg_to_parse_t new_msg;
 
-                if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(10)) != pdTRUE) {
-                    ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje.");
-                    free(new_msg.payload);  // Liberar si no se pudo encolar
+                    if (event->topic_len > 0 && event->topic_len < MAX_TOPIC) {
+                        memcpy(new_msg.topic, event->topic, event->topic_len);
+                        new_msg.topic[event->topic_len] = '\0';
+                    }
+
+                    new_msg.payload = rx_buffer;
+                    new_msg.len = rx_total_len;
+
+                    if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje ensamblado.");
+                        free(rx_buffer);
+                    }
+
+                    rx_buffer = NULL;
+                    rx_total_len = 0;
                 }
             }
             break;
@@ -223,7 +235,7 @@ esp_err_t mqtt_init(void) {
         mqtt.config.network.reconnect_timeout_ms = 5000;  // Esperar 5 seg entre intentos de reconexion
         mqtt.client = esp_mqtt_client_init(&mqtt.config);
         if (!mqtt.client) {
-            ESP_LOGI(TAG, "- ERROR -");
+            ESP_LOGE(TAG, "- ERROR: No se pudo crear el cliente MQTT -");
             return ESP_FAIL;
         }
         esp_mqtt_client_register_event(mqtt.client, ESP_EVENT_ANY_ID,

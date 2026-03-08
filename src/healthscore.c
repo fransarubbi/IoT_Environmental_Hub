@@ -3,6 +3,7 @@
  * @brief Implementación de la lógica de puntuación de salud de red.
  */
 
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "Healthscore/healthscore.h"

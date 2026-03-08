@@ -157,8 +157,8 @@ void data_collection_task(void *pvParameter) {
                     ALL_DATA_READY,
                     pdTRUE,  // Limpiar bits despues de leer
                     pdTRUE,  // Esperar todos los bits
-                    pdMS_TO_TICKS(portMAX_DELAY)
-                    );
+                    pdMS_TO_TICKS(portMAX_DELAY));
+
                 get_formated_data(&dht11, &ky037, &mq135, &data);
                 if (generate_message_data(data, &packet)) {
                     if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
@@ -361,13 +361,14 @@ void data_publish_task(void *pvParameter) {
                     const uint32_t flag = SAFE_MODE_EMPTY_QUEUE;
                     xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
                 }
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
         else if (state == ALERT) {
             const UBaseType_t msg_pending = uxQueueMessagesWaiting(queues.alert_air_buffer) +
                                             uxQueueMessagesWaiting(queues.alert_temp_buffer);
             if (msg_pending > 0) {
-                const uint32_t frequency = atomic_load(&safe_mode.frequency);
+                const uint32_t frequency = atomic_load(&phase.frequency);
                 const uint32_t phase_jitter = atomic_load(&phase.jitter);
                 const uint32_t jitter = random_jitter(phase_jitter);
                 get_data_from_queue_alert_air_buffer(&packet_alert, &topics);
@@ -394,13 +395,16 @@ void data_publish_task(void *pvParameter) {
                 }
             }
             if (msg_pending_data > 0 || msg_pending_alert > 0) {
-                const uint32_t frequency = atomic_load(&safe_mode.frequency);
+                const uint32_t frequency = atomic_load(&phase.frequency);
                 const uint32_t phase_jitter = atomic_load(&phase.jitter);
                 const uint32_t jitter = random_jitter(phase_jitter);
                 get_data_from_queue_alert_air_buffer(&packet_alert, &topics);
                 get_data_from_queue_alert_temp_buffer(&packet_alert, &topics);
                 get_data_from_queue_data_buffer(&packet_data, &topics);
                 vTaskDelay(pdMS_TO_TICKS((frequency + jitter) * 1000));
+            }
+            else {
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
         else if (state == MONITOR) {
@@ -416,7 +420,7 @@ void data_publish_task(void *pvParameter) {
                 }
             }
             if (msg_pending_monitor > 0 || msg_pending > 0) {
-                const uint32_t frequency = atomic_load(&safe_mode.frequency);
+                const uint32_t frequency = atomic_load(&phase.frequency);
                 const uint32_t phase_jitter = atomic_load(&phase.jitter);
                 const uint32_t jitter = random_jitter(phase_jitter);
                 get_data_from_queue_alert_air_buffer(&packet_alert, &topics);
@@ -424,6 +428,9 @@ void data_publish_task(void *pvParameter) {
                 get_data_from_queue_data_buffer(&packet_data, &topics);
                 get_data_from_queue_monitor_buffer(&packet_monitor, &topics);
                 vTaskDelay(pdMS_TO_TICKS((frequency + jitter) * 1000));
+            }
+            else {
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
         else {

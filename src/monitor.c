@@ -30,10 +30,6 @@ static void get_formated_data(stats_monitor_t *stats) {
     stats->stack.monitor = uxTaskGetStackHighWaterMark(task_handle.monitor_handle);
     get_stats_wifi(&(stats->wifi_stats));
     stats->energy_mode = settings_get_node_energy_mode();
-    uint64_t uptime_ms = esp_timer_get_time() / 1000ULL;
-    stats->uptime.hours = uptime_ms / 3600000ULL;
-    stats->uptime.minutes = (uptime_ms % 3600000ULL) / 60000ULL;
-    stats->uptime.seconds = (uptime_ms % 60000ULL) / 1000ULL;
 }
 
 
