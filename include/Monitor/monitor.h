@@ -7,11 +7,6 @@
 
 typedef struct {
     struct {
-        char mac[MAC];
-        uint64_t time;
-        char network[ID_NETWORK];
-    } metadata;
-    struct {
         uint32_t mem_free;
         uint32_t mem_free_hm;
         uint32_t mem_free_block;

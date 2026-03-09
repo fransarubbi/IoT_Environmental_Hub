@@ -1,11 +1,9 @@
 #include "Data/data.h"
 #include "DHT11/dht11.h"
-#include "KY037/ky037.h"
 #include "Setting/settings.h"
 #include "Wifi/wifi.h"
 #include "esp_log.h"
 #include "System/system.h"
-#include "Time/time.h"
 #include "Monitor/monitor.h"
 #include "MQTT/mqtt.h"
 #include "mpack.h"
@@ -16,8 +14,6 @@
 static void get_formated_data(stats_monitor_t *stats) {
     multi_heap_info_t info;
     heap_caps_get_info(&info, MALLOC_CAP_8BIT);
-    settings_get_node_mac(stats->metadata.mac, sizeof(stats->metadata.mac));
-    stats->metadata.time = get_time();
     stats->memory.mem_free = esp_get_free_heap_size()/4;
     stats->memory.mem_free_hm = esp_get_minimum_free_heap_size()/4;
     stats->memory.mem_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4;
@@ -53,17 +49,17 @@ void stack_monitor_task(void *pvParameter) {
                 uint32_t rate_min = settings_get_node_sample_rate();
                 if (rate_min == 0) rate_min = 1;
 
-                TickType_t dynamic_delay = pdMS_TO_TICKS(rate_min * 2 * 60000);
+                const TickType_t dynamic_delay = pdMS_TO_TICKS(rate_min * 2 * 60000);
 
                 get_formated_data(&stats);
-                if (generate_message_monitor(&packet, stats)) {
+                if (generate_message_monitor(&packet, &stats)) {
                     if (xQueueSend(queues.monitor_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                         free(packet.payload);
                     }
                 }
 
                 uint32_t stop_signal = 0;
-                BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, dynamic_delay);
+                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, dynamic_delay);
 
                 if (result == pdTRUE) {
                     if (stop_signal & NOTIFY_CMD_STOP) {

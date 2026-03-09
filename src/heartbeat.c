@@ -90,16 +90,12 @@ void heartbeat_task(void *pvParameter) {
                     switch (heartbeat.new_state) {
                         case NORMAL:
                         case SAFE_MODE:
-                        case INIT_BALANCE_MODE:
-                        case IN_HANDSHAKE:
                         case ALERT:
                         case DATA:
                         case MONITOR:
-                        case OUT_HANDSHAKE:
                             check_beat(&heartbeat, heart);
                             break;
-                        default:
-                            break;
+                        default: break;
                     }
                 }
                 uint32_t stop_signal = 0;

@@ -847,7 +847,7 @@ void send_settings_task(void *pvParameter) {
         xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
 
         if (notification & NOTIFY_CMD_START) {
-            ESP_LOGI("Settings", "Tarea de envio de mensajes.");
+            ESP_LOGI(TAG, "- INFO: Tarea de envio de mensajes activa -");
             bool running = true;
 
             while (running) {
@@ -857,11 +857,11 @@ void send_settings_task(void *pvParameter) {
 
                 if (generate_message_settings(&packet)) {
                     if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW("Settings", "Cola llena, descartando paquete");
+                        ESP_LOGW(TAG, "- WARNING: Cola llena, descartando paquete -");
                         free(packet.payload);
                     }
                 } else {
-                    ESP_LOGE("Settings", "Error RAM al generar paquete");
+                    ESP_LOGE(TAG, "- ERROR: Problema en RAM al generar paquete -");
                 }
 
                 uint32_t signal = 0;
@@ -869,12 +869,12 @@ void send_settings_task(void *pvParameter) {
 
                 if (result == pdTRUE) {
                     if (signal & NOTIFY_CMD_DESTROY) {
-                        ESP_LOGW("Settings", "Orden de destrucción recibida.");
+                        ESP_LOGW(TAG, "- WARNING: Orden de destrucción recibida -");
                         goto delete_task;
                     }
 
                     if (signal & NOTIFY_CMD_STOP) {
-                        ESP_LOGI("Settings", "Orden de PAUSA recibida. Deteniendo envíos.");
+                        ESP_LOGI(TAG, "- INFO: Orden de PAUSA recibida. Deteniendo envíos -");
                         running = false;
                     }
                 }

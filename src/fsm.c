@@ -41,8 +41,13 @@ const StateTable table[] = {
     {INIT_SYSTEM, eFromInitToSafe, SAFE_MODE, action_entry_safe},
     {STORE, eFromStoreToBypass, BYPASS, action_entry_bypass},
     {STORE, eFromStoreToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {STORE, eFromStoreToNormal, NORMAL, action_entry_normal},
+    {STORE, eFromStoreToSafe, SAFE_MODE, action_entry_safe},
+    {STORE, eFromStoreToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {STORE, eFromStoreToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {NORMAL, eFromNormalToCooling, COOLING_TIME, action_entry_cooling},
     {NORMAL, eFromNormalToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {NORMAL, eFromNormalToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {INIT_BALANCE_MODE, eFromInitBalanceToStore, STORE, action_entry_store},
     {INIT_BALANCE_MODE, eFromInitBalanceToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {INIT_BALANCE_MODE, eFromInitBalanceToAlert, ALERT, action_entry_alert},
@@ -53,6 +58,7 @@ const StateTable table[] = {
     {IN_HANDSHAKE, eFromInHandshakeToAlert, ALERT, action_entry_alert},
     {IN_HANDSHAKE, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
     {IN_HANDSHAKE, eFromInHandshakeToSafe, SAFE_MODE, action_entry_safe},
+    {IN_HANDSHAKE, eRepeatHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {ALERT, eFromAlertToStore, STORE, action_entry_store},
     {ALERT, eFromAlertToData, DATA, action_entry_data},
     {ALERT, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
@@ -66,11 +72,16 @@ const StateTable table[] = {
     {OUT_HANDSHAKE, eFromOutHandshakeToStore, STORE, action_entry_store},
     {OUT_HANDSHAKE, eNewerEpoch, INIT_BALANCE_MODE, action_entry_init_balance_mode},
     {OUT_HANDSHAKE, eFromOutHandshakeToSafe, SAFE_MODE, action_entry_safe},
+    {OUT_HANDSHAKE, eRepeatHandshake, OUT_HANDSHAKE, action_entry_out_handshake},
     {COOLING_TIME, eFromCoolingToUpdateScore, UPDATE_SCORE, action_entry_update_score},
     {COOLING_TIME, eToBypass, BYPASS, action_entry_bypass},
+    {COOLING_TIME, eFromCoolingToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {COOLING_TIME, eFromCoolingToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {UPDATE_SCORE, eFromUpdateScoreToCooling, COOLING_TIME, action_entry_cooling},
     {UPDATE_SCORE, eFromUpdateScoreToNormal, NORMAL, action_entry_normal},
     {UPDATE_SCORE, eToBypass, BYPASS, action_entry_bypass},
+    {UPDATE_SCORE, eFromUpdateScoreToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
+    {UPDATE_SCORE, eFromUpdateScoreToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {BYPASS, eFromBypassToNormal, NORMAL, action_entry_normal},
     {BYPASS, eFromBypassToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
     {SAFE_MODE, eFromSafeToNormal, NORMAL, action_entry_normal},
@@ -200,8 +211,7 @@ void action_entry_init_balance_mode(Fsm *fsm) {
     delete_timer(BYPASS_TIMER);
     xTaskNotify(task_handle.health_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_START, eSetBits);
-    init_timer(HEARTBEAT_BALANCE_MODE_TIMER);
-    //init_timer(INIT_BALANCE_TIMER);
+    init_timer(INIT_BALANCE_TIMER);
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
@@ -214,6 +224,7 @@ void action_entry_init_balance_mode(Fsm *fsm) {
 
 void action_entry_in_handshake(Fsm *fsm) {
     ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry IN_HANDSHAKE -");
+    delete_timer(HANDSHAKE_TIMER);
     delete_timer(INIT_BALANCE_TIMER);
     init_timer(HANDSHAKE_TIMER);
     mqtt_msg_general_t packet;
@@ -225,6 +236,7 @@ void action_entry_in_handshake(Fsm *fsm) {
 void action_entry_alert(Fsm *fsm) {
     ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry ALERT -");
     delete_timer(HANDSHAKE_TIMER);
+    init_timer(HEARTBEAT_BALANCE_MODE_TIMER);
 }
 
 
@@ -246,6 +258,8 @@ void action_entry_monitor(Fsm *fsm) {
 
 void action_entry_out_handshake(Fsm *fsm) {
     ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry OUT_HANDSHAKE -");
+    delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
+    delete_timer(HANDSHAKE_TIMER);
     init_timer(HANDSHAKE_TIMER);
     mqtt_msg_general_t packet;
     generate_message_balance_mode_handshake(&packet);
@@ -260,6 +274,7 @@ void action_entry_normal(Fsm *fsm) {
     delete_timer(BYPASS_TIMER);
     delete_timer(INIT_SYSTEM_TIMER);
     delete_timer(HANDSHAKE_TIMER);
+    delete_timer(HEARTBEAT_SAFE_MODE_TIMER);
     init_timer(HEARTBEAT_NORMAL_TIMER);
     xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
@@ -281,6 +296,7 @@ void action_entry_store(Fsm *fsm) {
     delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
     delete_timer(HEARTBEAT_SAFE_MODE_TIMER);
     delete_timer(HANDSHAKE_TIMER);
+    delete_timer(HEARTBEAT_NORMAL_TIMER);
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_START, eSetBits);
@@ -333,6 +349,8 @@ void action_entry_safe(Fsm *fsm) {
     ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry SAFE_MODE -");
     delete_timer(HANDSHAKE_TIMER);
     delete_timer(INIT_SYSTEM_TIMER);
+    delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
+    delete_timer(HEARTBEAT_NORMAL_TIMER);
     init_timer(HEARTBEAT_SAFE_MODE_TIMER);
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_START, eSetBits);

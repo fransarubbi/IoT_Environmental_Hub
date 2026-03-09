@@ -188,7 +188,7 @@ bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t 
 /**
  * @brief Genera mensaje con estadísticas de monitoreo del sistema (RAM, Stack, Uptime).
  */
-bool generate_message_monitor(mqtt_packet_t *packet, stats_monitor_t stats) {
+bool generate_message_monitor(mqtt_packet_t *packet, const stats_monitor_t *stats) {
     packet->payload = NULL;
     packet->len = 0;
     const size_t buffer_size = MPACK_MONITOR_SIZE;
@@ -202,30 +202,38 @@ bool generate_message_monitor(mqtt_packet_t *packet, stats_monitor_t stats) {
     uint64_t uptime = (uint64_t) esp_timer_get_time();
     uptime = uptime/1000000ULL;
 
+    char mac[MAC];
+    char network[ID_NETWORK];
+    char id_edge[ID_EDGE];
+    settings_get_node_mac(mac, sizeof(mac));
+    settings_get_network(network, sizeof(network));
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+
     mpack_writer_t writer;
     mpack_writer_init(&writer, packet->payload, buffer_size);
 
     mpack_start_array(&writer, 15);
 
     mpack_start_array(&writer, 3);
-    mpack_write_cstr(&writer, stats.metadata.mac);
+    mpack_write_cstr(&writer, mac);
     mpack_write_cstr(&writer, "server0");
-    mpack_write_u64(&writer, stats.metadata.time);
+    mpack_write_u64(&writer, get_time());
     mpack_finish_array(&writer);
 
-    mpack_write_cstr(&writer, stats.metadata.network);
-    mpack_write_u32(&writer, stats.memory.mem_free);
-    mpack_write_u32(&writer, stats.memory.mem_free_hm);
-    mpack_write_u32(&writer, stats.memory.mem_free_block);
-    mpack_write_u32(&writer, stats.memory.mem_free_internal);
-    mpack_write_u32(&writer, stats.stack.collector);
-    mpack_write_u32(&writer, stats.stack.publisher);
-    mpack_write_u32(&writer, stats.stack.ky037);
-    mpack_write_u32(&writer, stats.stack.dht11);
-    mpack_write_u32(&writer, stats.stack.mq135);
-    mpack_write_u32(&writer, stats.stack.monitor);
-    mpack_write_str(&writer, (const char*)stats.wifi_stats.ssid, strlen((const char*)stats.wifi_stats.ssid));
-    mpack_write_i8(&writer, stats.wifi_stats.rssi);
+    mpack_write_cstr(&writer, network);
+    mpack_write_u32(&writer, stats->memory.mem_free);
+    mpack_write_u32(&writer, stats->memory.mem_free_hm);
+    mpack_write_u32(&writer, stats->memory.mem_free_block);
+    mpack_write_u32(&writer, stats->memory.mem_free_internal);
+    mpack_write_u32(&writer, stats->stack.collector);
+    mpack_write_u32(&writer, stats->stack.publisher);
+    mpack_write_u32(&writer, stats->stack.ky037);
+    mpack_write_u32(&writer, stats->stack.dht11);
+    mpack_write_u32(&writer, stats->stack.mq135);
+    mpack_write_u32(&writer, stats->stack.monitor);
+    const size_t ssid_len = strnlen((const char*)stats->wifi_stats.ssid, WIFI_SSID);
+    mpack_write_str(&writer, (const char*)stats->wifi_stats.ssid, ssid_len);
+    mpack_write_i8(&writer, stats->wifi_stats.rssi);
     mpack_write_u64(&writer, uptime);
 
     mpack_finish_array(&writer);
@@ -372,8 +380,13 @@ bool generate_message_balance_mode_handshake(mqtt_msg_general_t *packet) {
     mpack_finish_array(&writer);
 
     const State state = atomic_load(&shared_state);
-    if (state == IN_HANDSHAKE) mpack_write_cstr(&writer, "in_handshake");
-    else if (state == OUT_HANDSHAKE) mpack_write_cstr(&writer, "out_handshake");
+
+    if (state == OUT_HANDSHAKE || state == MONITOR) {
+        mpack_write_cstr(&writer, "out_handshake");
+    }
+    else {
+        mpack_write_cstr(&writer, "in_handshake");
+    }
     mpack_write_u32(&writer, settings_get_balance_epoch());
 
     mpack_finish_array(&writer);
@@ -534,7 +547,7 @@ bool generate_message_empty_queue(mqtt_msg_general_t *packet, const State curren
         mpack_write_u64(&writer, time);
         mpack_finish_array(&writer);
 
-        mpack_write_cstr(&writer, "balance_mode");
+        mpack_write_cstr(&writer, "safe_mode");
         mpack_write_bool(&writer, true);
 
         mpack_finish_array(&writer);
@@ -646,7 +659,7 @@ bool parse_message_state_balance(const char* data, const size_t len) {
     mpack_reader_init_data(&reader, data, len);
 
     const uint32_t heartbeat_array_size = mpack_expect_array(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok || heartbeat_array_size != 5) {
+    if (mpack_reader_error(&reader) != mpack_ok || heartbeat_array_size != 4) {
         return false;
     }
 
@@ -840,8 +853,9 @@ bool parse_message_phase(const char* data, const size_t len) {
     }
 
     if (sender_ok && dest_ok && state_ok && frequency_ok && balance_ok && jitter_ok) {
-        const uint32_t epoch = atomic_load(&phase.balance);
-        const uint32_t diff = epoch - bal;
+        const uint32_t current_epoch = settings_get_balance_epoch();
+        const uint32_t diff = bal - current_epoch;
+
         if (diff == 0) {
             atomic_store(&phase.frequency, frequency);
             atomic_store(&phase.jitter, jitter);
@@ -861,15 +875,17 @@ bool parse_message_phase(const char* data, const size_t len) {
                 xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             }
         }
-        else if (diff < 0x80000000UL) {   // 0x80000000 es 2^31
+        else if (diff < 0x80000000UL) {   // 0x80000000 es 2^31 (Epoch Nuevo)
             atomic_store(&phase.balance, bal);
             atomic_store(&phase.frequency, frequency);
             atomic_store(&phase.jitter, jitter);
             const uint32_t flag = NEWER_EPOCH;
-            ESP_LOGI(TAG, "- OK: Decodificacion correcta. Mensaje con epoch mas nuevo -");
+            ESP_LOGI(TAG, "- OK: Decodificacion correcta. Mensaje de fase con epoch mas nuevo -");
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
-            settings_set_balance_epoch(epoch);
+            settings_set_balance_epoch(bal);
             setting_save_to_nvs();
+        } else {
+            ESP_LOGW(TAG, "- WARN: Mensaje de fase ignorado (Epoch muy viejo) -");
         }
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -931,7 +947,7 @@ bool parse_message_handshake(const char* data, const size_t len) {
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         }
         else if (diff < 0x80000000UL) {   // 0x80000000 es 2^31
-            atomic_store(&balance.balance, bal);
+            atomic_store(&balance.balance, epoch);
             const uint32_t flag = NEWER_EPOCH;
             ESP_LOGI(TAG, "- OK: Decodificacion correcta. Mensaje con epoch mas nuevo -");
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));

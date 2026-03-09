@@ -213,7 +213,7 @@ void init_timer(const timer_types_t type) {
             break;
         }
         case INIT_BALANCE_TIMER: {
-            timeout = atomic_load(&balance.duration)*1000000;
+            timeout = 120000000;
             periodic = false;
             const esp_timer_create_args_t timer_init_balance = {
                 .callback = &timer_generic_callback,
@@ -226,7 +226,7 @@ void init_timer(const timer_types_t type) {
             break;
         }
         case HANDSHAKE_TIMER: {
-            timeout = atomic_load(&balance.duration)*1000000;
+            timeout = 120000000;
             periodic = false;
             const esp_timer_create_args_t timer_handshake = {
                 .callback = &timer_generic_callback,

@@ -152,28 +152,30 @@ void data_collection_task(void *pvParameter) {
             bool running = true;
 
             while (running) {
-
-                xEventGroupWaitBits(event_group.collector_events,
+                const EventBits_t bits = xEventGroupWaitBits(event_group.collector_events,
                     ALL_DATA_READY,
                     pdTRUE,  // Limpiar bits despues de leer
                     pdTRUE,  // Esperar todos los bits
-                    pdMS_TO_TICKS(portMAX_DELAY));
-
-                get_formated_data(&dht11, &ky037, &mq135, &data);
-                if (generate_message_data(data, &packet)) {
-                    if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                        free(packet.payload);
-                    }
-                } else {
-                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
-                }
+                    pdMS_TO_TICKS(1000)); // Timeout corto
 
                 uint32_t stop_signal = 0;
                 if (xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0) == pdTRUE) {
                     if (stop_signal & NOTIFY_CMD_STOP) {
                         ESP_LOGW("Data", "WARNING: Señal STOP recibida. Suspendiendo...");
                         running = false;
+                        continue; // Sale del bucle interno y espera un nuevo START limpio
+                    }
+                }
+
+                if ((bits & ALL_DATA_READY) == ALL_DATA_READY) {
+                    get_formated_data(&dht11, &ky037, &mq135, &data);
+                    if (generate_message_data(data, &packet)) {
+                        if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                            ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                            free(packet.payload);
+                        }
+                    } else {
+                        ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
                     }
                 }
             }
@@ -381,6 +383,7 @@ void data_publish_task(void *pvParameter) {
                     const uint32_t flag = ALERT_EMPTY_QUEUE;
                     xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
                 }
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
         else if (state == DATA) {

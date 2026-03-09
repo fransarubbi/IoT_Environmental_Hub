@@ -94,8 +94,8 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case INIT_BALANCE_MODE:
-                    if (flag == TIMEOUT_HEARTBEAT || flag == TIMEOUT_BALANCE) {
-                        ESP_LOGI(TAG, "Estado: INIT_BALANCE_MODE, Flag: TIMEOUT_HEARTBEAT o TIMEOUT_BALANCE");
+                    if (flag == TIMEOUT_BALANCE) {
+                        ESP_LOGI(TAG, "Estado: INIT_BALANCE_MODE, Flag: TIMEOUT_BALANCE");
                         Event event = eFromInitBalanceToStore;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
@@ -127,8 +127,12 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case IN_HANDSHAKE:
-                    if (flag == TIMEOUT_HEARTBEAT || flag == TIMEOUT_BALANCE) {
-                        ESP_LOGI(TAG, "Estado: IN_HANDSHAKE, Flag: TIMEOUT_HEARTBEAT o TIMEOUT_BALANCE");
+                    if (flag == HANDSHAKE_REQUEST) {
+                        Event event = eRepeatHandshake;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == TIMEOUT_BALANCE) {
+                        ESP_LOGI(TAG, "Estado: IN_HANDSHAKE, Flag: TIMEOUT_BALANCE");
                         Event event = eFromInHandshakeToStore;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
@@ -150,6 +154,12 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case ALERT:
+                    if (flag == ALERT_EMPTY_QUEUE) {
+                        ESP_LOGI(TAG, "Estado: ALERT, Flag: ALERT_EMPTY_QUEUE");
+                        mqtt_msg_general_t packet;
+                        generate_message_empty_queue(&packet, ALERT);
+                        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+                    }
                     if (flag == TIMEOUT_HEARTBEAT) {
                         ESP_LOGI(TAG, "Estado: ALERT, Flag: TIMEOUT_HEARTBEAT");
                         Event event = eFromAlertToStore;
@@ -192,6 +202,11 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case MONITOR:
+                    if (flag == HANDSHAKE_REQUEST) {
+                        ESP_LOGI(TAG, "Estado: MONITOR, Flag: HANDSHAKE_REQUEST");
+                        Event event = eFromMonitorToOutHandshake;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
                     if (flag == TIMEOUT_HEARTBEAT) {
                         ESP_LOGI(TAG, "Estado: MONITOR, Flag: TIMEOUT_HEARTBEAT");
                         Event event = eFromMonitorToStore;
@@ -211,8 +226,12 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case OUT_HANDSHAKE:
-                    if (flag == TIMEOUT_HEARTBEAT || flag == TIMEOUT_BALANCE) {
-                        ESP_LOGI(TAG, "Estado: OUT_HANDSHAKE, Flag: TIMEOUT_HEARTBEAT o TIMEOUT_BALANCE");
+                    if (flag == HANDSHAKE_REQUEST) {
+                        Event event = eRepeatHandshake;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == TIMEOUT_BALANCE) {
+                        ESP_LOGI(TAG, "Estado: OUT_HANDSHAKE, Flag: TIMEOUT_BALANCE");
                         Event event = eFromOutHandshakeToStore;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
@@ -239,6 +258,11 @@ void flag_converter_task(void *pvParameters) {
                         Event event = eFromNormalToBalance;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
+                    if (flag == HANDSHAKE_REQUEST) {
+                        ESP_LOGI(TAG, "Estado: NORMAL, Flag: HANDSHAKE_REQUEST");
+                        Event event = eFromNormalToInHandshake;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
                     if (flag == TIMEOUT_HEARTBEAT || flag == HEALTH_SCORE_CRITICAL
                         || flag == HEALTH_SCORE_UNAVAILABLE) {
                         ESP_LOGI(TAG, "Estado: NORMAL, Flag: TIMEOUT_HEARTBEAT o HEALTH_SCORE_CRITICAL o HEALTH_SCORE_UNAVAILABLE");
@@ -248,6 +272,16 @@ void flag_converter_task(void *pvParameters) {
                     break;
 
                 case STORE:
+                    if (flag == STATE_NORMAL) {
+                        ESP_LOGI(TAG, "Estado: STORE, Flag: STATE_NORMAL");
+                        Event event = eFromStoreToNormal;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == STATE_SAFE_MODE) {
+                        ESP_LOGI(TAG, "Estado: STORE, Flag: STATE_SAFE_MODE");
+                        Event event = eFromStoreToSafe;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
                     if (flag == MESSAGE_ALERT) {
                         ESP_LOGI(TAG, "Estado: STORE, Flag: MESSAGE_ALERT");
                         Event event = eFromStoreToBypass;
@@ -256,6 +290,11 @@ void flag_converter_task(void *pvParameters) {
                     if (flag == STATE_BALANCE_MODE) {
                         ESP_LOGI(TAG, "Estado: STORE, Flag: STATE_BALANCE_MODE");
                         Event event = eFromStoreToBalance;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == HANDSHAKE_REQUEST) {
+                        ESP_LOGI(TAG, "Estado: STORE, Flag: HANDSHAKE_REQUEST");
+                        Event event = eFromStoreToInHandshake;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     break;
@@ -269,6 +308,16 @@ void flag_converter_task(void *pvParameters) {
                     if (flag == MESSAGE_ALERT) {
                         ESP_LOGI(TAG, "Estado: COOLING_TIME, Flag: MESSAGE_ALERT");
                         Event event = eToBypass;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == STATE_BALANCE_MODE) {
+                        ESP_LOGI(TAG, "Estado: COOLING_TIME, Flag: STATE_BALANCE_MODE ");
+                        Event event = eFromCoolingToInitBalance;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == HANDSHAKE_REQUEST) {
+                        ESP_LOGI(TAG, "Estado: COOLING_TIME, Flag: HANDSHAKE_REQUEST");
+                        Event event = eFromCoolingToInHandshake;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     break;
@@ -287,6 +336,16 @@ void flag_converter_task(void *pvParameters) {
                     if (flag == MESSAGE_ALERT) {
                         ESP_LOGI(TAG, "Estado: UPDATE_SCORE, Flag: MESSAGE_ALERT");
                         Event event = eToBypass;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == STATE_BALANCE_MODE) {
+                        ESP_LOGI(TAG, "Estado: UPDATE_SCORE, Flag: STATE_BALANCE_MODE");
+                        Event event = eFromUpdateScoreToInitBalance;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    if (flag == HANDSHAKE_REQUEST) {
+                        ESP_LOGI(TAG, "Estado: UPDATE_SCORE, Flag: HANDSHAKE_REQUEST");
+                        Event event = eFromUpdateScoreToInHandshake;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     break;
