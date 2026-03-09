@@ -14,14 +14,12 @@
 #define TIMER_H
 
 #define MAX_SIMULTANEOUS_TIMERS         3
-#define TIMEOUT_HEARTBEAT_NORMAL        50000000  // 50 seg
-#define TIMEOUT_HEARTBEAT_BALANCE_MODE  45000000  // 45 seg
-#define TIMEOUT_HEARTBEAT_SAFE_MODE     120000000 // 120 seg
-#define TIMEOUT_INIT_SYSTEM             15000000  // 15 seg
+#define TIMEOUT_HEARTBEAT_NORMAL        60000000  // 60 seg
+#define TIMEOUT_HEARTBEAT_BALANCE_MODE  30000000  // 30 seg
+#define TIMEOUT_HEARTBEAT_SAFE_MODE     70000000  // 70 seg
+#define TIMEOUT_INIT_SYSTEM             60000000  // 60 seg
 #define TIMEOUT_COOLING_TIMER           30000000  // 30 seg
 #define TIMEOUT_BYPASS_TIMER            40000000  // 40 seg
-#define TIMEOUT_INIT_BALANCE_TIMER      20000000  // 20 seg
-#define TIMEOUT_HANDSHAKE               40000000  // 40 seg
 
 #include <esp_timer.h>
 

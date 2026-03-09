@@ -492,7 +492,6 @@ void dht11_task(void *pvParameter) {
 
     uint32_t counter = 0;
     uint32_t notification = 0;
-    TickType_t dynamic_delay = pdMS_TO_TICKS(DHT11_LOW_DELAY); // Valor default seguro
 
     while (1) {
         xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
@@ -502,31 +501,46 @@ void dht11_task(void *pvParameter) {
             counter = 0;
 
             while (running) {
+                const uint64_t start_time = esp_timer_get_time();
+
                 uint32_t sample_rate_min = settings_get_node_sample_rate();
                 if (sample_rate_min == 0) sample_rate_min = 1;
 
                 const energy_mode_t mode = settings_get_node_energy_mode();
                 counter++;
 
+                uint32_t target_delay_ms = 0;
+
                 switch (mode) {
                     case LOW_CONSUMPTION: {
-                        dynamic_delay = pdMS_TO_TICKS(DHT11_LOW_DELAY);
+                        target_delay_ms = DHT11_LOW_DELAY;
                         counter = 0;
                         alert_analysis(&data, true);
                         break;
                     }
                     case BALANCED: {
-                        dynamic_delay = pdMS_TO_TICKS(DHT11_BALANCED_DELAY);
-                        const uint32_t slices = (sample_rate_min * 60) / (DHT11_BALANCED_DELAY / 1000);
+                        target_delay_ms = DHT11_BALANCED_DELAY;
+                        const uint32_t slices = (sample_rate_min * 60) / (target_delay_ms / 1000);
                         dht11_task_in_balanced_or_performance(&counter, slices, &data);
                         break;
                     }
                     case PERFORMANCE: {
-                        dynamic_delay = pdMS_TO_TICKS(DHT11_PERFORMANCE_DELAY);
-                        const uint32_t slices = (sample_rate_min * 60) / (DHT11_PERFORMANCE_DELAY / 1000);
+                        target_delay_ms = DHT11_PERFORMANCE_DELAY;
+                        const uint32_t slices = (sample_rate_min * 60) / (target_delay_ms / 1000);
                         dht11_task_in_balanced_or_performance(&counter, slices, &data);
                         break;
                     }
+                }
+
+                const uint64_t end_time = esp_timer_get_time();
+                const uint32_t elapsed_ms = (uint32_t)((end_time - start_time) / 1000);
+
+                TickType_t dynamic_delay = 0;
+                if (target_delay_ms > elapsed_ms) {
+                    dynamic_delay = pdMS_TO_TICKS(target_delay_ms - elapsed_ms);
+                } else {
+                    // Si el sensor fue tan lento que se pasó del tiempo, no dormimos nada
+                    dynamic_delay = 0;
                 }
 
                 uint32_t stop_signal = 0;

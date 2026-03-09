@@ -7,11 +7,6 @@
 
 typedef struct {
     struct {
-        char mac[MAC];
-        uint64_t time;
-        char network[ID_NETWORK];
-    } metadata;
-    struct {
         uint32_t mem_free;
         uint32_t mem_free_hm;
         uint32_t mem_free_block;
@@ -27,11 +22,6 @@ typedef struct {
     } stack;
     wifi_stats_t wifi_stats;
     uint8_t energy_mode;
-    struct {
-        uint32_t hours;
-        uint32_t minutes;
-        uint32_t seconds;
-    } uptime;
 } stats_monitor_t;
 
 

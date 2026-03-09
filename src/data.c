@@ -152,28 +152,30 @@ void data_collection_task(void *pvParameter) {
             bool running = true;
 
             while (running) {
-
-                xEventGroupWaitBits(event_group.collector_events,
+                const EventBits_t bits = xEventGroupWaitBits(event_group.collector_events,
                     ALL_DATA_READY,
                     pdTRUE,  // Limpiar bits despues de leer
                     pdTRUE,  // Esperar todos los bits
-                    pdMS_TO_TICKS(portMAX_DELAY)
-                    );
-                get_formated_data(&dht11, &ky037, &mq135, &data);
-                if (generate_message_data(data, &packet)) {
-                    if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
-                        free(packet.payload);
-                    }
-                } else {
-                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
-                }
+                    pdMS_TO_TICKS(1000)); // Timeout corto
 
                 uint32_t stop_signal = 0;
                 if (xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0) == pdTRUE) {
                     if (stop_signal & NOTIFY_CMD_STOP) {
                         ESP_LOGW("Data", "WARNING: Señal STOP recibida. Suspendiendo...");
                         running = false;
+                        continue; // Sale del bucle interno y espera un nuevo START limpio
+                    }
+                }
+
+                if ((bits & ALL_DATA_READY) == ALL_DATA_READY) {
+                    get_formated_data(&dht11, &ky037, &mq135, &data);
+                    if (generate_message_data(data, &packet)) {
+                        if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                            ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                            free(packet.payload);
+                        }
+                    } else {
+                        ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
                     }
                 }
             }
@@ -198,7 +200,7 @@ static void get_data_from_queue_data_buffer(mqtt_packet_t *packet_data, const to
  * @brief Procesa la cola de monitor (métricas del sistema).
  */
 static void get_data_from_queue_monitor_buffer(mqtt_packet_t *packet_monitor, const topic *topics) {
-    if (xQueueReceive(queues.monitor_buffer, &packet_monitor, 0)) {
+    if (xQueueReceive(queues.monitor_buffer, packet_monitor, 0)) {
         const esp_err_t ret = mqtt_publish(topics->topic_monitor, packet_monitor->payload, (int)packet_monitor->len, QOS_MONITOR, NOT_RETAIN);
         free(packet_monitor->payload);
         update_health_score(ret, QOS_MONITOR);
@@ -210,7 +212,7 @@ static void get_data_from_queue_monitor_buffer(mqtt_packet_t *packet_monitor, co
  * @brief Procesa la cola de settings.
  */
 static void get_data_from_queue_settings_buffer(mqtt_packet_t *packet_settings, const topic *topics) {
-    if (xQueueReceive(queues.settings_buffer, &packet_settings, 0)) {
+    if (xQueueReceive(queues.settings_buffer, packet_settings, 0)) {
         const esp_err_t ret = mqtt_publish(topics->topic_settings, packet_settings->payload, (int)packet_settings->len, QOS_SETTING, NOT_RETAIN);
         free(packet_settings->payload);
         update_health_score(ret, QOS_SETTING);
@@ -222,7 +224,7 @@ static void get_data_from_queue_settings_buffer(mqtt_packet_t *packet_settings, 
  * @brief Procesa la cola de alertas de aire (Gas/CO2).
  */
 static void get_data_from_queue_alert_air_buffer(mqtt_packet_t *packet_alert, const topic *topics) {
-    if (xQueueReceive(queues.alert_air_buffer, &packet_alert, 0)) {
+    if (xQueueReceive(queues.alert_air_buffer, packet_alert, 0)) {
         const State state = atomic_load(&shared_state);
         if (state != BYPASS) {
             const esp_err_t ret = mqtt_publish(topics->topic_alert_air, packet_alert->payload, (int)packet_alert->len, QOS_ALERT, NOT_RETAIN);
@@ -237,7 +239,7 @@ static void get_data_from_queue_alert_air_buffer(mqtt_packet_t *packet_alert, co
  * @brief Procesa la cola de alertas de temperatura.
  */
 static void get_data_from_queue_alert_temp_buffer(mqtt_packet_t *packet_alert, const topic *topics) {
-    if (xQueueReceive(queues.alert_temp_buffer, &packet_alert, 0)) {
+    if (xQueueReceive(queues.alert_temp_buffer, packet_alert, 0)) {
         const State state = atomic_load(&shared_state);
         if (state != BYPASS) {
             const esp_err_t ret = mqtt_publish(topics->topic_alert_temp, packet_alert->payload, (int)packet_alert->len, QOS_ALERT, NOT_RETAIN);
@@ -252,7 +254,7 @@ static void get_data_from_queue_alert_temp_buffer(mqtt_packet_t *packet_alert, c
  * @brief Procesa la cola de alertas de temperatura.
  */
 static void get_data_from_queue_general_buffer(mqtt_msg_general_t *packet_general, const topic *topics) {
-    if (xQueueReceive(queues.general, &packet_general, 0)) {
+    if (xQueueReceive(queues.general, packet_general, 0)) {
         switch (packet_general->topic) {
             case FIRMWARE_OK: {
                 const esp_err_t ret = mqtt_publish(topics->topic_firmware, packet_general->payload, (int)packet_general->len, QOS_FIRMWARE, NOT_RETAIN);
@@ -361,13 +363,14 @@ void data_publish_task(void *pvParameter) {
                     const uint32_t flag = SAFE_MODE_EMPTY_QUEUE;
                     xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
                 }
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
         else if (state == ALERT) {
             const UBaseType_t msg_pending = uxQueueMessagesWaiting(queues.alert_air_buffer) +
                                             uxQueueMessagesWaiting(queues.alert_temp_buffer);
             if (msg_pending > 0) {
-                const uint32_t frequency = atomic_load(&safe_mode.frequency);
+                const uint32_t frequency = atomic_load(&phase.frequency);
                 const uint32_t phase_jitter = atomic_load(&phase.jitter);
                 const uint32_t jitter = random_jitter(phase_jitter);
                 get_data_from_queue_alert_air_buffer(&packet_alert, &topics);
@@ -380,6 +383,7 @@ void data_publish_task(void *pvParameter) {
                     const uint32_t flag = ALERT_EMPTY_QUEUE;
                     xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
                 }
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
         else if (state == DATA) {
@@ -394,13 +398,16 @@ void data_publish_task(void *pvParameter) {
                 }
             }
             if (msg_pending_data > 0 || msg_pending_alert > 0) {
-                const uint32_t frequency = atomic_load(&safe_mode.frequency);
+                const uint32_t frequency = atomic_load(&phase.frequency);
                 const uint32_t phase_jitter = atomic_load(&phase.jitter);
                 const uint32_t jitter = random_jitter(phase_jitter);
                 get_data_from_queue_alert_air_buffer(&packet_alert, &topics);
                 get_data_from_queue_alert_temp_buffer(&packet_alert, &topics);
                 get_data_from_queue_data_buffer(&packet_data, &topics);
                 vTaskDelay(pdMS_TO_TICKS((frequency + jitter) * 1000));
+            }
+            else {
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
         }
         else if (state == MONITOR) {
@@ -416,7 +423,7 @@ void data_publish_task(void *pvParameter) {
                 }
             }
             if (msg_pending_monitor > 0 || msg_pending > 0) {
-                const uint32_t frequency = atomic_load(&safe_mode.frequency);
+                const uint32_t frequency = atomic_load(&phase.frequency);
                 const uint32_t phase_jitter = atomic_load(&phase.jitter);
                 const uint32_t jitter = random_jitter(phase_jitter);
                 get_data_from_queue_alert_air_buffer(&packet_alert, &topics);
@@ -425,6 +432,12 @@ void data_publish_task(void *pvParameter) {
                 get_data_from_queue_monitor_buffer(&packet_monitor, &topics);
                 vTaskDelay(pdMS_TO_TICKS((frequency + jitter) * 1000));
             }
+            else {
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
+        }
+        else {
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
 }

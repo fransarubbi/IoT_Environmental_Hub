@@ -12,6 +12,7 @@
 #include "MQ135/mq135.h"
 
 #include <esp_random.h>
+#include <esp_timer.h>
 
 #include "MQTT/mqtt.h"
 #include "DHT11/dht11.h"
@@ -318,7 +319,9 @@ void mq135_print_diagnostics(float temperature_c, float humidity_percent) {
 static void alert_analysis(data_t *data, const bool get_data) {
 
     if (get_data) {
-        data->mq135.co2ppm = mq135_read_ppm((float)10, (float)20);
+        const float read_val = mq135_read_ppm((float)10, (float)20);
+        if (read_val < 0.0f) return; // Evita envenenar el EMA en modo Low Consumption
+        data->mq135.co2ppm = read_val;
     }
     const float ppm_actual = data->mq135.co2ppm;
     const float error_actual = ppm_actual - data->ema_ppm;
@@ -371,14 +374,31 @@ static void alert_analysis(data_t *data, const bool get_data) {
 
 
 void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, data_t *data) {
-    data->mq135.co2ppm = mq135_read_ppm((float)10, (float)20);
+    const float read_val = mq135_read_ppm((float)10, (float)20);
+    bool flag_error = false;
+
+    if (read_val < 0.0f) {
+        flag_error = true;
+    } else {
+        data->mq135.co2ppm = read_val;
+    }
 
     if (*counter >= slices) {
         *counter = 0;
-        xQueueSend(queues.mq135_buffer, &data->mq135, pdMS_TO_TICKS(100));
-        xEventGroupSetBits(event_group.collector_events, DHT11_DATA_READY);
+        if (flag_error) {
+            // Mandamos un dato vacío para no bloquear el ALL_DATA_READY
+            const mq135_data_t err_data = {0};
+            xQueueSend(queues.mq135_buffer, &err_data, portMAX_DELAY);
+        } else {
+            xQueueSend(queues.mq135_buffer, &data->mq135, pdMS_TO_TICKS(100));
+        }
+        // Bandera corregida:
+        xEventGroupSetBits(event_group.collector_events, MQ135_DATA_READY);
     }
 
+    if (flag_error) {
+        return; // Evita envenenar el EMA con -1.0f
+    }
     alert_analysis(data, false);
 }
 
@@ -397,7 +417,6 @@ void mq135_task(void *pvParameters) {
 
     uint32_t counter = 0;
     uint32_t notification = 0;
-    TickType_t dynamic_delay = pdMS_TO_TICKS(DHT11_LOW_DELAY);
 
     while (1) {
         xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
@@ -407,31 +426,46 @@ void mq135_task(void *pvParameters) {
             counter = 0;
 
             while (running) {
+                const uint64_t start_time = esp_timer_get_time();
+
                 uint32_t sample_rate_min = settings_get_node_sample_rate();
                 if (sample_rate_min == 0) sample_rate_min = 1;
 
                 const energy_mode_t mode = settings_get_node_energy_mode();
                 counter++;
 
+                uint32_t target_delay_ms = 0;
+
                 switch (mode) {
                     case LOW_CONSUMPTION: {
-                        dynamic_delay = pdMS_TO_TICKS(MQ135_LOW_DELAY);
+                        target_delay_ms = MQ135_LOW_DELAY; // <-- O DHT11_LOW_DELAY en dht11.c
                         counter = 0;
                         alert_analysis(&data, true);
                         break;
                     }
                     case BALANCED: {
-                        dynamic_delay = pdMS_TO_TICKS(MQ135_BALANCED_DELAY);
-                        const uint32_t slices = (sample_rate_min * 60) / (MQ135_BALANCED_DELAY / 1000);
-                        mq135_task_in_balanced_or_performance(&counter, slices, &data);
+                        target_delay_ms = MQ135_BALANCED_DELAY; // <-- O DHT11_BALANCED_DELAY
+                        const uint32_t slices = (sample_rate_min * 60) / (target_delay_ms / 1000);
+                        mq135_task_in_balanced_or_performance(&counter, slices, &data); // o dht11_...
                         break;
                     }
                     case PERFORMANCE: {
-                        dynamic_delay = pdMS_TO_TICKS(MQ135_PERFORMANCE_DELAY);
-                        const uint32_t slices = (sample_rate_min * 60) / (MQ135_PERFORMANCE_DELAY / 1000);
-                        mq135_task_in_balanced_or_performance(&counter, slices, &data);
+                        target_delay_ms = MQ135_PERFORMANCE_DELAY; // <-- O DHT11_PERFORMANCE_DELAY
+                        const uint32_t slices = (sample_rate_min * 60) / (target_delay_ms / 1000);
+                        mq135_task_in_balanced_or_performance(&counter, slices, &data); // o dht11_...
                         break;
                     }
+                }
+
+                const uint64_t end_time = esp_timer_get_time();
+                const uint32_t elapsed_ms = (uint32_t)((end_time - start_time) / 1000);
+
+                TickType_t dynamic_delay = 0;
+                if (target_delay_ms > elapsed_ms) {
+                    dynamic_delay = pdMS_TO_TICKS(target_delay_ms - elapsed_ms);
+                } else {
+                    // Si el sensor fue tan lento que se pasó del tiempo, no dormimos nada
+                    dynamic_delay = 0;
                 }
 
                 uint32_t stop_signal = 0;

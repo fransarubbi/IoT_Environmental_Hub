@@ -75,45 +75,45 @@ void timer_generic_callback(void *arg) {
     switch (timer) {
         case HEARTBEAT_NORMAL_TIMER: {
             const uint32_t flag = TIMEOUT_HEARTBEAT;
-            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(100));
             break;
         }
         case HEARTBEAT_BALANCE_MODE_TIMER: {
             const uint32_t flag = TIMEOUT_HEARTBEAT;
-            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(100));
             break;
         }
         case HEARTBEAT_SAFE_MODE_TIMER: {
             const uint32_t flag = TIMEOUT_HEARTBEAT;
-            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(100));
             break;
         }
         case INIT_SYSTEM_TIMER: {
             const uint32_t flag = TIMEOUT_INIT;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             break;
         }
         case COOLING_TIMER: {
             const uint32_t flag = TIMEOUT_COOLING;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             break;
         }
         case BYPASS_TIMER: {
             const uint32_t flag = TIMEOUT_BYPASS;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             break;
         }
         case INIT_BALANCE_TIMER: {
             const uint32_t flag = TIMEOUT_BALANCE;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             break;
         }
         case HANDSHAKE_TIMER: {
             const uint32_t flag = TIMEOUT_BALANCE;
-            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(0));
+            xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             break;
         }
-        default: {}
+        default: break;
     }
 }
 
@@ -213,7 +213,7 @@ void init_timer(const timer_types_t type) {
             break;
         }
         case INIT_BALANCE_TIMER: {
-            timeout = TIMEOUT_INIT_BALANCE_TIMER;
+            timeout = 120000000;
             periodic = false;
             const esp_timer_create_args_t timer_init_balance = {
                 .callback = &timer_generic_callback,
@@ -226,7 +226,7 @@ void init_timer(const timer_types_t type) {
             break;
         }
         case HANDSHAKE_TIMER: {
-            timeout = TIMEOUT_HANDSHAKE;
+            timeout = 120000000;
             periodic = false;
             const esp_timer_create_args_t timer_handshake = {
                 .callback = &timer_generic_callback,
@@ -238,7 +238,7 @@ void init_timer(const timer_types_t type) {
             ESP_ERROR_CHECK(esp_timer_create(&timer_handshake, &timer_handle));
             break;
         }
-        default: {}
+        default: break;
     }
 
     if (periodic) {

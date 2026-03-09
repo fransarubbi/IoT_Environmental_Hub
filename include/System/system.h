@@ -30,14 +30,14 @@
 #define STACK_MIC       3072
 #define STACK_MQ135     3072
 #define STACK_COLLECTOR 4096
-#define STACK_PUBLISHER 6144 // Necesita espacio para JSONs grandes
+#define STACK_PUBLISHER 6144
 #define STACK_MONITOR   3072
 #define STACK_SEND_SETT 4096
 
 // --- CAPACIDAD MAXIMA DE COLAS ---
 #define QUEUE_HEART     5
 #define QUEUE_HEALTH    5
-#define QUEUE_PARSER    5
+#define QUEUE_PARSER    15
 #define QUEUE_GENERAL   10
 #define QUEUE_FLAG      5
 #define QUEUE_EVENT     5

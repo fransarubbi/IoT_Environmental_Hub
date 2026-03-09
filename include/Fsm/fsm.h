@@ -87,6 +87,7 @@ typedef enum {
     eFromInitToNormal,
     eFromNormalToCooling,
     eFromNormalToBalance,
+    eFromNormalToInHandshake,
     eFromInitBalanceToStore,
     eFromInitBalanceToInHandshake,
     eFromInitBalanceToAlert,
@@ -106,16 +107,25 @@ typedef enum {
     eFromOutHandshakeToNormal,
     eFromOutHandshakeToSafe,
     eFromCoolingToUpdateScore,
+    eFromCoolingToInitBalance,
+    eFromCoolingToInHandshake,
     eFromUpdateScoreToCooling,
     eFromUpdateScoreToNormal,
+    eFromUpdateScoreToInitBalance,
+    eFromUpdateScoreToInHandshake,
     eToBypass,
     eFromStoreToBalance,
     eFromStoreToBypass,
+    eFromStoreToNormal,
+    eFromStoreToSafe,
+    eFromStoreToInitBalance,
+    eFromStoreToInHandshake,
     eFromBypassToNormal,
     eFromBypassToBalance,
     eFromSafeToStore,
     eFromSafeToNormal,
     eNewerEpoch,
+    eRepeatHandshake,
 } Event;
 
 
@@ -153,7 +163,6 @@ typedef struct {
  * Permiten lectura/escritura segura entre tareas.
  */
 typedef struct {
-    atomic_uint_fast32_t duration;
     atomic_uint_fast32_t frequency;
     atomic_uint_fast32_t jitter;
 } safe_mode_parameters_t;

@@ -80,6 +80,9 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
  * @param pvParameters Parámetros de creación de la tarea (no usado).
  */
 void ky037_task(void *pvParameters) {
+    task_handle.ky037_handle = xTaskGetCurrentTaskHandle();
+    ky037_init();
+
     ky037_t ky037_msg;
     uint32_t notification = 0;
 
@@ -138,7 +141,7 @@ void ky037_task(void *pvParameters) {
  * @return esp_err_t ESP_OK si todo es correcto, o código de error.
  */
 esp_err_t ky037_init(void) {
-    gpio_config_t io_conf = {
+    const gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << KY037_PIN),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,

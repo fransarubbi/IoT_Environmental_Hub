@@ -89,14 +89,14 @@ bool init_base_drivers(void) {
  * @brief Espera que todos los sensores del sistema esten listos para su uso.
  */
 void wait_for_sensors(void) {
-    esp_err_t retMQ135 = ESP_FAIL, retDHT11 = ESP_FAIL, retKY037 = ESP_FAIL;
+    esp_err_t retMQ135 = ESP_FAIL, retDHT11 = ESP_FAIL;
 
     while (1) {
         if (retMQ135 != ESP_OK) retMQ135 = mq135_init();
         if (retDHT11 != ESP_OK) retDHT11 = dht11_init();
-        if (retKY037 != ESP_OK) retKY037 = ky037_init();
+        //if (retKY037 != ESP_OK) retKY037 = ky037_init();
 
-        if (retMQ135 == ESP_OK && retDHT11 == ESP_OK && retKY037 == ESP_OK) break;
+        if (retMQ135 == ESP_OK && retDHT11 == ESP_OK) break;
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
     // vTaskDelay(pdMS_TO_TICKS(TIME_SETUP));   para mq135
@@ -107,17 +107,17 @@ void wait_for_sensors(void) {
  * @brief Creacion de todas las tareas del sistema.
  */
 void start_application_tasks(void) {
-    task_handle.fsm_handle = xTaskCreateStaticPinnedToCore(fsm_task, "FSM", STACK_FSM, NULL, PRIO_FSM, mem.fsm.stack, &mem.fsm.tcb, CORE_APP);
     task_handle.https_handle = xTaskCreateStaticPinnedToCore(https_bypass_task, "Https Bypass", STACK_HTTPS, NULL, PRIO_HTTPS, mem.https.stack, &mem.https.tcb, CORE_PRO);
     task_handle.health_handle = xTaskCreateStaticPinnedToCore(health_score_task, "Health", STACK_HEALTH, NULL, PRIO_HEALTH, mem.health.stack, &mem.health.tcb, CORE_APP);
     task_handle.parser_handle = xTaskCreateStaticPinnedToCore(parser_task, "Parser", STACK_PARSER, NULL, PRIO_PARSER, mem.parser.stack, &mem.parser.tcb, CORE_PRO);
     task_handle.converter_handle = xTaskCreateStaticPinnedToCore(flag_converter_task, "Converter", STACK_CONVERTER, NULL, PRIO_CONVERTER, mem.converter.stack, &mem.converter.tcb, CORE_APP);
     task_handle.heartbeat_handle = xTaskCreateStaticPinnedToCore(heartbeat_task, "Heartbeat", STACK_HEARTBEAT, NULL, PRIO_HEARTBEAT, mem.heartbeat.stack, &mem.heartbeat.tcb, CORE_APP);
     task_handle.dht11_handle = xTaskCreateStaticPinnedToCore(dht11_task, "DHT11", STACK_DHT11, NULL, PRIO_DHT11, mem.dht11.stack, &mem.dht11.tcb, CORE_APP);
-    task_handle.ky037_handle = xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSOR, mem.ky037.stack, &mem.ky037.tcb, CORE_APP);
+    xTaskCreateStaticPinnedToCore(ky037_task, "KY037", STACK_MIC,   NULL, PRIO_SENSOR, mem.ky037.stack, &mem.ky037.tcb, CORE_APP);
     task_handle.mq135_handle = xTaskCreateStaticPinnedToCore(mq135_task, "MQ135", STACK_MQ135, NULL, PRIO_SENSOR, mem.mq135.stack, &mem.mq135.tcb, CORE_APP);
     task_handle.data_ct_handle = xTaskCreateStaticPinnedToCore(data_collection_task, "Collector", STACK_COLLECTOR, NULL, PRIO_COLLECTOR, mem.collector.stack, &mem.collector.tcb, CORE_APP);
     task_handle.data_pt_handle = xTaskCreateStaticPinnedToCore(data_publish_task, "Publisher", STACK_PUBLISHER, NULL, PRIO_PUBLISHER, mem.publisher.stack, &mem.publisher.tcb, CORE_PRO);
     task_handle.monitor_handle = xTaskCreateStaticPinnedToCore(stack_monitor_task, "Monitor", STACK_MONITOR, NULL, PRIO_MONITOR, mem.monitor.stack, &mem.monitor.tcb, CORE_PRO);
     task_handle.send_settings_handle = xTaskCreateStaticPinnedToCore(send_settings_task, "Send_sett", STACK_SEND_SETT, NULL, PRIO_SETTINGS, mem.send_settings.stack, &mem.send_settings.tcb, CORE_PRO);
+    task_handle.fsm_handle = xTaskCreateStaticPinnedToCore(fsm_task, "FSM", STACK_FSM, NULL, PRIO_FSM, mem.fsm.stack, &mem.fsm.tcb, CORE_APP);
 }

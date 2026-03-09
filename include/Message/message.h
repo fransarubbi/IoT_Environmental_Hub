@@ -25,7 +25,7 @@
 #define MPACK_DATA_SIZE          256
 #define MPACK_MQ135_ALERT_SIZE   192
 #define MPACK_DHT11_ALERT_SIZE   192
-#define MPACK_MONITOR_SIZE       192
+#define MPACK_MONITOR_SIZE       1024
 #define MPACK_SETTINGS_SIZE      256
 #define MPACK_FIRMWARE_OK_SIZE   128
 #define MPACK_HANDSHAKE_SIZE     128
@@ -36,7 +36,7 @@
 bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet);
 bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert);
 bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t temp_a);
-bool generate_message_monitor(mqtt_packet_t *packet, stats_monitor_t stats);
+bool generate_message_monitor(mqtt_packet_t *packet, const stats_monitor_t *stats);
 bool generate_message_setting_ok(mqtt_packet_t *packet);
 bool generate_message_firmware_ok(mqtt_msg_general_t *packet, bool is_ok);
 bool generate_message_balance_mode_handshake(mqtt_msg_general_t *packet);

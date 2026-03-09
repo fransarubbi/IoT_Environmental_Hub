@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "Heartbeat/heartbeat.h"
+#include <esp_log.h>
 #include "Fsm/fsm.h"
 #include "System/system.h"
 
@@ -35,19 +36,24 @@ static void check_beat(state_heartbeat *heartbeat, const uint32_t heart) {
         heartbeat->old_state = heartbeat->new_state;
         heartbeat->count_beat = 2;
     }
+
     if (heart == TIMEOUT_HEARTBEAT) {
         if (heartbeat->count_beat > 0) {
             heartbeat->count_beat -= 1;
         }
+        ESP_LOGW("HEARTBEAT", "Timeout detectado. Vidas restantes: %d", heartbeat->count_beat);
     }
-    if (heart == HEARTBEAT_INCOMING) {
-        if (heartbeat->count_beat < MAX_LIVES) {
-            heartbeat->count_beat += 1;
-        }
+    else if (heart == HEARTBEAT_INCOMING) {
+        heartbeat->count_beat = 2;
+        ESP_LOGI("HEARTBEAT", "- INFO: Latido recibido. Vidas restauradas -");
     }
+
     if (heartbeat->count_beat == 0) {
+        ESP_LOGE("HEARTBEAT", "- FATAL: Enlace perdido (0 vidas). Notificando a FSM -");
         const uint32_t flag = TIMEOUT_HEARTBEAT;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+
+        heartbeat->count_beat = 2;
     }
 }
 
@@ -69,6 +75,7 @@ void heartbeat_task(void *pvParameter) {
     uint32_t notification = 0;
 
     heartbeat.old_state = CHECK_FIRMWARE;
+    heartbeat.count_beat = 2; // Inicializar en 2 por seguridad
 
     while (1) {
         xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
@@ -81,18 +88,16 @@ void heartbeat_task(void *pvParameter) {
                 if (xQueueReceive(queues.heartbeat, &heart, pdMS_TO_TICKS(100)) == pdTRUE) {
                     heartbeat.new_state = atomic_load(&shared_state);
                     switch (heartbeat.new_state) {
-                        case NORMAL: check_beat(&heartbeat, heart); break;
-                        case SAFE_MODE: check_beat(&heartbeat, heart); break;
-                        case INIT_BALANCE_MODE: check_beat(&heartbeat, heart); break;
-                        case IN_HANDSHAKE: check_beat(&heartbeat, heart); break;
-                        case ALERT: check_beat(&heartbeat, heart); break;
-                        case DATA: check_beat(&heartbeat, heart); break;
-                        case MONITOR: check_beat(&heartbeat, heart); break;
-                        case OUT_HANDSHAKE: check_beat(&heartbeat, heart); break;
+                        case NORMAL:
+                        case SAFE_MODE:
+                        case ALERT:
+                        case DATA:
+                        case MONITOR:
+                            check_beat(&heartbeat, heart);
+                            break;
                         default: break;
                     }
                 }
-
                 uint32_t stop_signal = 0;
                 const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0);
 
