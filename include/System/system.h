@@ -5,6 +5,7 @@
 #define PRIO_FSM        10
 #define PRIO_CONVERTER  10
 #define PRIO_HEARTBEAT  10
+#define PRIO_LINKAGE    9
 #define PRIO_DHT11      9
 #define PRIO_COLLECTOR  8
 #define PRIO_PARSER     6
@@ -20,7 +21,7 @@
 #define CORE_APP        1  // Application CPU (Logic, Sensors)
 
 // --- STACKS ---
-#define STACK_FSM       4096
+#define STACK_FSM       5096
 #define STACK_HTTPS     6144
 #define STACK_HEALTH    3072
 #define STACK_PARSER    4096
@@ -33,6 +34,7 @@
 #define STACK_PUBLISHER 6144
 #define STACK_MONITOR   3072
 #define STACK_SEND_SETT 4096
+#define STACK_LINKAGE   4096
 
 // --- CAPACIDAD MAXIMA DE COLAS ---
 #define QUEUE_HEART     5
@@ -93,6 +95,7 @@ typedef struct {
     TaskHandle_t data_ct_handle;
     TaskHandle_t monitor_handle;
     TaskHandle_t send_settings_handle;
+    TaskHandle_t linkage_handle;
 } app_task_handle_t;
 
 
@@ -150,6 +153,10 @@ typedef struct {
         StackType_t stack[STACK_SEND_SETT];
         StaticTask_t tcb;
     } send_settings;
+    struct {
+        StackType_t stack[STACK_LINKAGE];
+        StaticTask_t tcb;
+    } linkage;
 } app_static_mem_t;
 
 

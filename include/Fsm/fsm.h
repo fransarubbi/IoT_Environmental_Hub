@@ -42,6 +42,7 @@
 #define DATA_EMPTY_QUEUE          0x800000      /**< Cola de data vacia. */
 #define MONITOR_EMPTY_QUEUE       0x1000000     /**< Cola de monitor vacia. */
 #define SAFE_MODE_EMPTY_QUEUE     0x2000000     /**< Colas vacias en safe mode. */
+#define LINKAGE_OK                0x4000000     /**< Linkage OK. */
 
 /* --- Comandos de Notificación a Tareas --- */
 #define NOTIFY_CMD_START    0x01   /**< Comando para iniciar/reanudar una tarea. */
@@ -54,6 +55,7 @@
  */
 typedef enum {
     CHECK_FIRMWARE,
+    LINKAGE,
     INIT_SYSTEM,
     UPDATE,
     NOTIFY_OK,
@@ -81,6 +83,7 @@ typedef enum {
     eNotUpdate,
     eUpdateOk,
     eUpdateError,
+    eLinkageOk,
     eFromInitToStore,
     eFromInitToBalance,
     eFromInitToSafe,
@@ -175,6 +178,7 @@ typedef void (*Action)(Fsm *fsm);
 
 /* Acciones de entrada a estados (On Entry) */
 void action_entry_check_firmware(Fsm *fsm);
+void action_entry_linkage(Fsm *fsm);
 void action_entry_update(Fsm *fsm);
 void action_entry_init_system(Fsm *fsm);
 void action_entry_notify_ok(Fsm *fsm);

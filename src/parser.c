@@ -31,6 +31,7 @@ typedef struct {
     char topic_setting_ok[MAX_TOPIC];
     char topic_delete_hub[MAX_TOPIC];
     char topic_active_hub[MAX_TOPIC];
+    char topic_linkage_ack[MAX_TOPIC];
 } topics;
 
 
@@ -50,6 +51,7 @@ static void get_all_topics(topics *topics) {
     settings_get_mqtt_topic_settings_ok(topics->topic_setting_ok, sizeof(topics->topic_setting_ok));
     settings_get_mqtt_topic_delete_hub(topics->topic_delete_hub, sizeof(topics->topic_delete_hub));
     settings_get_mqtt_topic_active_hub(topics->topic_active_hub, sizeof(topics->topic_active_hub));
+    settings_get_mqtt_topic_linkage_ack(topics->topic_linkage_ack, sizeof(topics->topic_linkage_ack));
 }
 
 
@@ -112,6 +114,9 @@ void parser_task(void *pvParameter) {
                     }
                     else if (strcmp(to_parse.topic, topics.topic_active_hub) == 0) {
                         parse_message_active(to_parse.payload, to_parse.len);
+                    }
+                    else if (strcmp(to_parse.topic, topics.topic_linkage_ack) == 0) {
+                        parse_message_linkage_ack(to_parse.payload, to_parse.len);
                     }
                     if (to_parse.payload != NULL) {
                         free(to_parse.payload);

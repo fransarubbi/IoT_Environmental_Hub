@@ -32,6 +32,7 @@ typedef struct {
 esp_err_t mqtt_init(void);
 int mqtt_publish(const char *topic, const char *payload, int len, int qos, int retain);
 void mqtt_enable_subscribe_topics(void);
+void mqtt_enable_subscribe_topic_linkage(void);
 
 
 #endif // MQTT_CLIENT_H

@@ -39,6 +39,7 @@ typedef struct {
     char topic_handshake[MAX_TOPIC];
     char topic_ping[MAX_TOPIC];
     char topic_queue[MAX_TOPIC];
+    char topic_linkage_request[MAX_TOPIC];
 } topic;
 
 
@@ -56,6 +57,7 @@ static void init_topics(topic *topics) {
     settings_get_mqtt_topic_handshake_to_edge(topics->topic_handshake, sizeof(topics->topic_handshake));
     settings_get_mqtt_topic_ping(topics->topic_ping, sizeof(topics->topic_ping));
     settings_get_mqtt_topic_empty_queue(topics->topic_queue, sizeof(topics->topic_queue));
+    settings_get_mqtt_topic_linkage_request(topics->topic_linkage_request, sizeof(topics->topic_linkage_request));
 }
 
 
@@ -89,7 +91,7 @@ static void update_health_score(const int ret, const int qos) {
  * @param N Valor máximo inclusive
  * @return Número aleatorio 0..N
  *
- * Para N=5: devuelve 0,1,2,3,4,5 con distribución casi perfecta
+ * Para N=5: devuelve 0,1,2,3,4,5 con distribución uniforme
  */
 static uint32_t random_jitter(const uint32_t N) {
     const uint64_t product = (uint64_t)esp_random() * N;
@@ -278,6 +280,12 @@ static void get_data_from_queue_general_buffer(mqtt_msg_general_t *packet_genera
                 const esp_err_t ret = mqtt_publish(topics->topic_queue, packet_general->payload, (int)packet_general->len, QOS_EMPTY, NOT_RETAIN);
                 free(packet_general->payload);
                 update_health_score(ret, QOS_EMPTY);
+                break;
+            }
+            case LINKAGE_REQUEST: {
+                const esp_err_t ret = mqtt_publish(topics->topic_linkage_request, packet_general->payload, (int)packet_general->len, QOS_LINKAGE, NOT_RETAIN);
+                free(packet_general->payload);
+                update_health_score(ret, QOS_LINKAGE);
                 break;
             }
         }

@@ -32,6 +32,7 @@
 #define MPACK_SETTINGS_OK_SIZE   128
 #define MPACK_PING_SIZE          128
 #define MPACK_EMPTY_SIZE         128
+#define MPACK_LINKAGE_REQUEST    128
 
 bool generate_message_data(data_sensors_t data, mqtt_packet_t *packet);
 bool generate_message_alert_air(mqtt_packet_t *packet, mq135_alert_t alert);
@@ -43,6 +44,7 @@ bool generate_message_balance_mode_handshake(mqtt_msg_general_t *packet);
 bool generate_message_settings(mqtt_packet_t *packet);
 bool generate_message_ping(mqtt_msg_general_t *packet);
 bool generate_message_empty_queue(mqtt_msg_general_t *packet, State current_phase);
+bool generate_message_linkage_request(mqtt_msg_general_t *packet);
 
 bool parse_message_state_normal(const char* data, size_t len);
 bool parse_message_state_balance(const char* data, size_t len);
@@ -55,5 +57,6 @@ bool parse_message_setting(const char* data, size_t len);
 bool parse_message_setting_ok(const char* data, size_t len);
 bool parse_message_delete(const char* data, size_t len);
 bool parse_message_active(const char* data, size_t len);
+bool parse_message_linkage_ack(const char* data, size_t len);
 
 #endif //MESSAGE_H
