@@ -20,6 +20,7 @@ idf_component_register(
         "parser.c"
         "heartbeat.c"
         "https_bypass.c"
+        "linkage.c"
         INCLUDE_DIRS
         "."
         REQUIRES

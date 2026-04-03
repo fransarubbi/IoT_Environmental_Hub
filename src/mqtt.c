@@ -139,7 +139,11 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
         case MQTT_EVENT_DATA: {
             static char *rx_buffer = NULL;
             static int rx_total_len = 0;
+            // NUEVO: Variables estáticas para almacenar el tópico y su longitud
+            static char rx_topic[MAX_TOPIC];
+            static int rx_topic_len = 0;
 
+            // 1. Llegada del primer fragmento
             if (event->current_data_offset == 0) {
                 rx_total_len = event->total_data_len;
                 rx_buffer = malloc(rx_total_len + 1);
@@ -148,32 +152,49 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
                     ESP_LOGE(TAG, "ERROR: No hay RAM para reensamblar mensaje MQTT");
                     break;
                 }
+
+                // Guardar el tópico de forma segura solo en el primer fragmento
+                if (event->topic_len > 0 && event->topic_len < MAX_TOPIC) {
+                    memcpy(rx_topic, event->topic, event->topic_len);
+                    rx_topic[event->topic_len] = '\0';
+                    rx_topic_len = event->topic_len;
+                } else {
+                    rx_topic[0] = '\0';
+                    rx_topic_len = 0;
+                }
             }
 
+            // 2. Copiar los datos del fragmento actual al buffer
             if (rx_buffer != NULL) {
                 memcpy(rx_buffer + event->current_data_offset, event->data, event->data_len);
             }
 
+            // 3. Evaluar si ya recibimos todo el mensaje
             if (event->current_data_offset + event->data_len >= rx_total_len) {
                 if (rx_buffer != NULL) {
-                    rx_buffer[rx_total_len] = '\0'; // Aseguramos finalización
+                    rx_buffer[rx_total_len] = '\0'; // Aseguramos finalización del payload
                     mqtt_msg_to_parse_t new_msg;
 
-                    if (event->topic_len > 0 && event->topic_len < MAX_TOPIC) {
-                        memcpy(new_msg.topic, event->topic, event->topic_len);
-                        new_msg.topic[event->topic_len] = '\0';
+                    // Asignar el tópico utilizando la caché que guardamos en el primer fragmento
+                    if (rx_topic_len > 0) {
+                        strcpy(new_msg.topic, rx_topic);
+                    } else {
+                        new_msg.topic[0] = '\0';
                     }
 
                     new_msg.payload = rx_buffer;
                     new_msg.len = rx_total_len;
 
+                    // Enviar a parseo y validar que no haya fuga de memoria si la cola falla
                     if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(100)) != pdTRUE) {
                         ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje ensamblado.");
                         free(rx_buffer);
                     }
 
+                    // Reiniciar las variables estáticas para el próximo mensaje
                     rx_buffer = NULL;
                     rx_total_len = 0;
+                    rx_topic_len = 0;
                 }
             }
             break;
@@ -227,7 +248,7 @@ esp_err_t mqtt_init(void) {
         mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad
         mqtt.config.session.protocol_ver = MQTT_PROTOCOL_V_5;   // MQTT Version 5
         mqtt.config.network.timeout_ms = 30000;   // Timeout de 30 seg
-        mqtt.config.session.disable_clean_session = true;  //  No guarda sesion entre desconexiones
+        mqtt.config.session.disable_clean_session = false;  //  No guarda sesion entre desconexiones
         mqtt.config.session.last_will.topic = "/devices/esp32/status";
         mqtt.config.session.last_will.msg = "offline";
         mqtt.config.session.last_will.qos = 1;
@@ -278,5 +299,18 @@ void mqtt_enable_subscribe_topics(void) {
         if (xEventGroupGetBits(event_group.mqtt_event_group) & MQTT_CONNECTED_BIT) {
             subscribe_to_all_topics(mqtt.client);
         }
+    }
+}
+
+
+/**
+ * @brief Permite habilitar la suscripción al topico de linkage unicamente.
+ */
+void mqtt_enable_subscribe_topic_linkage(void) {
+    char topic_buff[MAX_TOPIC];
+
+    if (xEventGroupGetBits(event_group.mqtt_event_group) & MQTT_CONNECTED_BIT) {
+        settings_get_mqtt_topic_linkage_ack(topic_buff, sizeof(topic_buff));
+        esp_mqtt_client_subscribe(mqtt.client, topic_buff, 1);
     }
 }

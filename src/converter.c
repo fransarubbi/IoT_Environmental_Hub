@@ -54,6 +54,14 @@ void flag_converter_task(void *pvParameters) {
                     }
                     break;
 
+                case LINKAGE:
+                    if (flag == LINKAGE_OK) {
+                        ESP_LOGI(TAG, "Estado: LINKAGE, Flag: LINKAGE_OK");
+                        Event event = eLinkageOk;
+                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                    }
+                    break;
+
                 case INIT_SYSTEM:
                     if (flag == TIMEOUT_INIT) {
                         ESP_LOGI(TAG, "Estado: INIT_SYSTEM, Flag: TIMEOUT_INIT");
@@ -197,7 +205,9 @@ void flag_converter_task(void *pvParameters) {
                         ESP_LOGI(TAG, "Estado: DATA, Flag: DATA_EMPTY_QUEUE");
                         mqtt_msg_general_t packet;
                         generate_message_empty_queue(&packet, DATA);
-                        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+                        if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                            free(packet.payload);
+                        }
                     }
                     break;
 
@@ -221,7 +231,9 @@ void flag_converter_task(void *pvParameters) {
                         ESP_LOGI(TAG, "Estado: MONITOR, Flag: MONITOR_EMPTY_QUEUE");
                         mqtt_msg_general_t packet;
                         generate_message_empty_queue(&packet, MONITOR);
-                        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+                        if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                            free(packet.payload);
+                        }
                     }
                     break;
 
@@ -368,7 +380,9 @@ void flag_converter_task(void *pvParameters) {
                         ESP_LOGI(TAG, "Estado: SAFE_MODE, Flag: SAFE_MODE_EMPTY_QUEUE");
                         mqtt_msg_general_t packet;
                         generate_message_empty_queue(&packet, SAFE_MODE);
-                        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+                        if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+                            free(packet.payload);
+                        }
                         Event event = eFromSafeToNormal;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }

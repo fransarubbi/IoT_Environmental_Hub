@@ -103,6 +103,10 @@ void settings_empty_network(void) {
     unlock();
 }
 
+void settings_set_linkage_ok(void) {
+    atomic_store(&settings.network.linkage_flag, 1);
+}
+
 
 /* ---- Getters ---- */
 void settings_get_node_mac(char* dest, const size_t dest_size) {
@@ -127,6 +131,11 @@ void settings_get_network_id_edge(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.network.id_edge, dest_size);
     unlock();
+}
+
+uint8_t settings_get_network_linkage_flag(void) {
+    const uint32_t val = atomic_load(&settings.network.linkage_flag);
+    return val;
 }
 
 uint32_t settings_get_balance_epoch(void) {
@@ -316,6 +325,18 @@ void settings_get_mqtt_topic_empty_queue(char* dest, const size_t dest_size) {
     unlock();
 }
 
+void settings_get_mqtt_topic_linkage_request(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_linkage_request, dest_size);
+    unlock();
+}
+
+void settings_get_mqtt_topic_linkage_ack(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_linkage_ack, dest_size);
+    unlock();
+}
+
 
 
 /* ---- Timer ---- */
@@ -413,6 +434,7 @@ static void show_help(void) {
     uart_send_text("| NAME <name>                  - Configura nombre del dispositivo                        |\r\n");
     uart_send_text("| SAMPLE <rate>                - Configura frecuencia de envio de datos                  |\r\n");
     uart_send_text("| ENERGY <energy>              - Configura modo de energia                               |\r\n");
+    uart_send_text("| DELETE_LINKAGE               - Elimina el flag de linkage para una nueva conexion      |\r\n");
     uart_send_text("| SHOW                         - Muestra configuracion actual                            |\r\n");
     uart_send_text("| EXIT                         - Salir                                                   |\r\n");
     uart_send_text("| HELP                         - Muestra mensaje de ayuda                                |\r\n");
@@ -746,6 +768,12 @@ static bool process_command(const char *command) {
         return false;
     }
 
+    if (strcmp(cmd, CMD_DELETE_LINKAGE_FLAG) == 0) {
+        settings.network.linkage_flag = 0;
+        uart_send_text("- INFO: Linkage Flag reseteado correctamente -\r\n");
+        return false;
+    }
+
     if (strcmp(cmd, CMD_EXIT) == 0 && setting_is_device_configured()) {
         const esp_err_t ret = setting_save_to_nvs();
         if (ret == ESP_OK) {
@@ -832,6 +860,12 @@ void create_mqtt_topics() {
 
     snprintf(settings.mqtt.topic_empty_queue, sizeof(settings.mqtt.topic_empty_queue),
         "iot/%s/hub/%s/empty_queue", settings.network.id_network, settings.node.mac_address);
+
+    snprintf(settings.mqtt.topic_linkage_request, sizeof(settings.mqtt.topic_linkage_request),
+        "iot/%s/linkage_request", settings.network.id_edge);
+
+    snprintf(settings.mqtt.topic_linkage_ack, sizeof(settings.mqtt.topic_linkage_ack),
+        "iot/%s/linkage_ack", settings.network.id_edge);
 }
 
 

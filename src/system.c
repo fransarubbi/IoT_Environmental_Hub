@@ -14,6 +14,7 @@
 #include "Healthscore/healthscore.h"
 #include "Heartbeat/heartbeat.h"
 #include "Https_bypass/https_bypass.h"
+#include "Linkage/linkage.h"
 #include "Parser/parser.h"
 
 
@@ -120,4 +121,5 @@ void start_application_tasks(void) {
     task_handle.monitor_handle = xTaskCreateStaticPinnedToCore(stack_monitor_task, "Monitor", STACK_MONITOR, NULL, PRIO_MONITOR, mem.monitor.stack, &mem.monitor.tcb, CORE_PRO);
     task_handle.send_settings_handle = xTaskCreateStaticPinnedToCore(send_settings_task, "Send_sett", STACK_SEND_SETT, NULL, PRIO_SETTINGS, mem.send_settings.stack, &mem.send_settings.tcb, CORE_PRO);
     task_handle.fsm_handle = xTaskCreateStaticPinnedToCore(fsm_task, "FSM", STACK_FSM, NULL, PRIO_FSM, mem.fsm.stack, &mem.fsm.tcb, CORE_APP);
+    task_handle.linkage_handle = xTaskCreateStaticPinnedToCore(linkage_task, "Linkage", STACK_LINKAGE, NULL, PRIO_LINKAGE, mem.linkage.stack, &mem.linkage.tcb, CORE_APP);
 }

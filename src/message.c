@@ -593,6 +593,62 @@ bool generate_message_empty_queue(mqtt_msg_general_t *packet, const State curren
 }
 
 
+/**
+ * @brief Genera un mensaje de solicitud de vinculacion
+ */
+bool generate_message_linkage_request(mqtt_msg_general_t *packet) {
+    packet->payload = NULL;
+    packet->len = 0;
+    const size_t buffer_size = MPACK_LINKAGE_REQUEST;
+    packet->payload = malloc(buffer_size);
+
+    if (packet->payload == NULL) {
+        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        return false;
+    }
+
+    char mac[MAC];
+    char id_edge[ID_EDGE];
+    char device_name[DEVICE_NAME];
+    char network_id[ID_NETWORK];
+    settings_get_node_mac(mac, sizeof(mac));
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+    settings_get_node_device_name(device_name, sizeof(device_name));
+    settings_get_network(network_id, sizeof(network_id));
+
+    const uint64_t time = get_time();
+
+    mpack_writer_t writer;
+    mpack_writer_init(&writer, packet->payload, buffer_size);
+
+    mpack_start_array(&writer, 4);
+
+    mpack_start_array(&writer, 3);
+    mpack_write_cstr(&writer, mac);
+    mpack_write_cstr(&writer, id_edge);
+    mpack_write_u64(&writer, time);
+    mpack_finish_array(&writer);
+
+    mpack_write_cstr(&writer, device_name);
+    mpack_write_cstr(&writer, network_id);
+    mpack_write_bool(&writer, true);
+
+    mpack_finish_array(&writer);
+
+    const size_t used = mpack_writer_buffer_used(&writer);
+    if (mpack_writer_destroy(&writer) != mpack_ok) {
+        ESP_LOGE("Data", "- ERROR: Error codificando MPack linkage_request -");
+        free(packet->payload);
+        packet->payload = NULL;
+        return false;
+    }
+    ESP_LOGI(TAG, "- OK: Serializacion correcta de linkage_request -");
+    packet->len = used;
+    packet->topic = LINKAGE_REQUEST;
+    return true;
+}
+
+
 /* --- Funciones de Parseo (Deserialización) --- */
 
 
@@ -1330,6 +1386,60 @@ bool parse_message_active(const char* data, const size_t len) {
                 xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_START, eSetBits);
             }
         }
+    }
+    return (mpack_reader_destroy(&reader) == mpack_ok);
+}
+
+
+/**
+ * @brief Función para parsear un mensaje de ACK del Linkage.
+ */
+bool parse_message_linkage_ack(const char* data, const size_t len) {
+    mpack_reader_t reader;
+    mpack_reader_init_data(&reader, data, len);
+
+    const uint32_t linkage_array_size = mpack_expect_array(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok || linkage_array_size != 2) {
+        return false;
+    }
+
+    char id_edge[MAC];
+    char mac[MAC];
+    char buffer[32];
+    bool sender_ok = false;
+    bool dest_ok = false;
+
+    settings_get_network_id_edge(id_edge, sizeof(id_edge));
+    settings_get_node_mac(mac, sizeof(mac));
+
+    const uint32_t meta_array_size = mpack_expect_array(&reader);
+    if (mpack_reader_error(&reader) != mpack_ok || meta_array_size != 3) {
+        return false;
+    }
+
+    mpack_expect_cstr(&reader, buffer, sizeof(buffer));
+    if (strcmp(buffer, id_edge) == 0) sender_ok = true;
+
+    mpack_expect_cstr(&reader, buffer, sizeof(buffer));
+    if (strcmp(buffer, mac) == 0) dest_ok = true;
+
+    mpack_expect_i64(&reader);
+
+    const bool linkage = mpack_expect_bool(&reader);
+
+    if (mpack_reader_error(&reader) != mpack_ok) {
+        mpack_reader_destroy(&reader);
+        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje linkage_ack -");
+        return false;
+    }
+
+    if (sender_ok && dest_ok && linkage) {
+        xTaskNotify(task_handle.linkage_handle, NOTIFY_CMD_STOP, eSetBits);
+        const uint32_t flag = LINKAGE_OK;
+        ESP_LOGI(TAG, "- OK: Decodificacion correcta de linkage_ack -");
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+        settings_set_linkage_ok();
+        setting_save_to_nvs();
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
 }

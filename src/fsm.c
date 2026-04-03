@@ -32,9 +32,10 @@ AtomicState shared_state = CHECK_FIRMWARE;
  */
 const StateTable table[] = {
     {CHECK_FIRMWARE, eUpdate, UPDATE, action_entry_update},
-    {CHECK_FIRMWARE, eNotUpdate, INIT_SYSTEM, action_entry_init_system},
+    {CHECK_FIRMWARE, eNotUpdate, LINKAGE, action_entry_linkage},
     {UPDATE, eUpdateOk, NOTIFY_OK, action_entry_notify_ok},
-    {UPDATE, eUpdateError, INIT_SYSTEM, action_entry_init_system},
+    {UPDATE, eUpdateError, LINKAGE, action_entry_linkage},
+    {LINKAGE, eLinkageOk, INIT_SYSTEM, action_entry_init_system},
     {INIT_SYSTEM, eFromInitToStore, STORE, action_entry_store},
     {INIT_SYSTEM, eFromInitToNormal, NORMAL, action_entry_normal},
     {INIT_SYSTEM, eFromInitToBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
@@ -99,10 +100,10 @@ const uint8_t SIZE_TABLE = sizeof(table) / sizeof(StateTable);
 static void event_processor(Fsm *fsm, const Event event) {
     for (uint8_t i = 0; i < SIZE_TABLE; i++) {
         if (table[i].current == fsm->state && table[i].event == event) {
-            if (table[i].action) table[i].action(fsm);
             fsm->state = table[i].next;
             atomic_store(&shared_state, fsm->state);
             xQueueReset(queues.flag);
+            if (table[i].action) table[i].action(fsm);
             return;
         }
     }
@@ -118,6 +119,7 @@ static void event_processor(Fsm *fsm, const Event event) {
 static char* get_state_name(const State state) {
     switch (state) {
         case CHECK_FIRMWARE: return "CHECK_FIRMWARE";
+        case LINKAGE: return "LINKAGE";
         case INIT_SYSTEM: return "INIT_SYSTEM";
         case UPDATE: return "UPDATE";
         case NOTIFY_OK: return "NOTIFY_OK";
@@ -175,20 +177,34 @@ void action_entry_update(Fsm *fsm) {
     } else {
         mqtt_msg_general_t packet;
         generate_message_firmware_ok(&packet, false);
-        xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+        if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+            free(packet.payload);
+        }
         const uint32_t flag = 0;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
 }
 
 
-void action_entry_init_system(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry INIT_SYSTEM -");
+void action_entry_linkage(Fsm *fsm) {
+    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry LINKAGE -");
     xTaskNotify(task_handle.parser_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.converter_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.data_pt_handle, NOTIFY_CMD_START, eSetBits);
-    init_timer(INIT_SYSTEM_TIMER);
+    mqtt_enable_subscribe_topic_linkage();
+    if (settings_get_network_linkage_flag()) {
+        const uint32_t flag = LINKAGE_OK;
+        xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
+    } else {
+        xTaskNotify(task_handle.linkage_handle, NOTIFY_CMD_START, eSetBits);
+    }
+}
+
+
+void action_entry_init_system(Fsm *fsm) {
+    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry INIT_SYSTEM -");
     mqtt_enable_subscribe_topics();
+    init_timer(INIT_SYSTEM_TIMER);
 }
 
 
@@ -196,7 +212,9 @@ void action_entry_notify_ok(Fsm *fsm) {
     ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry NOTIFY_OK -");
     mqtt_msg_general_t packet;
     generate_message_firmware_ok(&packet, true);
-    xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+    if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+        free(packet.payload);
+    }
     vTaskDelay(pdMS_TO_TICKS(5000));
     ESP_LOGW(TAG, "- WARNING: Reiniciando sistema... -");
     esp_restart();
@@ -229,7 +247,9 @@ void action_entry_in_handshake(Fsm *fsm) {
     init_timer(HANDSHAKE_TIMER);
     mqtt_msg_general_t packet;
     generate_message_balance_mode_handshake(&packet);
-    xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+    if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+        free(packet.payload);
+    }
 }
 
 
@@ -263,7 +283,9 @@ void action_entry_out_handshake(Fsm *fsm) {
     init_timer(HANDSHAKE_TIMER);
     mqtt_msg_general_t packet;
     generate_message_balance_mode_handshake(&packet);
-    xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+    if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+        free(packet.payload);
+    }
 }
 
 
@@ -329,7 +351,9 @@ void action_entry_update_score(Fsm *fsm) {
     delete_timer(COOLING_TIMER);
     mqtt_msg_general_t packet;
     generate_message_ping(&packet);
-    xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100));
+    if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+        free(packet.payload);
+    }
 }
 
 

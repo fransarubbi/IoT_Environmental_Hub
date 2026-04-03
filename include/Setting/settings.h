@@ -43,6 +43,7 @@
 #define CMD_SET_DEVICE_NAME          "NAME"
 #define CMD_SET_SAMPLE               "SAMPLE"
 #define CMD_SET_ENERGY_MODE          "ENERGY"
+#define CMD_DELETE_LINKAGE_FLAG      "DELETE_LINKAGE"
 #define CMD_SHOW_CONFIG              "SHOW"
 #define CMD_EXIT                     "EXIT"
 #define CMD_CHANGE                   "Y"
@@ -61,7 +62,8 @@ typedef enum {
     FIRMWARE_OK,
     HANDSHAKE,
     PING,
-    QUEUE_EMPTY
+    QUEUE_EMPTY,
+    LINKAGE_REQUEST
 } topic_general;
 
 
@@ -77,6 +79,7 @@ typedef struct {
         char id_edge[ID_EDGE];
         atomic_uint_fast32_t balance_epoch;
         char url_https[URL_HTTPS];
+        uint8_t linkage_flag;
     } network;
     struct {
         uint8_t ssid[WIFI_SSID];
@@ -99,6 +102,7 @@ typedef struct {
         char topic_handshake_to_edge[MAX_TOPIC];
         char topic_ping[MAX_TOPIC];
         char topic_empty_queue[MAX_TOPIC];
+        char topic_linkage_request[MAX_TOPIC];
 
         // Escucha
         char topic_edge_state_normal[MAX_TOPIC];
@@ -112,6 +116,7 @@ typedef struct {
         char topic_edge_setting_ok[MAX_TOPIC];
         char topic_delete_hub[MAX_TOPIC];
         char topic_active_hub[MAX_TOPIC];
+        char topic_linkage_ack[MAX_TOPIC];
     } mqtt;
 } settings_t;
 
@@ -132,6 +137,7 @@ void settings_set_energy_mode(energy_mode_t mode);
 void settings_empty_network(void);
 void settings_set_balance_epoch(uint32_t bal);
 void settings_set_wifi_ip(const char* ip);
+void settings_set_linkage_ok(void);
 
 // Getters
 void settings_get_node_mac(char* dest, size_t dest_size);
@@ -140,6 +146,7 @@ uint32_t settings_get_node_sample_rate(void);
 energy_mode_t settings_get_node_energy_mode(void);
 void settings_get_network(char* dest, size_t dest_size);
 void settings_get_network_id_edge(char* dest, size_t dest_size);
+uint8_t settings_get_network_linkage_flag(void);
 uint32_t settings_get_balance_epoch(void);
 void settings_get_url_https(char* dest, size_t dest_size);
 void settings_get_wifi_ssid(uint8_t* dest, size_t dest_size);
@@ -171,6 +178,8 @@ void settings_get_mqtt_topic_delete_hub(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_active_hub(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_ping(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_empty_queue(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_linkage_request(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_linkage_ack(char* dest, size_t dest_size);
 
 
 #endif //SETTINGS_H

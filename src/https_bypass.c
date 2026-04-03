@@ -42,7 +42,7 @@ static void create_https_send_and_delete(const mqtt_packet_t *packet) {
         .buffer_size = 1024,
     };
 
-    const esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
 
     if (client) {
         esp_http_client_set_header(client, "Content-Type", "application/x-msgpack");
