@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <stdint.h>
 #include <ctype.h>
+#include <driver/gpio.h>
+
 #include "nvs_flash.h"
 #include "esp_pm.h"
 #include "System/system.h"
@@ -21,7 +23,6 @@
 settings_t settings;
 static const char *TAG = "Settings";
 static char uart_buffer[SETTINGS_BUFFER_SIZE];
-static TimerHandle_t one_shot_timer = NULL;
 static SemaphoreHandle_t settings_mutex = NULL;
 
 
@@ -107,6 +108,13 @@ void settings_set_linkage_ok(void) {
     atomic_store(&settings.network.linkage_flag, 1);
 }
 
+void settings_set_message_id(const uint32_t bal) {
+    atomic_store(&settings.network.message_id.id, bal);
+}
+
+void settings_set_message_id_sending(const bool flag) {
+    atomic_store(&settings.network.message_id.sending, flag);
+}
 
 /* ---- Getters ---- */
 void settings_get_node_mac(char* dest, const size_t dest_size) {
@@ -143,6 +151,16 @@ uint32_t settings_get_balance_epoch(void) {
     return val;
 }
 
+uint32_t settings_get_message_id(void) {
+    const uint32_t val = atomic_load(&settings.network.message_id.id);
+    return val;
+}
+
+bool settings_get_message_id_sending(void) {
+    const bool val = atomic_load(&settings.network.message_id.sending);
+    return val;
+}
+
 void settings_get_url_https(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.network.url_https, dest_size);
@@ -156,6 +174,21 @@ uint32_t settings_get_node_sample_rate(void) {
 
 energy_mode_t settings_get_node_energy_mode(void) {
     const uint32_t val = atomic_load(&settings.node.energy_mode);
+    return val;
+}
+
+uint32_t settings_get_node_timeout_heartbeat_balance_mode(void) {
+    const uint32_t val = atomic_load(&settings.node.timeout_heartbeat_balance_mode);
+    return val;
+}
+
+uint32_t settings_get_node_timeout_heartbeat_normal_mode(void) {
+    const uint32_t val = atomic_load(&settings.node.timeout_heartbeat_normal_mode);
+    return val;
+}
+
+uint32_t settings_get_node_timeout_heartbeat_safe_mode(void) {
+    const uint32_t val = atomic_load(&settings.node.timeout_heartbeat_safe_mode);
     return val;
 }
 
@@ -339,38 +372,6 @@ void settings_get_mqtt_topic_linkage_ack(char* dest, const size_t dest_size) {
 
 
 
-/* ---- Timer ---- */
-/**
- * @brief Callback que setea el flag en true cuando se alcanzo el tiempo.
- * @param xTimer variable timer configurada previamente.
- */
-static void timeout_callback(TimerHandle_t xTimer) {
-    bool *flag_ptr = (bool *)pvTimerGetTimerID(xTimer);
-    *flag_ptr = true;
-}
-
-/**
- * @brief Inicializa el timer que determina el margen de tiempo valido para dar una respuesta en
- * la funcion setting_mode_change(). Son 20 segundos.
- * @param timer_flag flag que indica cuando el timer llego al valor seteado. Cuando se le asigna true,
- * se termino el tiempo.
- */
-static void timeout_init(bool *timer_flag) {
-    one_shot_timer = xTimerCreate(
-        "OneShotTimer",
-        pdMS_TO_TICKS(20000), // 20 segundos
-        pdFALSE,             // Auto-reload = FALSE (una sola vez)
-        (void *)timer_flag,
-        timeout_callback
-    );
-
-    if (one_shot_timer != NULL) {
-        xTimerStart(one_shot_timer, 0);
-    }
-}
-
-
-
 /**
  * @brief Configura el modo de operacion del microcontrolador
  * @param mhz Frecuencia de la CPU
@@ -393,6 +394,7 @@ static esp_err_t set_cpu_frequency(const int mhz, const bool flag) {
  * @return esp_err_t  Devuelve ESP_OK si la inicializacion fue exitosa.
  */
 static esp_err_t uart_config(void) {
+
     const uart_config_t uart_conf = {
         .baud_rate = SETTINGS_UART_BAUD_RATE,
         .data_bits = UART_DATA_8_BITS,
@@ -402,17 +404,48 @@ static esp_err_t uart_config(void) {
         .source_clk = UART_SCLK_DEFAULT,
     };
 
-    esp_err_t ret = uart_driver_install(SETTINGS_UART_PORT_NUM, SETTINGS_BUFFER_SIZE * 2, 0, 0, NULL, 0);
+    esp_err_t ret = uart_driver_install(
+        SETTINGS_UART_PORT_NUM,
+        SETTINGS_BUFFER_SIZE * 2,
+        0,
+        0,
+        NULL,
+        0
+    );
+
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error instalando driver UART: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Error instalando driver UART");
         return ret;
     }
 
-    ret = uart_param_config(SETTINGS_UART_PORT_NUM, &uart_conf);
+    ret = uart_param_config(
+        SETTINGS_UART_PORT_NUM,
+        &uart_conf
+    );
+
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error configurando UART: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Error configurando UART");
         return ret;
     }
+
+    ret = uart_set_pin(
+        SETTINGS_UART_PORT_NUM,
+        SETTINGS_UART_TX_PIN,
+        SETTINGS_UART_RX_PIN,
+        UART_PIN_NO_CHANGE,
+        UART_PIN_NO_CHANGE
+    );
+
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Error configurando pines UART");
+        return ret;
+    }
+
+    gpio_set_pull_mode(
+        SETTINGS_UART_RX_PIN,
+        GPIO_PULLUP_ONLY
+    );
+
     return ESP_OK;
 }
 
@@ -435,6 +468,9 @@ static void show_help(void) {
     uart_send_text("| SAMPLE <rate>                - Configura frecuencia de envio de datos                  |\r\n");
     uart_send_text("| ENERGY <energy>              - Configura modo de energia                               |\r\n");
     uart_send_text("| DELETE_LINKAGE               - Elimina el flag de linkage para una nueva conexion      |\r\n");
+    uart_send_text("| HEARTBEAT_BALANCE <time>     - Configura el tiempo de latidos en estado balance (seg)  |\r\n");
+    uart_send_text("| HEARTBEAT_NORMAL <time>      - Configura el tiempo de latidos en estado normal (seg)   |\r\n");
+    uart_send_text("| HEARTBEAT_SAFE <time>        - Configura el tiempo de latidos en estado safe (seg)     |\r\n");
     uart_send_text("| SHOW                         - Muestra configuracion actual                            |\r\n");
     uart_send_text("| EXIT                         - Salir                                                   |\r\n");
     uart_send_text("| HELP                         - Muestra mensaje de ayuda                                |\r\n");
@@ -468,6 +504,15 @@ void show_config(void) {
     sprintf(temp_buffer, "| Bypass URL:       %s\r\n", settings.network.url_https);
     uart_send_text(temp_buffer);
     sprintf(temp_buffer, "| Nombre Disp:      %s\r\n", settings.node.device_name);
+    uart_send_text(temp_buffer);
+    const uint32_t tbm = atomic_load(&settings.node.timeout_heartbeat_balance_mode);
+    sprintf(temp_buffer, "| Heartbeat Balance:   %lu\r\n", tbm);
+    uart_send_text(temp_buffer);
+    const uint32_t tnm = atomic_load(&settings.node.timeout_heartbeat_normal_mode);
+    sprintf(temp_buffer, "| Heartbeat Normal:   %lu\r\n", tnm);
+    uart_send_text(temp_buffer);
+    const uint32_t tsm = atomic_load(&settings.node.timeout_heartbeat_safe_mode);
+    sprintf(temp_buffer, "| Heartbeat Safe:   %lu\r\n", tsm);
     uart_send_text(temp_buffer);
     const uint32_t sample = atomic_load(&settings.node.sample_rate);
     sprintf(temp_buffer, "| Sample Rate:      %lu\r\n", sample);
@@ -521,12 +566,16 @@ static bool setting_is_device_configured(void) {
     const uint8_t wifi_pass_len = atomic_load(&settings.wifi.pass_len);
     const uint32_t sample = atomic_load(&settings.node.sample_rate);
     const energy_mode_t energy = atomic_load(&settings.node.energy_mode);
+    const uint32_t tbm = atomic_load(&settings.node.timeout_heartbeat_balance_mode);
+    const uint32_t tn = atomic_load(&settings.node.timeout_heartbeat_normal_mode);
+    const uint32_t tsm = atomic_load(&settings.node.timeout_heartbeat_safe_mode);
 
     if (wifi_ssid_len > 0 && wifi_pass_len > 0
         && strlen(settings.mqtt.uri) > 0 && strlen(settings.node.device_name) > 0
         && strlen(settings.network.id_network) > 0 && strlen(settings.network.id_edge) > 0
         && strlen(settings.network.url_https) > 0 && sample > 0 &&
-        (energy == 0 || energy == 1 || energy == 2)) {
+        (energy == 0 || energy == 1 || energy == 2)
+        && tbm > 0 && tn > 0 && tsm > 0) {
         return true;
         }
     return false;
@@ -774,6 +823,63 @@ static bool process_command(const char *command) {
         return false;
     }
 
+    if (strcmp(cmd, CMD_SET_HEARTBEAT_BM) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <time> -\r\n");
+            return false;
+        }
+        errno = 0;
+        const unsigned long val = strtoul(param, &endptr, 10);
+        if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
+            uart_send_text("- ERROR: Ingrese un numero de tiempo valido -\r\n");
+        }
+        if (val > 0) {
+            atomic_store(&settings.node.timeout_heartbeat_balance_mode, val*1000000 + 5000000);
+            uart_send_text("- INFO: Tiempo de latidos en estado balance configurado correctamente -\r\n");
+        } else {
+            uart_send_text("- ERROR: Ingrese un numero de tiempo de latido en estado balance valido -\r\n");
+        }
+        return false;
+    }
+
+    if (strcmp(cmd, CMD_SET_HEARTBEAT_N) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <time> -\r\n");
+            return false;
+        }
+        errno = 0;
+        const unsigned long val = strtoul(param, &endptr, 10);
+        if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
+            uart_send_text("- ERROR: Ingrese un numero de tiempo valido -\r\n");
+        }
+        if (val > 0) {
+            atomic_store(&settings.node.timeout_heartbeat_normal_mode, val*1000000 + 5000000);
+            uart_send_text("- INFO: Tiempo de latidos en estado normal configurado correctamente -\r\n");
+        } else {
+            uart_send_text("- ERROR: Ingrese un numero de tiempo de latido en estado normal valido -\r\n");
+        }
+        return false;
+    }
+
+    if (strcmp(cmd, CMD_SET_HEARTBEAT_SM) == 0) {
+        if (parsed < 2) {
+            uart_send_text("- ERROR: Falta parametro <time> -\r\n");
+            return false;
+        }
+        errno = 0;
+        const unsigned long val = strtoul(param, &endptr, 10);
+        if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
+            uart_send_text("- ERROR: Ingrese un numero de tiempo valido -\r\n");
+        }
+        if (val > 0) {
+            atomic_store(&settings.node.timeout_heartbeat_safe_mode, val*1000000 + 5000000);
+            uart_send_text("- INFO: Tiempo de latidos en estado safe configurado correctamente -\r\n");
+        } else {
+            uart_send_text("- ERROR: Ingrese un numero de tiempo de latido en estado safe valido -\r\n");
+        }
+        return false;
+    }
+
     if (strcmp(cmd, CMD_EXIT) == 0 && setting_is_device_configured()) {
         const esp_err_t ret = setting_save_to_nvs();
         if (ret == ESP_OK) {
@@ -931,6 +1037,8 @@ static bool setting_mode_start(void) {
     char c;
     bool flag = false;
 
+    uart_flush_input(UART_NUM_2);
+
     show_menu();
     strcpy(buffer_aux, "config>  ");
     uart_send_text(buffer_aux);
@@ -939,7 +1047,8 @@ static bool setting_mode_start(void) {
         const int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, portMAX_DELAY);
 
         if (bytes > 0) {
-            if (c == '\n') {
+            if (c == '\n' || c == '\r') {
+                if (strlen(uart_buffer) == 0) continue;
                 uart_send_text("\r\n");
                 flag = process_command(uart_buffer);
                 if (flag) break;
@@ -948,13 +1057,13 @@ static bool setting_mode_start(void) {
                 show_menu();
                 uart_send_text("config>  ");
             }
-            else if (c == '\r') {  // Ignorar carriage return si viene separado
-                continue;
-            }
             else {
-                char tmp[2] = {c, '\0'};
-                strcat(uart_buffer, tmp);
-                uart_send_text(tmp);  // Solo imprime el caracter nuevo
+                // Solo concatenar si hay espacio disponible en el buffer
+                if (strlen(uart_buffer) < SETTINGS_BUFFER_SIZE - 1) {
+                    char tmp[2] = {c, '\0'};
+                    strcat(uart_buffer, tmp);
+                    uart_send_text(tmp);
+                }
             }
         }
     }
@@ -971,27 +1080,27 @@ static bool setting_mode_start(void) {
 static bool setting_mode_change(void) {
     char buffer_aux[100];
     char c, cmd[2];
-    bool flag = false;
 
-    timeout_init(&flag);
+    uart_flush_input(UART_NUM_2);
+
     show_menu_change_settings();
     strcpy(buffer_aux, "config>  ");
     uart_send_text(buffer_aux);
 
+    TickType_t start = xTaskGetTickCount();
+
     while (1) {
-        if (flag) {
-            if (one_shot_timer != NULL) {
-                xTimerStop(one_shot_timer, 0);
-            }
+        if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(20000)) {
             return false;
         }
 
         const int bytes = uart_read_bytes(SETTINGS_UART_PORT_NUM, (uint8_t*)&c, 1, pdMS_TO_TICKS(100));
 
         if (bytes > 0) {
-            if (c == '\n') {
+            if (c == '\n' || c == '\r') {
+                if (strlen(uart_buffer) == 0) continue;
                 uart_send_text("\r\n");
-                int parsed = sscanf(uart_buffer, "%c", cmd);
+                const int parsed = sscanf(uart_buffer, "%c", cmd);
                 if (parsed < 1) {
                     uart_send_text("- ERROR: Comando invalido. Ingrese y o n -\r\n");
                 }
@@ -1011,13 +1120,13 @@ static bool setting_mode_change(void) {
                 show_menu_change_settings();
                 uart_send_text("config>  ");
             }
-            else if (c == '\r') {
-                continue;
-            }
             else {
-                char tmp[2] = {c, '\0'};
-                strcat(uart_buffer, tmp);
-                uart_send_text(tmp);
+                // Solo concatenar si hay espacio disponible en el buffer
+                if (strlen(uart_buffer) < SETTINGS_BUFFER_SIZE - 1) {
+                    char tmp[2] = {c, '\0'};
+                    strcat(uart_buffer, tmp);
+                    uart_send_text(tmp);
+                }
             }
         }
     }

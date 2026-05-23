@@ -267,6 +267,8 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
 
     char mac[MAC];
     char network[ID_NETWORK];
+    const uint32_t message_id = settings_get_message_id();
+
     settings_get_network(network, sizeof(network));
     settings_get_node_mac(mac, sizeof(mac));
     const uint64_t time = get_time();
@@ -274,13 +276,15 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
     mpack_writer_t writer;
     mpack_writer_init(&writer, packet->payload, buffer_size);
 
-    mpack_start_array(&writer, 3);
+    mpack_start_array(&writer, 4);
 
     mpack_start_array(&writer, 3);
     mpack_write_cstr(&writer, mac);
     mpack_write_cstr(&writer, "server0");
     mpack_write_u64(&writer, time);
     mpack_finish_array(&writer);
+
+    mpack_write_u32(&writer, message_id);
 
     mpack_write_cstr(&writer, network);
     mpack_write_bool(&writer, true);
@@ -423,6 +427,9 @@ bool generate_message_settings(mqtt_packet_t *packet) {
     char id_network[ID_NETWORK];
     char mqtt_uri[MQTT_URI];
     char device_name[DEVICE_NAME];
+    uint32_t message_id = settings_get_message_id();
+    const bool flag_sending = settings_get_message_id_sending();
+
     settings_get_network(id_network, sizeof(id_network));
     settings_get_node_mac(mac, sizeof(mac));
     settings_get_mqtt_uri(mqtt_uri, sizeof(mqtt_uri));
@@ -432,13 +439,23 @@ bool generate_message_settings(mqtt_packet_t *packet) {
     mpack_writer_t writer;
     mpack_writer_init(&writer, packet->payload, buffer_size);
 
-    mpack_start_array(&writer, 8);
+    mpack_start_array(&writer, 9);
 
     mpack_start_array(&writer, 3);
     mpack_write_cstr(&writer, mac);
     mpack_write_cstr(&writer, "server0");
     mpack_write_u64(&writer, timestamp);
     mpack_finish_array(&writer);
+
+    if (flag_sending) {
+        mpack_write_u32(&writer, message_id);
+    } else {
+        settings_set_message_id_sending(true);
+        message_id += 1;
+        settings_set_message_id(message_id);
+        mpack_write_u32(&writer, message_id);
+        setting_save_to_nvs();
+    }
 
     mpack_write_cstr(&writer, id_network);
     mpack_write_str(&writer, (const char*)settings.wifi.ssid, strnlen((const char*)settings.wifi.ssid, sizeof(settings.wifi.ssid)));
@@ -1128,7 +1145,7 @@ bool parse_message_setting(const char* data, const size_t len) {
     mpack_reader_init_data(&reader, data, len);
 
     const uint32_t heartbeat_array_size = mpack_expect_array(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok || heartbeat_array_size != 8) {
+    if (mpack_reader_error(&reader) != mpack_ok || heartbeat_array_size != 9) {
         return false;
     }
 
@@ -1140,9 +1157,11 @@ bool parse_message_setting(const char* data, const size_t len) {
     char mqtt_uri[MQTT_URI];
     char device[DEVICE_NAME];
     uint32_t sample = 0;
+    const uint32_t message_id = settings_get_message_id();
     energy_mode_t energy_mode = 0;
     bool sender_ok = false;
     bool apply = false;
+    bool flag_id = false;
 
     settings_get_node_mac(mac, sizeof(mac));
 
@@ -1159,6 +1178,11 @@ bool parse_message_setting(const char* data, const size_t len) {
     if (strcmp(buffer, "all") == 0) apply = true;
 
     mpack_expect_i64(&reader);
+
+    const uint32_t id = mpack_expect_u32(&reader);
+    if (id > message_id) {
+        flag_id = true;
+    }
 
     mpack_expect_cstr(&reader, buffer, sizeof(buffer));
     safe_strcpy(id_network, buffer, sizeof(id_network));
@@ -1185,7 +1209,7 @@ bool parse_message_setting(const char* data, const size_t len) {
         return false;
     }
 
-    if (sender_ok && apply) {
+    if (sender_ok && apply && flag_id) {
         ESP_LOGI(TAG, "- OK: Decodificacion correcta de setting -");
         safe_strcpy(settings.network.id_network, id_network, sizeof(settings.network.id_network));
         safe_strcpy((char *)settings.wifi.ssid, wifi_ssid, sizeof(settings.wifi.ssid));
@@ -1194,6 +1218,7 @@ bool parse_message_setting(const char* data, const size_t len) {
         safe_string_copy(settings.node.device_name, device, sizeof(settings.node.device_name));
         settings.node.sample_rate = sample;
         settings.node.energy_mode = energy_mode;
+        settings_set_message_id(id);
         const esp_err_t ret = setting_save_to_nvs();
         if (ret != ESP_OK) {
             return false;
@@ -1218,16 +1243,18 @@ bool parse_message_setting_ok(const char* data, const size_t len) {
     char buffer[32];
     char network[ID_NETWORK];
     char mac[MAC];
+    const uint32_t message_id = settings_get_message_id();
     bool sender_ok = false;
     bool dest_ok = false;
     bool hand_ok = false;
     bool net_ok = false;
+    bool id_flag = false;
 
     settings_get_network(network, sizeof(network));
     settings_get_node_mac(mac, sizeof(mac));
 
     const uint32_t meta_array_size = mpack_expect_array(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok || meta_array_size != 3) {
+    if (mpack_reader_error(&reader) != mpack_ok || meta_array_size != 4) {
         return false;
     }
 
@@ -1238,6 +1265,12 @@ bool parse_message_setting_ok(const char* data, const size_t len) {
     if (strcmp(buffer, mac) == 0) dest_ok = true;
 
     mpack_expect_i64(&reader);
+
+    const uint32_t id = mpack_expect_u32(&reader);
+    if (id == message_id) {
+        id_flag = true;
+        settings_set_message_id_sending(false);
+    }
 
     mpack_expect_cstr(&reader, buffer, sizeof(buffer));
     if (strcmp(buffer, network) == 0) net_ok = true;
@@ -1250,7 +1283,7 @@ bool parse_message_setting_ok(const char* data, const size_t len) {
         return false;
     }
 
-    if (sender_ok && dest_ok && hand_ok && net_ok) {
+    if (sender_ok && dest_ok && hand_ok && net_ok && id_flag) {
         ESP_LOGI(TAG, "- OK: Decodificacion correcta de setting_ok -");
         if (task_handle.send_settings_handle != NULL) {
             xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_DESTROY, eSetBits);

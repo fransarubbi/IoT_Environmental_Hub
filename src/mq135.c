@@ -40,288 +40,226 @@ typedef struct {
 } data_t;
 
 
-static const char *TAG = "MQ135_CO2";
+static const char *TAG = "MQ135";
+static adc_oneshot_unit_handle_t s_adc_handle  = NULL;
+static adc_cali_handle_t         s_cali_handle = NULL;
+static bool                      s_cali_enable = false;
+static mq135_config_t config = {0};
 
 
-/* ===== Variables Privadas ===== */
-static adc_oneshot_unit_handle_t adc1_handle = NULL;      /**< Handle del ADC Unit 1 */
-static adc_oneshot_unit_init_cfg_t init_config1;          /**< Configuración de inicializacion ADC */
-static adc_oneshot_chan_cfg_t adc_chan;                   /**< Configuracion del canal ADC */
-static adc_cali_handle_t cali_handle = NULL;              /**< Handle de calibracion ADC */
-static adc_cali_line_fitting_config_t cali_config;        /**< Configuracion de calibracion lineal */
-static int64_t ema_value_q15 = 0;                         /**< Valor actual del filtro EMA en formato Q15 */
-static bool ema_initialized_q15 = false;                  /**< Flag de inicializacion del filtro EMA */
-static float runtime_R0 = CO2_R0_DEFAULT;                 /**< Resistencia R0 en runtime (puede ser calibrada) */
 
-
-/* ===== Funciones Privadas ===== */
-
-/**
- * @brief Reinicia el filtro EMA a su estado inicial
- *
- * Esta función limpia el estado interno del filtro de media móvil exponencial,
- * forzando una reinicialización en la próxima muestra.
- */
-static inline void reset_ema(void) {
-    ema_value_q15 = 0;
-    ema_initialized_q15 = false;
-}
-
-
-/**
- * @brief Aplica un filtro de media movil exponencial (EMA) a las muestras del ADC.
- *
- * Implementa un filtro EMA en aritmética de punto fijo Q15 para suavizar
- * las lecturas del ADC y reducir ruido. La primera muestra inicializa el filtro.
- *
- * @param new_sample Nueva muestra del ADC (valor raw de 0-4095).
- * @return Valor filtrado (0-4095).
- *
- * @note Formula: EMA = α × muestra_nueva + (1-α) × EMA_anterior
- * @note α está definido por EMA_ALPHA_Q15 en formato Q15.
- */
-static uint16_t ema_filter(const uint16_t new_sample) {
-    if (!ema_initialized_q15) {
-        ema_value_q15 = ((int64_t)new_sample) << 15;
-        ema_initialized_q15 = true;
-        return new_sample;
-    }
-    int64_t sample_q15 = ((int64_t)new_sample) << 15;
-    ema_value_q15 = ((EMA_ALPHA_Q15 * sample_q15) +
-                     ((EMA_2_15 - EMA_ALPHA_Q15) * ema_value_q15)) >> 15;
-    return (uint16_t)(ema_value_q15 >> 15);
-}
-
-
-/**
- * @brief Obtiene la resistencia del sensor MQ135 (Rs) sin corregir.
- *
- * Lee multiples muestras del ADC, las filtra con EMA, calcula el promedio,
- * convierte a voltaje y finalmente calcula la resistencia del sensor usando
- * la ecuacion del divisor de tension.
- *
- * @return Resistencia del sensor en Ohmios (Ω).
- * @retval -1.0f Si hay error de lectura o handles no inicializados.
- * @retval INFINITY Si el voltaje esta fuera de rango o la resistencia es invalida.
- */
-static float mq135_get_resistance(void) {
-    if (!adc1_handle || !cali_handle) return -1.0f;
-
-    int adc_sum = 0;
-    uint16_t valid_samples = 0;
-
-    for (uint16_t i = 0; i < MQ135_NUMBER_OF_SAMPLES; i++) {
-        int raw;
-        esp_err_t r = adc_oneshot_read(adc1_handle, ADC_CHANNEL_6, &raw);
-        if (r == ESP_OK && raw >= 0 && raw <= 4095) {
-            uint16_t filtered = ema_filter((uint16_t)raw);
-            adc_sum += filtered;
-            valid_samples++;
+/* ─────────────────────────────────────────────
+ * Utilidad: ordenamiento por inserción (in-place)
+ * Usado únicamente sobre arreglos pequeños (≤9 elem)
+ * ───────────────────────────────────────────── */
+static void insertion_sort(int *arr, int n) {
+    for (int i = 1; i < n; i++) {
+        int key = arr[i];
+        int j = i - 1;
+        while (j >= 0 && arr[j] > key) {
+            arr[j + 1] = arr[j];
+            j--;
         }
-        vTaskDelay(pdMS_TO_TICKS(MQ135_SAMPLE_DELAY_MS));
+        arr[j + 1] = key;
     }
+}
 
-    if (valid_samples == 0) return -1.0f;
 
-    int adc_avg = adc_sum / valid_samples;
-    int voltage_mv = 0;
-    if (adc_cali_raw_to_voltage(cali_handle, adc_avg, &voltage_mv) != ESP_OK) {
-        return -1.0f;
+/* ─────────────────────────────────────────────
+ * Calibración ADC (Line Fitting o Curve Fitting)
+ * ESP-IDF v5.x provee dos esquemas según el chip.
+ * ───────────────────────────────────────────── */
+static bool adc_calibration_init(adc_unit_t unit,
+                                 adc_channel_t channel,
+                                 adc_atten_t atten,
+                                 adc_cali_handle_t *out_handle) {
+    adc_cali_handle_t handle = NULL;
+    esp_err_t ret            = ESP_FAIL;
+    bool calibrated          = false;
+
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+    if (!calibrated) {
+        adc_cali_curve_fitting_config_t cali_cfg = {
+            .unit_id  = unit,
+            .chan     = channel,
+            .atten    = atten,
+            .bitwidth = MQ135_ADC_BITWIDTH,
+        };
+        ret = adc_cali_create_scheme_curve_fitting(&cali_cfg, &handle);
+        if (ret == ESP_OK) {
+            calibrated = true;
+            ESP_LOGI(TAG, "Calibración ADC: Curve Fitting activada");
+        }
     }
+#endif
 
-    float vout = (float)voltage_mv / 1000.0f;
-    if (vout < 0.001f || vout >= MQ135_VCC) return INFINITY;
+#if ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    if (!calibrated) {
+        adc_cali_line_fitting_config_t cali_cfg = {
+            .unit_id  = unit,
+            .atten    = atten,
+            .bitwidth = MQ135_ADC_BITWIDTH,
+        };
+        ret = adc_cali_create_scheme_line_fitting(&cali_cfg, &handle);
+        if (ret == ESP_OK) {
+            calibrated = true;
+            ESP_LOGI(TAG, "Calibración ADC: Line Fitting activada");
+        }
+    }
+#endif
 
-    float rs = MQ135_RLOAD * (MQ135_VCC - vout) / vout;
-    if (!isfinite(rs) || rs <= 0.0f) return INFINITY;
-    return rs;
+    *out_handle = handle;
+
+    if (!calibrated) {
+        ESP_LOGW(TAG, "Calibración ADC no disponible – se usarán valores raw convertidos");
+    }
+    return calibrated;
 }
 
 
-/**
- * @brief Calcula el factor de correccion por temperatura y humedad.
- *
- * Los sensores MQ135 son sensibles a las condiciones ambientales. Esta funcion
- * calcula un factor de corrección basado en la ecuación empirica del datasheet.
- *
- * @param temperature_c Temperatura ambiente en grados Celsius.
- * @param humidity_percent Humedad relativa en porcentaje (0-100).
- * @return Factor de correccion (tipicamente 0.8 - 1.2).
- * @retval 1.0f Si el factor calculado es inválido (protección contra división por cero).
- */
-static float mq135_get_correction_factor(float temperature_c, float humidity_percent) {
-    float rh = humidity_percent;
-    float corr = CORA * rh * rh - CORB * rh + CORC - CORD * (temperature_c - 20.0f);
-    if (!isfinite(corr) || corr <= 0.0f) return 1.0f;
-    return corr;
-}
 
 
-/**
- * @brief Obtiene la resistencia del sensor corregida por temperatura y humedad.
- *
- * Lee la resistencia raw del sensor y la corrige usando el factor de corrección
- * ambiental para obtener una lectura mas precisa.
- *
- * @param temperature_c Temperatura ambiente actual en °C
- * @param humidity_percent Humedad relativa actual en %
- * @return Resistencia corregida en Ohmios (Ω)
- * @retval -1.0f Si hay error de lectura o valor invalido.
- *
- * @note Fórmula: Rs_corregida = Rs_raw / factor_correccion.
- */
-static float mq135_get_corrected_resistance(float temperature_c, float humidity_percent) {
-    float rs = mq135_get_resistance();
-    if (rs <= 0 || !isfinite(rs)) return -1.0f;
-    float corr = mq135_get_correction_factor(temperature_c, humidity_percent);
-    return rs / corr;
-}
-
-
-/**
- * @brief Calcula la concentración de CO2 en PPM.
- *
- * Convierte la resistencia del sensor a concentracion de CO2 usando
- * la ecuacion logaritmica del datasheet del MQ135.
- *
- * @param resistance Resistencia del sensor (Rs) en Ohmios.
- * @param R0 Resistencia de calibracion en aire limpio en Ohmios.
- * @return Concentracion de CO2 en partes por millon (ppm).
- * @retval -1.0f Si los parametros son invalidos.
- *
- * @note Constantes A y B definidas en el header segun curva del datasheet.
- */
-static float mq135_calculate_ppm(float resistance, float R0) {
-    if (resistance <= 0.0f || R0 <= 0.0f) return -1.0f;
-    float ratio = resistance / R0;
-    float ppm = CO2_A * powf(ratio, -CO2_B);
-    return ppm;
-}
-
-
-/* ===== Funciones Publicas ===== */
-
-/**
- * @brief Inicializa el sensor MQ135 y el ADC del ESP32.
- *
- * Configura el ADC Unit 1 en canal 6 (GPIO34) con atenuacion de 12dB
- * para rango completo 0-3.3V, resolucion de 12 bits, y calibracion lineal.
- * Tambien reinicia el filtro EMA y carga el valor R0 por defecto.
- *
- * @return Estado de la inicializacion.
- * @retval ESP_OK Si la inicializacion fue exitosa.
- * @retval ESP_ERR_* Codigo de error especifico si falla alguna etapa.
- *
- * @warning Esta funcion debe llamarse antes de cualquier lectura del sensor.
- */
 esp_err_t mq135_init(void) {
-    memset(&init_config1, 0, sizeof(init_config1));
-    init_config1.unit_id = ADC_UNIT_1;
-    init_config1.ulp_mode = ADC_ULP_MODE_DISABLE;
-    esp_err_t ret = adc_oneshot_new_unit(&init_config1, &adc1_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: adc_oneshot_new_unit failed: %d -", ret);
-        return ret;
+
+    config.rzero_kohm      = MQ135_RZERO_KOHM;
+    config.rload_kohm      = MQ135_RLOAD_KOHM;
+    config.ema_alpha       = MQ135_EMA_ALPHA;
+    config.ema_value       = 0.0f;
+    config.ema_initialized = false;
+
+    /* ── Configurar ADC oneshot ── */
+    if (s_adc_handle == NULL) {
+        adc_oneshot_unit_init_cfg_t adc_cfg = {
+            .unit_id  = MQ135_ADC_UNIT,
+            .ulp_mode = ADC_ULP_MODE_DISABLE,
+        };
+        ESP_ERROR_CHECK(adc_oneshot_new_unit(&adc_cfg, &s_adc_handle));
     }
 
-    memset(&adc_chan, 0, sizeof(adc_chan));
-    adc_chan.atten = ADC_ATTEN_DB_12;
-    adc_chan.bitwidth = ADC_BITWIDTH_12;
-    ret = adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_6, &adc_chan);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: adc_oneshot_config_channel failed: %d -", ret);
-        return ret;
-    }
+    adc_oneshot_chan_cfg_t chan_cfg = {
+        .atten    = MQ135_ADC_ATTEN,
+        .bitwidth = MQ135_ADC_BITWIDTH,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle,
+                                               MQ135_ADC_CHANNEL,
+                                               &chan_cfg));
 
-    memset(&cali_config, 0, sizeof(cali_config));
-    cali_config.unit_id = ADC_UNIT_1;
-    cali_config.atten = ADC_ATTEN_DB_12;
-    cali_config.bitwidth = ADC_BITWIDTH_12;
-    ret = adc_cali_create_scheme_line_fitting(&cali_config, &cali_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: adc_cali_create_scheme_line_fitting failed: %d -", ret);
-        return ret;
-    }
+    /* ── Calibración ── */
+    s_cali_enable = adc_calibration_init(MQ135_ADC_UNIT,
+                                         MQ135_ADC_CHANNEL,
+                                         MQ135_ADC_ATTEN,
+                                         &s_cali_handle);
 
-    reset_ema();
-    runtime_R0 = CO2_R0_DEFAULT;
+    ESP_LOGI(TAG, "MQ135 inicializado – GPIO34 / ADC1_CH6");
+    ESP_LOGI(TAG, "R0=%.2f kΩ  RL=%.2f kΩ  EMA α=%.2f",
+             config.rzero_kohm, config.rload_kohm, config.ema_alpha);
+
     return ESP_OK;
 }
 
 
-/**
- * @brief Lee la concentracion de CO2 en PPM con correccion ambiental.
- *
- * Esta es la funcion principal de lectura del sensor. Obtiene la resistencia
- * corregida del sensor y la convierte a concentracion de CO2 usando el
- * valor R0 actual (calibrado o por defecto).
- *
- * @param temperature_c Temperatura ambiente actual en grados Celsius.
- * @param humidity_percent Humedad relativa actual en porcentaje (0-100).
- * @return Concentracion de CO2 en partes por millon (ppm).
- * @retval -1.0f Si hay error de lectura o valor invalido.
- */
-float mq135_read_ppm(float temperature_c, float humidity_percent) {
-    float rs_corr = mq135_get_corrected_resistance(temperature_c, humidity_percent);
-    if (rs_corr <= 0 || !isfinite(rs_corr)) return -1.0f;
-    return mq135_calculate_ppm(rs_corr, runtime_R0);
+static float mq135_raw_to_voltage(int raw) {
+    if (s_cali_enable && s_cali_handle != NULL) {
+        int mv = 0;
+        adc_cali_raw_to_voltage(s_cali_handle, raw, &mv);
+        return (float)mv / 1000.0f;
+    }
+    // Conversión lineal sin calibración (aproximada)
+    return ((float)raw / 4095.0f) * MQ135_VCC;
 }
 
 
-/**
- * @brief Imprime informacion de diagnostico del sensor MQ135.
- *
- * Funcion util para debugging y verificacion del hardware. Muestra lecturas
- * raw del ADC, voltajes, estimaciones de Rs con diferentes valores de RLOAD,
- * y el estado actual de calibracion.
- *
- * @param temperature_c Temperatura ambiente para calculos de correccion (°C)
- * @param humidity_percent Humedad relativa para calculos de correccion (%)
- */
-void mq135_print_diagnostics(float temperature_c, float humidity_percent) {
-    if (!adc1_handle || !cali_handle) {
-        ESP_LOGW(TAG, "- ERROR: ADC no inicializado -");
-        return;
+// Rs = RL * (Vcc - Vout) / Vout
+static float mq135_voltage_to_rs(float voltage_v, float rload_kohm) {
+    if (voltage_v <= 0.0f) {
+        return -1.0f;
+    }
+    return rload_kohm * (MQ135_VCC - voltage_v) / voltage_v;
+}
+
+
+// PPM = PARA * (Rs/R0)^PARB
+static float mq135_rs_to_ppm(float rs_kohm, float r0_kohm) {
+    if (rs_kohm <= 0.0f || r0_kohm <= 0.0f) {
+        return -1.0f;
+    }
+    float ratio = rs_kohm / r0_kohm;
+    return MQ135_PARA * powf(ratio, MQ135_PARB);
+}
+
+
+
+// Pipeline: muestras raw → mediana → voltaje → Rs → ppm → EMA
+static esp_err_t mq135_read_co2_ppm(float *ppm_out) {
+
+    // Tomar MQ135_MEDIAN_WINDOW muestras raw
+    int raw_buf[MQ135_MEDIAN_WINDOW];
+    for (int i = 0; i < MQ135_MEDIAN_WINDOW; i++) {
+        ESP_ERROR_CHECK(adc_oneshot_read(s_adc_handle,
+                                        MQ135_ADC_CHANNEL,
+                                        &raw_buf[i]));
+        /*
+         * Pequeña espera entre muestras para que el ADC SAR
+         * se estabilice entre conversiones consecutivas
+         */
+        esp_rom_delay_us(200);
     }
 
-    uint32_t adc_sum = 0;
-    int samples = 10;
-    for (int i = 0; i < samples; i++) {
-        int raw;
-        adc_oneshot_read(adc1_handle, ADC_CHANNEL_6, &raw);
-        adc_sum += raw;
-        vTaskDelay(pdMS_TO_TICKS(100));
+    // Filtro de mediana (elimina outliers / ruido impulsivo)
+    int sorted[MQ135_MEDIAN_WINDOW];
+    memcpy(sorted, raw_buf, sizeof(raw_buf));
+    insertion_sort(sorted, MQ135_MEDIAN_WINDOW);
+    int median_raw = sorted[MQ135_MEDIAN_WINDOW / 2];
+
+    // Convertir a voltaje
+    float voltage = mq135_raw_to_voltage(median_raw);
+
+    if (voltage <= 0.01f || voltage >= MQ135_VCC) {
+        ESP_LOGW(TAG, "Voltaje fuera de rango: %.3f V – verifica el cableado", voltage);
+        return ESP_ERR_INVALID_STATE;
     }
-    int adc_avg = adc_sum / samples;
-    int voltage_mv = 0;
-    if (adc_cali_raw_to_voltage(cali_handle, adc_avg, &voltage_mv) != ESP_OK) {
-        ESP_LOGW(TAG, "- WARNING: No se pudo convertir raw->mV -");
-        return;
+
+    // Calcular Rs
+    float rs = mq135_voltage_to_rs(voltage, config.rload_kohm);
+    if (rs < 0.0f) {
+        ESP_LOGW(TAG, "Rs inválido (voltaje=%.3f V)", voltage);
+        return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGI(TAG, "- INFO: ADC raw avg: %d -", adc_avg);
-    ESP_LOGI(TAG, "- INFO: Voltage: %d mV (%.3f V) -", voltage_mv, voltage_mv / 1000.0f);
+    // Convertir a PPM
+    float ppm_raw = mq135_rs_to_ppm(rs, config.rzero_kohm);
 
-    float vout = (float)voltage_mv / 1000.0f;
-    float rs10 = 10000.0f * (MQ135_VCC - vout) / vout;
-    float rs15 = 15000.0f * (MQ135_VCC - vout) / vout;
-    float rs20 = 20000.0f * (MQ135_VCC - vout) / vout;
+    // Clamp al rango físico razonable
+    if (ppm_raw < MQ135_PPM_MIN) ppm_raw = MQ135_PPM_MIN;
+    if (ppm_raw > MQ135_PPM_MAX) ppm_raw = MQ135_PPM_MAX;
 
-    ESP_LOGI(TAG, "- INFO: Rs estimadas con distintos RLOAD: 10k=%.1fΩ, 15k=%.1fΩ, 20k=%.1fΩ -", rs10, rs15, rs20);
+    // Filtro EMA
+    if (!config.ema_initialized) {
+        config.ema_value = ppm_raw;
+        config.ema_initialized = true;
+    } else {
+        config.ema_value = config.ema_alpha * ppm_raw
+                       + (1.0f - config.ema_alpha) * config.ema_value;
+    }
 
-    float rs_raw = mq135_get_resistance();
-    float rs_corr = mq135_get_corrected_resistance(temperature_c, humidity_percent);
-    ESP_LOGI(TAG, "- INFO: Rs raw: %.3f Ω, Rs corregida: %.3f Ω -", rs_raw, rs_corr);
-    ESP_LOGI(TAG, "- INFO: R0 runtime: %.3f Ω (macro por defecto: %.3f Ω) -", runtime_R0, (double)CO2_R0_DEFAULT);
+    *ppm_out = config.ema_value;
+
+    ESP_LOGD(TAG,
+             "raw_med=%d  V=%.3fV  Rs=%.2fkΩ  ppm_inst=%.1f  ppm_ema=%.1f",
+             median_raw, voltage, rs, ppm_raw, config.ema_value);
+
+    return ESP_OK;
 }
 
 
 static void alert_analysis(data_t *data, const bool get_data) {
 
     if (get_data) {
-        const float read_val = mq135_read_ppm((float)10, (float)20);
-        if (read_val < 0.0f) return; // Evita envenenar el EMA en modo Low Consumption
-        data->mq135.co2ppm = read_val;
+        float ppm;
+        const esp_err_t err  = mq135_read_co2_ppm(&ppm);
+        if (err != ESP_OK) return;
+        if (ppm < 350.0f) return; // Evita envenenar el EMA en modo Low Consumption
+        data->mq135.co2ppm = ppm;
     }
     const float ppm_actual = data->mq135.co2ppm;
     const float error_actual = ppm_actual - data->ema_ppm;
@@ -373,14 +311,17 @@ static void alert_analysis(data_t *data, const bool get_data) {
 }
 
 
-void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, data_t *data) {
-    const float read_val = mq135_read_ppm((float)10, (float)20);
+static void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, data_t *data) {
+    float ppm;
     bool flag_error = false;
+    const esp_err_t err = mq135_read_co2_ppm(&ppm);
 
-    if (read_val < 0.0f) {
+    if (err != ESP_OK) flag_error = true;
+
+    if (ppm < 350.0f) {
         flag_error = true;
     } else {
-        data->mq135.co2ppm = read_val;
+        data->mq135.co2ppm = ppm;
     }
 
     if (*counter >= slices) {
@@ -388,7 +329,7 @@ void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, d
         if (flag_error) {
             // Mandamos un dato vacío para no bloquear el ALL_DATA_READY
             const mq135_data_t err_data = {0};
-            xQueueSend(queues.mq135_buffer, &err_data, portMAX_DELAY);
+            xQueueSend(queues.mq135_buffer, &err_data, pdMS_TO_TICKS(100));
         } else {
             xQueueSend(queues.mq135_buffer, &data->mq135, pdMS_TO_TICKS(100));
         }
@@ -397,13 +338,13 @@ void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, d
     }
 
     if (flag_error) {
-        return; // Evita envenenar el EMA con -1.0f
+        return; // Evita envenenar el EMA con valores erroneos
     }
     alert_analysis(data, false);
 }
 
 
-void init_data(data_t *data) {
+static void init_data(data_t *data) {
     data->state_mq135 = INIT_MQ135;
     data->counter = 0;
     data->ema_ppm = 440.0f;

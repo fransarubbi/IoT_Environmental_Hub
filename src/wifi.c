@@ -143,6 +143,9 @@ esp_err_t wifi_init(void) {
     ret = esp_wifi_start();
     if (ret != ESP_OK) return ret;
 
+    ret = esp_wifi_set_max_tx_power(20);
+    if (ret != ESP_OK) return ret;
+
     ret = wifi_wait_for_connection();
     if (ret != ESP_OK) return ret;
 

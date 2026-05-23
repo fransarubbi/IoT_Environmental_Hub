@@ -4,11 +4,11 @@
 #include "esp_log.h"
 #include <esp_mac.h>
 #include <esp_timer.h>
-#include "certs/ca_crt.h"
-#include "certs/client1_crt.h"
-#include "certs/client1_key.h"
 #include "Healthscore/healthscore.h"
 #include "System/system.h"
+#include "certs/root_cert.h"
+#include "certs/hub_cert.h"
+#include "certs/hub_key.h"
 
 
 typedef struct {
@@ -238,11 +238,11 @@ esp_err_t mqtt_init(void) {
     if (ret == ESP_OK) {
         settings_set_node_mac(mac_addr);
         mqtt.config.broker.address.uri = mqtt_uri;   // Establecer la URI del broker
-        mqtt.config.broker.verification.certificate = (const char *)ca_crt;  // Certificado CA
+        mqtt.config.broker.verification.certificate = (const char *)root_crt;  // Certificado CA
         mqtt.config.buffer.size = 1024;           // Tamaño del buffer de salida
         mqtt.config.buffer.out_size = 1024;       // Tamaño del buffer de envío
-        mqtt.config.credentials.authentication.certificate = (const char *)client1_crt;  // Certificado del cliente
-        mqtt.config.credentials.authentication.key = (const char *)client1_key;   // Clave para mTLS
+        mqtt.config.credentials.authentication.certificate = (const char *)hub_crt;  // Certificado del cliente
+        mqtt.config.credentials.authentication.key = (const char *)hub_key;   // Clave para mTLS
         mqtt.config.credentials.client_id = mac_addr;    // ID (la MAC de la ESP32)
         mqtt.config.network.disable_auto_reconnect = false;   // Reconectar automaticamente si se pierde conexion
         mqtt.config.session.keepalive = 60;     // Mantener activa la conexion cada 60 seg cuando hay inactividad

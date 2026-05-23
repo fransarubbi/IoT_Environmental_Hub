@@ -11,7 +11,7 @@ app_task_handle_t task_handle;
 void app_main(void) {
 
     esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = 20000,      // 20 segundos
+        .timeout_ms = 25000,      // 25 segundos
         .idle_core_mask = (1 << 0) | (1 << 1),  // Vigilar ambos núcleos
         .trigger_panic = true,    // Reiniciar si se bloquea
     };
