@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "Fsm/fsm.h"
 #include "System/system.h"
+#include "Setting/settings.h"
 
 
 static timers_t timers;
@@ -70,7 +71,7 @@ static bool save_handle_timer(const timer_types_t type, const esp_timer_handle_t
  */
 void timer_generic_callback(void *arg) {
 
-    const timer_types_t timer = (timer_types_t)(uint64_t)arg;
+    const timer_types_t timer = (timer_types_t)(uintptr_t)arg;
 
     switch (timer) {
         case HEARTBEAT_NORMAL_TIMER: {
@@ -135,7 +136,7 @@ void init_timer(const timer_types_t type) {
 
     switch (type) {
         case HEARTBEAT_NORMAL_TIMER: {
-            timeout = TIMEOUT_HEARTBEAT_NORMAL;
+            timeout = settings_get_node_timeout_heartbeat_normal_mode();
             periodic = true;
             const esp_timer_create_args_t timer_normal = {
                 .callback = &timer_generic_callback,
@@ -148,7 +149,7 @@ void init_timer(const timer_types_t type) {
             break;
         }
         case HEARTBEAT_BALANCE_MODE_TIMER: {
-            timeout = TIMEOUT_HEARTBEAT_BALANCE_MODE;
+            timeout = settings_get_node_timeout_heartbeat_balance_mode();
             periodic = true;
             const esp_timer_create_args_t timer_balance_mode = {
                 .callback = &timer_generic_callback,
@@ -161,7 +162,7 @@ void init_timer(const timer_types_t type) {
             break;
         }
         case HEARTBEAT_SAFE_MODE_TIMER: {
-            timeout = TIMEOUT_HEARTBEAT_SAFE_MODE;
+            timeout = settings_get_node_timeout_heartbeat_safe_mode();
             periodic = true;
             const esp_timer_create_args_t timer_safe_mode = {
                 .callback = &timer_generic_callback,

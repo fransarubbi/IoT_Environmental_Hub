@@ -9,6 +9,7 @@ cmake-build-*/
 .pio/libdeps/
 
 .vscode/
+./certs
 
 .DS_Store
 Thumbs.db

@@ -14,10 +14,10 @@
 static void get_formated_data(stats_monitor_t *stats) {
     multi_heap_info_t info;
     heap_caps_get_info(&info, MALLOC_CAP_8BIT);
-    stats->memory.mem_free = esp_get_free_heap_size()/4;
-    stats->memory.mem_free_hm = esp_get_minimum_free_heap_size()/4;
-    stats->memory.mem_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)/4;
-    stats->memory.mem_free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL)/4;
+    stats->memory.mem_free = esp_get_free_heap_size();
+    stats->memory.mem_free_hm = esp_get_minimum_free_heap_size();
+    stats->memory.mem_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    stats->memory.mem_free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     stats->stack.collector = uxTaskGetStackHighWaterMark(task_handle.data_ct_handle);
     stats->stack.publisher = uxTaskGetStackHighWaterMark(task_handle.data_pt_handle);
     stats->stack.ky037 = uxTaskGetStackHighWaterMark(task_handle.ky037_handle);

@@ -8,7 +8,9 @@
 
 
 /* ---- Configuraciones del sistema ---- */
-#define SETTINGS_UART_PORT_NUM        UART_NUM_0
+#define SETTINGS_UART_PORT_NUM        UART_NUM_2
+#define SETTINGS_UART_TX_PIN          GPIO_NUM_17
+#define SETTINGS_UART_RX_PIN          GPIO_NUM_16
 #define SETTINGS_UART_BAUD_RATE       115200
 #define SETTINGS_BUFFER_SIZE          256
 #define MQTTS_PREFIX                  "mqtts://"
@@ -44,6 +46,9 @@
 #define CMD_SET_SAMPLE               "SAMPLE"
 #define CMD_SET_ENERGY_MODE          "ENERGY"
 #define CMD_DELETE_LINKAGE_FLAG      "DELETE_LINKAGE"
+#define CMD_SET_HEARTBEAT_BM         "HEARTBEAT_BALANCE"
+#define CMD_SET_HEARTBEAT_N          "HEARTBEAT_NORMAL"
+#define CMD_SET_HEARTBEAT_SM         "HEARTBEAT_SAFE"
 #define CMD_SHOW_CONFIG              "SHOW"
 #define CMD_EXIT                     "EXIT"
 #define CMD_CHANGE                   "Y"
@@ -73,6 +78,9 @@ typedef struct {
         char device_name[DEVICE_NAME];
         atomic_uint_fast32_t sample_rate;
         _Atomic energy_mode_t energy_mode;
+        atomic_uint_fast32_t timeout_heartbeat_balance_mode;
+        atomic_uint_fast32_t timeout_heartbeat_normal_mode;
+        atomic_uint_fast32_t timeout_heartbeat_safe_mode;
     } node;
     struct {
         char id_network[ID_NETWORK];
@@ -80,6 +88,10 @@ typedef struct {
         atomic_uint_fast32_t balance_epoch;
         char url_https[URL_HTTPS];
         uint8_t linkage_flag;
+        struct {
+            atomic_uint_fast32_t id;
+            bool sending;
+        } message_id;
     } network;
     struct {
         uint8_t ssid[WIFI_SSID];
@@ -138,16 +150,23 @@ void settings_empty_network(void);
 void settings_set_balance_epoch(uint32_t bal);
 void settings_set_wifi_ip(const char* ip);
 void settings_set_linkage_ok(void);
+void settings_set_message_id(uint32_t bal);
+void settings_set_message_id_sending(bool flag);
 
 // Getters
 void settings_get_node_mac(char* dest, size_t dest_size);
 void settings_get_node_device_name(char* dest, size_t dest_size);
 uint32_t settings_get_node_sample_rate(void);
 energy_mode_t settings_get_node_energy_mode(void);
+uint32_t settings_get_node_timeout_heartbeat_balance_mode(void);
+uint32_t settings_get_node_timeout_heartbeat_normal_mode(void);
+uint32_t settings_get_node_timeout_heartbeat_safe_mode(void);
 void settings_get_network(char* dest, size_t dest_size);
 void settings_get_network_id_edge(char* dest, size_t dest_size);
 uint8_t settings_get_network_linkage_flag(void);
 uint32_t settings_get_balance_epoch(void);
+uint32_t settings_get_message_id(void);
+bool settings_get_message_id_sending(void);
 void settings_get_url_https(char* dest, size_t dest_size);
 void settings_get_wifi_ssid(uint8_t* dest, size_t dest_size);
 uint8_t settings_get_wifi_ssid_len(void);
