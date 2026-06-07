@@ -118,7 +118,7 @@ void ky037_task(void *pvParameters) {
                     if (xQueueSend(queues.ky037_buffer, &ky037_msg, pdMS_TO_TICKS(100)) == pdTRUE) {
                         xEventGroupSetBits(event_group.collector_events, KY037_DATA_READY);
                     } else {
-                        ESP_LOGW(TAG, "Cola llena, dato descartado");
+                        ESP_LOGW(TAG, "Warning: cola llena, dato descartado");
                     }
 
                 } else {

@@ -7,7 +7,7 @@
 #include "System/system.h"
 
 
-static const char *TAG = "LINKAGE";
+static const char *TAG = "Linkage";
 
 
 /**
@@ -31,7 +31,7 @@ void linkage_task(void *pvParameter) {
         xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
 
         if (notification & NOTIFY_CMD_START) {
-            ESP_LOGI(TAG, "- INFO: Tarea de envio de mensajes activa -");
+            ESP_LOGI(TAG, "Info: tarea de envío de solicitud de linkage activa");
             bool running = true;
 
             while (running) {
@@ -39,11 +39,11 @@ void linkage_task(void *pvParameter) {
 
                 if (generate_message_linkage_request(&packet)) {
                     if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW(TAG, "- WARNING: Cola llena, descartando paquete -");
+                        ESP_LOGW(TAG, "Warning: cola llena, descartando paquete");
                         free(packet.payload);
                     }
                 } else {
-                    ESP_LOGE(TAG, "- ERROR: Problema en RAM al generar paquete -");
+                    ESP_LOGE(TAG, "Error: problema en RAM al generar paquete");
                 }
 
                 uint32_t signal = 0;
@@ -51,7 +51,7 @@ void linkage_task(void *pvParameter) {
 
                 if (result == pdTRUE) {
                     if (signal & NOTIFY_CMD_STOP) {
-                        ESP_LOGI(TAG, "- INFO: Orden de PAUSA recibida. Deteniendo envíos -");
+                        ESP_LOGI(TAG, "Info: orden de pausa recibida. Deteniendo envíos");
                         running = false;
                     }
                 }

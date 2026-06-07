@@ -12,7 +12,7 @@ void app_main(void) {
 
     esp_task_wdt_config_t twdt_config = {
         .timeout_ms = 25000,      // 25 segundos
-        .idle_core_mask = (1 << 0) | (1 << 1),  // Vigilar ambos núcleos
+        .idle_core_mask = (1 << 0) | (1 << 1),  // Vigilar ambos nucleos
         .trigger_panic = true,    // Reiniciar si se bloquea
     };
     ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&twdt_config));

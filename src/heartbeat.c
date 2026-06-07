@@ -19,6 +19,9 @@ typedef struct {
 } state_heartbeat;
 
 
+static const char *TAG = "Heartbeat";
+
+
 /**
  * @brief Lógica central de gestión de vidas.
  *
@@ -41,15 +44,15 @@ static void check_beat(state_heartbeat *heartbeat, const uint32_t heart) {
         if (heartbeat->count_beat > 0) {
             heartbeat->count_beat -= 1;
         }
-        ESP_LOGW("HEARTBEAT", "Timeout detectado. Vidas restantes: %d", heartbeat->count_beat);
+        ESP_LOGW(TAG, "Warning: timeout detectado. Vidas restantes: %d", heartbeat->count_beat);
     }
     else if (heart == HEARTBEAT_INCOMING) {
         heartbeat->count_beat = 2;
-        ESP_LOGI("HEARTBEAT", "- INFO: Latido recibido. Vidas restauradas -");
+        ESP_LOGI(TAG, "Info: latido recibido. Vidas restauradas");
     }
 
     if (heartbeat->count_beat == 0) {
-        ESP_LOGE("HEARTBEAT", "- FATAL: Enlace perdido (0 vidas). Notificando a FSM -");
+        ESP_LOGE(TAG, "Error: enlace perdido (0 vidas). Notificando a FSM");
         const uint32_t flag = TIMEOUT_HEARTBEAT;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
 

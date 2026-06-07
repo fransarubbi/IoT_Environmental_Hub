@@ -13,8 +13,6 @@
 #include "System/system.h"
 
 
-static const char *TAG = "PARSER";
-
 
 /**
  * @brief Estructura interna para almacenar en caché los tópicos del sistema.
@@ -81,7 +79,6 @@ void parser_task(void *pvParameter) {
 
             while (running) {
                 if (xQueueReceive(queues.parser, &to_parse, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    ESP_LOGI(TAG, "- INFO: Mensaje entrante para parsear -");
                     if (strcmp(to_parse.topic, topics.topic_state_normal) == 0) {
                         parse_message_state_normal(to_parse.payload, to_parse.len);
                     }

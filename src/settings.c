@@ -1,5 +1,4 @@
 #include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
 #include "Setting/settings.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -10,7 +9,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <driver/gpio.h>
-
+#include <stdarg.h>
 #include "nvs_flash.h"
 #include "esp_pm.h"
 #include "System/system.h"
@@ -24,9 +23,11 @@ settings_t settings;
 static const char *TAG = "Settings";
 static char uart_buffer[SETTINGS_BUFFER_SIZE];
 static SemaphoreHandle_t settings_mutex = NULL;
+static uint16_t flags = 0;
 
 
-/* ---- Helpers ---- */
+
+// ---- Helpers ----
 static void lock(void) {
     if (settings_mutex == NULL) {
         settings_mutex = xSemaphoreCreateMutex();
@@ -74,6 +75,22 @@ static void to_uppercase(char *str) {
     for (uint8_t i = 0; str[i] != '\0'; i++) {
         str[i] = (char)toupper((unsigned char)str[i]);
     }
+}
+
+
+// Función auxiliar para imprimir filas alineadas perfectamente
+static void uart_print_row(const char* color, const char* label, const char* format, ...) {
+    char value_str[40];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(value_str, sizeof(value_str), format, args);
+    va_end(args);
+
+    char line_buf[150];
+    // Inyectamos el color del borde (B_WHT), el color del texto (color) y el reseteo (T_RST)
+    snprintf(line_buf, sizeof(line_buf), "%s│ %s%-19s %s│%s %-30s %s│\r\n",
+             B_WHT, color, label, B_WHT, T_RST, value_str, B_WHT);
+    uart_send_text(line_buf);
 }
 
 
@@ -190,6 +207,18 @@ uint32_t settings_get_node_timeout_heartbeat_normal_mode(void) {
 uint32_t settings_get_node_timeout_heartbeat_safe_mode(void) {
     const uint32_t val = atomic_load(&settings.node.timeout_heartbeat_safe_mode);
     return val;
+}
+
+float settings_get_node_mq135_r0(void) {
+    return settings.node.mq135_r0;
+}
+
+float settings_get_node_mq135_alpha_ema(void) {
+    return settings.node.mq135_alpha_ema;
+}
+
+float settings_get_node_dht11_alpha_ema(void) {
+    return settings.node.dht11_alpha_ema;
 }
 
 void settings_get_wifi_ssid(uint8_t* dest, const size_t dest_size) {
@@ -352,6 +381,12 @@ void settings_get_mqtt_topic_ping(char* dest, const size_t dest_size) {
     unlock();
 }
 
+void settings_get_mqtt_topic_ping_ack(char* dest, const size_t dest_size) {
+    lock();
+    safe_string_copy(dest, settings.mqtt.topic_ping_ack, dest_size);
+    unlock();
+}
+
 void settings_get_mqtt_topic_empty_queue(char* dest, const size_t dest_size) {
     lock();
     safe_string_copy(dest, settings.mqtt.topic_empty_queue, dest_size);
@@ -414,7 +449,7 @@ static esp_err_t uart_config(void) {
     );
 
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error instalando driver UART");
+        ESP_LOGE(TAG, "Error: no se pudo instalar driver UART");
         return ret;
     }
 
@@ -424,7 +459,7 @@ static esp_err_t uart_config(void) {
     );
 
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error configurando UART");
+        ESP_LOGE(TAG, "Error: no se pudo configurar UART");
         return ret;
     }
 
@@ -437,7 +472,7 @@ static esp_err_t uart_config(void) {
     );
 
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error configurando pines UART");
+        ESP_LOGE(TAG, "Error: no se pudo configurar pines UART");
         return ret;
     }
 
@@ -454,32 +489,42 @@ static esp_err_t uart_config(void) {
  * @brief Muestra la ayuda de comandos.
  */
 static void show_help(void) {
-    uart_send_text("\r\n\n");
-    uart_send_text("| ====================================================================================== |\r\n");
-    uart_send_text("| ----------------- Puede usar mayusculas o minusculas, es indistinto! ----------------- |\r\n");
-    uart_send_text("| ================================ COMANDOS DISPONIBLES ================================ |\r\n");
-    uart_send_text("| W_SSID <ssid>                - Configura SSID WiFi                                     |\r\n");
-    uart_send_text("| W_PASS <password>            - Configura password WiFi                                 |\r\n");
-    uart_send_text("| M_URI <uri>                  - Configura uri MQTT                                      |\r\n");
-    uart_send_text("| NET <id_red>                 - Configura el id de la red a la que se conectara         |\r\n");
-    uart_send_text("| EDGE <id_edge>               - Configura el id del edge al que se conectara            |\r\n");
-    uart_send_text("| URL_BYPASS <url>             - Configura url para conexion bypass                      |\r\n");
-    uart_send_text("| NAME <name>                  - Configura nombre del dispositivo                        |\r\n");
-    uart_send_text("| SAMPLE <rate>                - Configura frecuencia de envio de datos                  |\r\n");
-    uart_send_text("| ENERGY <energy>              - Configura modo de energia                               |\r\n");
-    uart_send_text("| DELETE_LINKAGE               - Elimina el flag de linkage para una nueva conexion      |\r\n");
-    uart_send_text("| HEARTBEAT_BALANCE <time>     - Configura el tiempo de latidos en estado balance (seg)  |\r\n");
-    uart_send_text("| HEARTBEAT_NORMAL <time>      - Configura el tiempo de latidos en estado normal (seg)   |\r\n");
-    uart_send_text("| HEARTBEAT_SAFE <time>        - Configura el tiempo de latidos en estado safe (seg)     |\r\n");
-    uart_send_text("| SHOW                         - Muestra configuracion actual                            |\r\n");
-    uart_send_text("| EXIT                         - Salir                                                   |\r\n");
-    uart_send_text("| HELP                         - Muestra mensaje de ayuda                                |\r\n");
-    uart_send_text("| ====================================================================================== |\r\n");
-    uart_send_text("| Info: SAMPLE setea cada cuantos minutos se envian los datos                            |\r\n");
-    uart_send_text("| Info: ENERGY [0 = Bajo consumo, 1 = Balanceado, 2 = Performance]                       |\r\n");
-    uart_send_text("| Info: Debe ingresar el prefijo https:// obligatoriamente en la uri de BYPASS           |\r\n");
-    uart_send_text("| Info: Debe ingresar el prefijo mqtts:// obligatoriamente en la uri de MQTT             |\r\n");
-    uart_send_text("| ====================================================================================== |\r\n\r\n");
+    /* El compilador unirá todas estas partes en una sola cadena estática hiper rápida */
+    uart_send_text(
+        "\r\n" B_WHT
+        "┌──────────────────────────────────────────────────────────────────────────────────────────────┐\r\n"
+        "│" C_MAG "                                   COMANDOS DISPONIBLES                                       " B_WHT "│\r\n"
+        "├──────────────────────────────────────────────────────────────────────────────────────────────┤\r\n"
+        "│ " C_CYN "❖ CONFIGURACIÓN BÁSICA       " B_WHT "│                                                               │\r\n"
+        "├──────────────────────────────┼───────────────────────────────────────────────────────────────┤\r\n"
+        "│ " C_CYN "WIFI-SSID <ssid>             " B_WHT "│" T_RST " Configura el SSID del WiFi                                    " B_WHT "│\r\n"
+        "│ " C_CYN "WIFI-PASS <password>         " B_WHT "│" T_RST " Configura la contraseña del WiFi                              " B_WHT "│\r\n"
+        "│ " C_CYN "MQTT-URI <uri>               " B_WHT "│" T_RST " Configura la URI de MQTT (mqtts)                              " B_WHT "│\r\n"
+        "│ " C_CYN "NETWORK <id_red>             " B_WHT "│" T_RST " Configura el ID de la red a la que se conectará               " B_WHT "│\r\n"
+        "│ " C_CYN "EDGE-ID <id_edge>            " B_WHT "│" T_RST " Configura el ID del Edge al que se conectará                  " B_WHT "│\r\n"
+        "│ " C_CYN "URL-BYPASS <url>             " B_WHT "│" T_RST " Configura la URL para conexión Bypass (https)                 " B_WHT "│\r\n"
+        "│ " C_CYN "NAME-DEVICE <name>           " B_WHT "│" T_RST " Configura el nombre del dispositivo                           " B_WHT "│\r\n"
+        "│ " C_CYN "SAMPLE-TIME <time>           " B_WHT "│" T_RST " Configura la frecuencia de envío de datos (min)               " B_WHT "│\r\n"
+        "│ " C_CYN "ENERGY-MODE <energy>         " B_WHT "│" T_RST " Modo de energía [0 = Ahorro | 1 = Medio | 2 = Max]            " B_WHT "│\r\n"
+        "│ " C_CYN "DELETE-LINKAGE               " B_WHT "│" T_RST " Elimina el flag de linkage para una nueva conexión            " B_WHT "│\r\n"
+        "│ " C_CYN "HEARTBEAT-BALANCE <time>     " B_WHT "│" T_RST " Latidos recibidos en estado Balance (seg)                     " B_WHT "│\r\n"
+        "│ " C_CYN "HEARTBEAT-NORMAL <time>      " B_WHT "│" T_RST " Latidos recibidos en estado Normal (seg)                      " B_WHT "│\r\n"
+        "│ " C_CYN "HEARTBEAT-SAFE <time>        " B_WHT "│" T_RST " Latidos recibidos en estado Safe (seg)                        " B_WHT "│\r\n"
+        "├──────────────────────────────┼───────────────────────────────────────────────────────────────┤\r\n"
+        "│ " C_YEL "❖ CALIBRACIÓN DE SENSORES    " B_WHT "│                                                               │\r\n"
+        "├──────────────────────────────┼───────────────────────────────────────────────────────────────┤\r\n"
+        "│ " C_YEL "MQ135-R0 <resistance>        " B_WHT "│" T_RST " Configura la resistencia (kΩ) del sensor MQ135                " B_WHT "│\r\n"
+        "│ " C_YEL "EMA-ALPHA-MQ135 <alpha>      " B_WHT "│" T_RST " Configura el parámetro Alpha del filtro EMA del MQ135         " B_WHT "│\r\n"
+        "│ " C_YEL "EMA-ALPHA-DHT11 <alpha>      " B_WHT "│" T_RST " Configura el parámetro Alpha del filtro EMA del DHT11         " B_WHT "│\r\n"
+        "├──────────────────────────────┼───────────────────────────────────────────────────────────────┤\r\n"
+        "│ " C_GRN "❖ INTERFAZ                   " B_WHT "│                                                               │\r\n"
+        "├──────────────────────────────┼───────────────────────────────────────────────────────────────┤\r\n"
+        "│ " C_GRN "SHOW                         " B_WHT "│" T_RST " Muestra la configuración actual                               " B_WHT "│\r\n"
+        "│ " C_GRN "HELP                         " B_WHT "│" T_RST " Muestra este mensaje de ayuda                                 " B_WHT "│\r\n"
+        "│ " C_GRN "EXIT                         " B_WHT "│" T_RST " Salir del modo configuración                                  " B_WHT "│\r\n"
+        "└──────────────────────────────┴───────────────────────────────────────────────────────────────┘\r\n"
+        T_RST "\r\n" // Es crítico el reseteo final para no manchar de blanco los siguientes prints del ESP32
+    );
 }
 
 
@@ -487,40 +532,45 @@ static void show_help(void) {
  * @brief Muestra la configuracion actual.
  */
 void show_config(void) {
-    char temp_buffer[200];
-
-    uart_send_text("\r\n|============================================|\r\n");
-    uart_send_text("|=========== CONFIGURACION ACTUAL ===========|\r\n");
-    sprintf(temp_buffer, "| WiFi SSID:        %s\r\n", (const char*)settings.wifi.ssid);
-    uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| WiFi Contraseña:  %s\r\n", (const char*)settings.wifi.password);
-    uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| MQTT Uri:         %s\r\n", settings.mqtt.uri);
-    uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Red:              %s\r\n", settings.network.id_network);
-    uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Edge:             %s\r\n", settings.network.id_edge);
-    uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Bypass URL:       %s\r\n", settings.network.url_https);
-    uart_send_text(temp_buffer);
-    sprintf(temp_buffer, "| Nombre Disp:      %s\r\n", settings.node.device_name);
-    uart_send_text(temp_buffer);
     const uint32_t tbm = atomic_load(&settings.node.timeout_heartbeat_balance_mode);
-    sprintf(temp_buffer, "| Heartbeat Balance:   %lu\r\n", tbm);
-    uart_send_text(temp_buffer);
     const uint32_t tnm = atomic_load(&settings.node.timeout_heartbeat_normal_mode);
-    sprintf(temp_buffer, "| Heartbeat Normal:   %lu\r\n", tnm);
-    uart_send_text(temp_buffer);
     const uint32_t tsm = atomic_load(&settings.node.timeout_heartbeat_safe_mode);
-    sprintf(temp_buffer, "| Heartbeat Safe:   %lu\r\n", tsm);
-    uart_send_text(temp_buffer);
     const uint32_t sample = atomic_load(&settings.node.sample_rate);
-    sprintf(temp_buffer, "| Sample Rate:      %lu\r\n", sample);
-    uart_send_text(temp_buffer);
     const energy_mode_t energy = atomic_load(&settings.node.energy_mode);
-    sprintf(temp_buffer, "| Modo Energia:     %u\r\n", energy);
-    uart_send_text(temp_buffer);
-    uart_send_text("|============================================|\r\n\r\n");
+
+    const char* energy_str = (energy == 0) ? "Bajo Consumo" :
+                             (energy == 1) ? "Balanceado" : "Rendimiento";
+
+    uart_send_text("\r\n" B_WHT "┌─────────────────────┬────────────────────────────────┐\r\n");
+    uart_send_text("│" C_MAG " PARAMETRO           " B_WHT "│" C_MAG " VALOR ACTUAL                   " B_WHT "│\r\n");
+    uart_send_text("├─────────────────────┼────────────────────────────────┤\r\n");
+
+    uart_print_row(C_CYN, "WiFi SSID", "%s", (const char*)settings.wifi.ssid);
+    uart_print_row(C_CYN, "WiFi Password", "%s", (const char*)settings.wifi.password);
+    uart_print_row(C_CYN, "MQTT URI", "%s", settings.mqtt.uri);
+
+    uart_send_text(B_WHT "├─────────────────────┼────────────────────────────────┤\r\n");
+
+    uart_print_row(C_CYN, "Red ID", "%s", settings.network.id_network);
+    uart_print_row(C_CYN, "Edge ID", "%s", settings.network.id_edge);
+    uart_print_row(C_CYN, "Bypass URL", "%s", settings.network.url_https);
+    uart_print_row(C_CYN, "Nombre Dispositivo", "%s", settings.node.device_name);
+
+    uart_send_text(B_WHT "├─────────────────────┼────────────────────────────────┤\r\n");
+
+    uart_print_row(C_YEL, "Heartbeat Balance", "%lu s", tbm/1000000);
+    uart_print_row(C_YEL, "Heartbeat Normal", "%lu s", tnm/1000000);
+    uart_print_row(C_YEL, "Heartbeat Safe", "%lu s", tsm/1000000);
+
+    uart_send_text(B_WHT "├─────────────────────┼────────────────────────────────┤\r\n");
+
+    uart_print_row(C_GRN, "Sample Rate", "%lu min", sample);
+    uart_print_row(C_GRN, "Modo de Energia", "%s", energy_str);
+    uart_print_row(C_GRN, "MQ135 R0", "%.2f kOhm", settings.node.mq135_r0);
+    uart_print_row(C_GRN, "MQ135 Alpha EMA", "%.2f", settings.node.mq135_alpha_ema);
+    uart_print_row(C_GRN, "DHT11 Alpha EMA", "%.2f", settings.node.dht11_alpha_ema);
+
+    uart_send_text(B_WHT "└─────────────────────┴────────────────────────────────┘\r\n" T_RST "\r\n");
 }
 
 
@@ -528,17 +578,19 @@ void show_config(void) {
  * @brief Muestra el menu principal de configuracion.
  */
 static void show_menu(void) {
-    uart_send_text("\r\n");
-    uart_send_text("| ============================================================= |\r\n");
-    uart_send_text("|                       MODO CONFIGURACION                      |\r\n");
-    uart_send_text("| ============================================================= |\r\n");
-    uart_send_text("| Use 'HELP' para ver comandos disponibles                      |\r\n");
-    uart_send_text("| Use 'SHOW' para ver la configuracion actual                   |\r\n");
-    uart_send_text("| Use 'EXIT' para salir                                         |\r\n");
-    uart_send_text("| ============================================================= |\r\n");
-    uart_send_text("| Info: Los cambios se guardan automaticamente. Para salir      |\r\n");
-    uart_send_text("| del modo configuracion deben estar todos los campos completos |\r\n");
-    uart_send_text("| ============================================================= |\r\n\r\n");
+    uart_send_text(
+        "\r\n"
+        "┌──────────────────────────────────────────────────────────────┐\r\n"
+        "│\033[1;36m                     MODO DE CONFIGURACIÓN                    \033[0m│\r\n"
+        "├──────────────────────────────────────────────────────────────┤\r\n"
+        "│ Use 'HELP' para ver comandos disponibles                     │\r\n"
+        "│ Use 'SHOW' para ver la configuración actual                  │\r\n"
+        "│ Use 'EXIT' para salir                                        │\r\n"
+        "├──────────────────────────────────────────────────────────────┤\r\n"
+        "│\033[1;33m Info: Los cambios se guardan automáticamente. Para salir del \033[0m│\r\n"
+        "│\033[1;33m modo configuración deben estar todos los campos completos.   \033[0m│\r\n"
+        "└──────────────────────────────────────────────────────────────┘\r\n\r\n"
+    );
 }
 
 
@@ -546,14 +598,19 @@ static void show_menu(void) {
  * @brief Muestra el menu de consulta para cambiar o no una configuracion existente.
  */
 static void show_menu_change_settings(void) {
-    uart_send_text("\r\n");
-    uart_send_text("| ========================================================== |\r\n");
-    uart_send_text("|      Se ha detectado una configuracion guardada en NVS     |\r\n");
-    uart_send_text("|     ¿Desea cambiar algun atributo de la configuracion?     |\r\n");
-    uart_send_text("|  Tiene 20 seg para responder. Por omision se considera 'n' |\r\n");
-    uart_send_text("| ========================================================== |\r\n");
-    uart_send_text(" > Ingrese y para cambiar la configuracion\r\n");
-    uart_send_text(" > Ingrese n para usar la configuracion actual\r\n");
+    uart_send_text(
+        "\r\n" B_WHT
+        "┌────────────────────────────────────────────────────────────┐\r\n"
+        "│" C_GRN "      Se ha detectado una configuracion guardada en NVS     " B_WHT "│\r\n"
+        "├────────────────────────────────────────────────────────────┤\r\n"
+        "│" T_RST " ¿Desea cambiar algun atributo de la configuracion?         " B_WHT "│\r\n"
+        "│" C_MAG " Tiene 20 seg para responder. Por omision se asume 'n'.     " B_WHT "│\r\n"
+        "├────────────────────────────────────────────────────────────┤\r\n"
+        "│" T_RST "  > Ingrese '" C_YEL "y" T_RST "' para cambiar la configuracion               " B_WHT "│\r\n"
+        "│" T_RST "  > Ingrese '" C_YEL "n" T_RST "' para usar la configuracion actual           " B_WHT "│\r\n"
+        "└────────────────────────────────────────────────────────────┘\r\n"
+        T_RST " > "
+    );
 }
 
 
@@ -562,22 +619,7 @@ static void show_menu_change_settings(void) {
  * @return bool  Devuelve true cuando la configuracion esta completa. Sino retorna false.
  */
 static bool setting_is_device_configured(void) {
-    const uint8_t wifi_ssid_len = atomic_load(&settings.wifi.ssid_len);
-    const uint8_t wifi_pass_len = atomic_load(&settings.wifi.pass_len);
-    const uint32_t sample = atomic_load(&settings.node.sample_rate);
-    const energy_mode_t energy = atomic_load(&settings.node.energy_mode);
-    const uint32_t tbm = atomic_load(&settings.node.timeout_heartbeat_balance_mode);
-    const uint32_t tn = atomic_load(&settings.node.timeout_heartbeat_normal_mode);
-    const uint32_t tsm = atomic_load(&settings.node.timeout_heartbeat_safe_mode);
-
-    if (wifi_ssid_len > 0 && wifi_pass_len > 0
-        && strlen(settings.mqtt.uri) > 0 && strlen(settings.node.device_name) > 0
-        && strlen(settings.network.id_network) > 0 && strlen(settings.network.id_edge) > 0
-        && strlen(settings.network.url_https) > 0 && sample > 0 &&
-        (energy == 0 || energy == 1 || energy == 2)
-        && tbm > 0 && tn > 0 && tsm > 0) {
-        return true;
-        }
+    if (flags == FLAG_OK) return true;
     return false;
 }
 
@@ -664,7 +706,7 @@ static bool setting_load_from_nvs(void) {
  * @return bool  Devuelve true unicamente cuando el comando ingresado fue EXIT. Esto finaliza la configuracion
  * cuando todos los campos estan completos. Si algun campo esta vacio, retorna false como los demas comandos.
  */
-static bool process_command(const char *command) {
+static bool process_command(const char *command, bool flag_process) {
     char cmd[32];
     char param[100];
     char *endptr;
@@ -673,7 +715,7 @@ static bool process_command(const char *command) {
     int parsed = sscanf(command, "%31s %99[^\n]", cmd, param);
 
     if (parsed < 1) {
-        uart_send_text("- ERROR: Comando invalido. Use HELP para ver los comandos disponibles -\r\n");
+        uart_send_text("Error: comando inválido. Use HELP para ver los comandos disponibles\r\n");
         return false;
     }
 
@@ -692,126 +734,137 @@ static bool process_command(const char *command) {
 
     if (strcmp(cmd, CMD_SET_WIFI_SSID) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <SSID> -\r\n");
+            uart_send_text("Error: falta parametro <SSID>\r\n");
             return false;
         }
         safe_strcpy((char*)settings.wifi.ssid, param, sizeof(settings.wifi.ssid));
         const uint8_t len = strlen((char *)settings.wifi.ssid);
         atomic_store(&settings.wifi.ssid_len, len);
-        uart_send_text("- INFO: SSID configurado correctamente -\r\n");
+        flags |= FLAG_WIFI_SSID_OK;
+        uart_send_text("Info: SSID configurado correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_WIFI_PASS) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <password> -\r\n");
+            uart_send_text("Error: falta parametro <password>\r\n");
             return false;
         }
         safe_strcpy((char*)settings.wifi.password, param, sizeof(settings.wifi.password));
         const uint8_t len = strlen((char *)settings.wifi.password);
         atomic_store(&settings.wifi.pass_len, len);
-        uart_send_text("- INFO: Password WiFi configurado correctamente -\r\n");
+        flags |= FLAG_WIFI_PASS_OK;
+        uart_send_text("Info: password WiFi configurado correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_MQTT_URI) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <uri> -\r\n");
+            uart_send_text("Error: falta parametro <uri>\r\n");
             return false;
         }
         // Verificar el prefijo de seguridad MQTTS
         if (strncmp(param, MQTTS_PREFIX, MQTTS_PREFIX_LEN) != 0) {
-            uart_send_text("- ERROR: MQTT uri erroneo. Falta mqtts:// como primer parametro -\r\n");
+            uart_send_text("Error: MQTT uri erroneo. Falta mqtts:// como primer parametro\r\n");
             return false;
         }
         safe_strcpy(settings.mqtt.uri, param, sizeof(settings.mqtt.uri));
-        uart_send_text("- INFO: MQTT uri configurado correctamente -\r\n");
+        flags |= FLAG_MQTT_URI_OK;
+        uart_send_text("Info: MQTT uri configurado correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_NETWORK) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <id_network> -\r\n");
+            uart_send_text("Error: falta parametro <id_network>\r\n");
             return false;
         }
         safe_strcpy(settings.network.id_network, param, sizeof(settings.network.id_network));
-        uart_send_text("- INFO: Red configurada correctamente -\r\n");
+        flags |= FLAG_NETWORK_OK;
+        uart_send_text("Info: red configurada correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_EDGE) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <id_edge> -\r\n");
+            uart_send_text("Error: falta parametro <id_edge>\r\n");
             return false;
         }
         safe_strcpy(settings.network.id_edge, param, sizeof(settings.network.id_edge));
-        uart_send_text("- INFO: Edge configurado correctamente -\r\n");
+        flags |= FLAG_EDGE_OK;
+        uart_send_text("Info: edge configurado correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_URL_HTTPS) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <url> -\r\n");
+            uart_send_text("Error: falta parametro <url>\r\n");
             return false;
         }
         safe_strcpy(settings.network.url_https, param, sizeof(settings.network.url_https));
-        uart_send_text("- INFO: Bypass url configurado correctamente -\r\n");
+        flags |= FLAG_URL_HTTPS_OK;
+        uart_send_text("Info: bypass url configurado correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_DEVICE_NAME) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <name> -\r\n");
+            uart_send_text("Error: falta parametro <name>\r\n");
             return false;
         }
         safe_strcpy(settings.node.device_name, param, sizeof(settings.node.device_name));
-        uart_send_text("INFO: Nombre del dispositivo configurado correctamente -\r\n");
+        flags |= FLAG_DEVICE_NAME_OK;
+        uart_send_text("Info: nombre del dispositivo configurado correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_SAMPLE) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <rate> -\r\n");
+            uart_send_text("Error: falta parametro <rate>\r\n");
             return false;
         }
         errno = 0;
         const unsigned long val = strtoul(param, &endptr, 10);
         if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
-            uart_send_text("- ERROR: Ingrese un numero de muestreo valido -\r\n");
+            uart_send_text("Error: ingrese un numero de muestreo valido\r\n");
         }
         if (val > 0) {
             atomic_store(&settings.node.sample_rate, val);
-            uart_send_text("- INFO: Muestreo configurado correctamente -\r\n");
+            flags |= FLAG_SAMPLE_OK;
+            uart_send_text("Info: muestreo configurado correctamente\r\n");
         } else {
-            uart_send_text("- ERROR: Ingrese un numero de muestreo valido -\r\n");
+            uart_send_text("Error: ingrese un numero de muestreo valido\r\n");
         }
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_ENERGY_MODE) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <energy> -\r\n");
+            uart_send_text("Error: falta parametro <energy>\r\n");
             return false;
         }
         errno = 0;
         const unsigned long val = strtoul(param, &endptr, 10);
         if (endptr == param || (errno == ERANGE)) {
-            uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
+            uart_send_text("Error: ingrese un modo de energia valido\r\n");
         }
         switch (val) {
             case 0: atomic_store(&settings.node.energy_mode, val);
                     set_cpu_frequency(MIN_FREQ, true);
-                    uart_send_text("- INFO: Modo de energia configurado correctamente. LOW_CONSUMPTION -\r\n");
+                    flags |= FLAG_ENERGY_OK;
+                    uart_send_text("Info: modo de energia configurado correctamente. LOW_CONSUMPTION\r\n");
                     break;
             case 1: atomic_store(&settings.node.energy_mode, val);
                     set_cpu_frequency(MID_FREQ, false);
-                    uart_send_text("- INFO: Modo de energia configurado correctamente. BALANCED -\r\n");
+                    flags |= FLAG_ENERGY_OK;
+                    uart_send_text("Info: modo de energia configurado correctamente. BALANCED\r\n");
                     break;
             case 2: atomic_store(&settings.node.energy_mode, val);
                     set_cpu_frequency(MAX_FREQ, false);
-                    uart_send_text("- INFO: Modo de energia configurado correctamente. PERFORMANCE -\r\n");
+                    flags |= FLAG_ENERGY_OK;
+                    uart_send_text("Info: modo de energia configurado correctamente. PERFORMANCE\r\n");
                     break;
-            default: uart_send_text("- ERROR: Ingrese un modo de energia valido -\r\n");
+            default: uart_send_text("Error: ingrese un modo de energia valido\r\n");
                      break;
         }
         return false;
@@ -819,83 +872,165 @@ static bool process_command(const char *command) {
 
     if (strcmp(cmd, CMD_DELETE_LINKAGE_FLAG) == 0) {
         settings.network.linkage_flag = 0;
-        uart_send_text("- INFO: Linkage Flag reseteado correctamente -\r\n");
+        uart_send_text("Info: linkage flag reseteado correctamente\r\n");
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_HEARTBEAT_BM) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <time> -\r\n");
+            uart_send_text("Error: falta parametro <time>\r\n");
             return false;
         }
         errno = 0;
         const unsigned long val = strtoul(param, &endptr, 10);
         if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
-            uart_send_text("- ERROR: Ingrese un numero de tiempo valido -\r\n");
+            uart_send_text("Error: ingrese un numero de tiempo valido\r\n");
         }
         if (val > 0) {
             atomic_store(&settings.node.timeout_heartbeat_balance_mode, val*1000000 + 5000000);
-            uart_send_text("- INFO: Tiempo de latidos en estado balance configurado correctamente -\r\n");
+            flags |= FLAG_TBM_OK;
+            uart_send_text("Info: tiempo de latidos en estado balance configurado correctamente\r\n");
         } else {
-            uart_send_text("- ERROR: Ingrese un numero de tiempo de latido en estado balance valido -\r\n");
+            uart_send_text("Error: ingrese un numero de tiempo de latido en estado balance valido\r\n");
         }
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_HEARTBEAT_N) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <time> -\r\n");
+            uart_send_text("Error: falta parametro <time>\r\n");
             return false;
         }
         errno = 0;
         const unsigned long val = strtoul(param, &endptr, 10);
         if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
-            uart_send_text("- ERROR: Ingrese un numero de tiempo valido -\r\n");
+            uart_send_text("Error: ingrese un numero de tiempo valido\r\n");
         }
         if (val > 0) {
             atomic_store(&settings.node.timeout_heartbeat_normal_mode, val*1000000 + 5000000);
-            uart_send_text("- INFO: Tiempo de latidos en estado normal configurado correctamente -\r\n");
+            flags |= FLAG_TN_OK;
+            uart_send_text("Info: tiempo de latidos en estado normal configurado correctamente\r\n");
         } else {
-            uart_send_text("- ERROR: Ingrese un numero de tiempo de latido en estado normal valido -\r\n");
+            uart_send_text("Error: ingrese un numero de tiempo de latido en estado normal valido\r\n");
         }
         return false;
     }
 
     if (strcmp(cmd, CMD_SET_HEARTBEAT_SM) == 0) {
         if (parsed < 2) {
-            uart_send_text("- ERROR: Falta parametro <time> -\r\n");
+            uart_send_text("Error: falta parametro <time>\r\n");
             return false;
         }
         errno = 0;
         const unsigned long val = strtoul(param, &endptr, 10);
         if (endptr == param || (errno == ERANGE) || (val > UINT16_MAX)) {
-            uart_send_text("- ERROR: Ingrese un numero de tiempo valido -\r\n");
+            uart_send_text("Error: ingrese un numero de tiempo valido\r\n");
         }
         if (val > 0) {
             atomic_store(&settings.node.timeout_heartbeat_safe_mode, val*1000000 + 5000000);
-            uart_send_text("- INFO: Tiempo de latidos en estado safe configurado correctamente -\r\n");
+            flags |= FLAG_TSM_OK;
+            uart_send_text("Info: tiempo de latidos en estado safe configurado correctamente\r\n");
         } else {
-            uart_send_text("- ERROR: Ingrese un numero de tiempo de latido en estado safe valido -\r\n");
+            uart_send_text("Error: ingrese un numero de tiempo de latido en estado safe valido\r\n");
         }
         return false;
     }
 
-    if (strcmp(cmd, CMD_EXIT) == 0 && setting_is_device_configured()) {
-        const esp_err_t ret = setting_save_to_nvs();
-        if (ret == ESP_OK) {
-            uart_send_text("\n- INFO: Configuracion guardada correctamente. Saliendo del modo configuracion -\r\n");
-            return true;
+    if (strcmp(cmd, CMD_SET_MQ135_RZERO) == 0) {
+        if (parsed < 2) {
+            uart_send_text("Error: falta parametro <resistance>\r\n");
+            return false;
         }
-        uart_send_text("- ERROR: No se pudo guardar la configuracion -\r\n");
+        errno = 0;
+        char *endptr;
+        const float val = strtof(param, &endptr);
+        if (endptr == param || errno == ERANGE) {
+            uart_send_text("Error: ingrese un formato de resistencia valido (ej: 70)\r\n");
+            return false;
+        }
+        if (val > 0.0f) {
+            settings.node.mq135_r0 = val;
+            flags |= FLAG_MQ135_R0_OK;
+            uart_send_text("Info: resistencia R0 del MQ135 configurada correctamente\r\n");
+        } else {
+            uart_send_text("Error: la resistencia R0 debe ser mayor a 0\r\n");
+        }
         return false;
     }
 
-    if (strcmp(cmd, CMD_EXIT) == 0 && !setting_is_device_configured()) {
-        uart_send_text("- INFO: Para salir del modo configuracion, deben estar todos los campos configurados -\r\n");
+    if (strcmp(cmd, CMD_SET_EMA_ALPHA_MQ135) == 0) {
+        if (parsed < 2) {
+            uart_send_text("Error: falta parametro <alpha>\r\n");
+            return false;
+        }
+        errno = 0;
+        char *endptr;
+        const float val = strtof(param, &endptr);
+        if (endptr == param || errno == ERANGE) {
+            uart_send_text("Error: ingrese un formato de alpha valido (ej: 0.5)\r\n");
+            return false;
+        }
+        if (val > 0.0f && val < 1.0f) {
+            settings.node.mq135_alpha_ema = val;
+            flags |= FLAG_MQ135_ALPHA_EMA_OK;
+            uart_send_text("Info: parámetro alpha del MQ135 configurado correctamente\r\n");
+        } else {
+            uart_send_text("Error: el parámetro alpha debe ser mayor a 0.0 y menor a 1.0\r\n");
+        }
+        return false;
     }
-    else {
-        uart_send_text("- ERROR: Comando desconocido. Use HELP para ver comandos disponibles -\r\n");
+
+    if (strcmp(cmd, CMD_SET_EMA_ALPHA_DHT11) == 0) {
+        if (parsed < 2) {
+            uart_send_text("Error: falta parametro <alpha>\r\n");
+            return false;
+        }
+        errno = 0;
+        char *endptr;
+        const float val = strtof(param, &endptr);
+        if (endptr == param || errno == ERANGE) {
+            uart_send_text("Error: ingrese un formato de alpha valido (ej: 0.5)\r\n");
+            return false;
+        }
+        if (val > 0.0f && val < 1.0f) {
+            settings.node.dht11_alpha_ema = val;
+            flags |= FLAG_DHT11_ALPHA_EMA_OK;
+            uart_send_text("Info: parámetro alpha del DHT11 configurado correctamente\r\n");
+        } else {
+            uart_send_text("Error: el parámetro alpha debe ser mayor a 0.0 y menor a 1.0\r\n");
+        }
+        return false;
     }
+
+    if (flag_process) {  // Cambiando datos de una config existente
+        if (strcmp(cmd, CMD_EXIT) == 0) {
+            const esp_err_t ret = setting_save_to_nvs();
+            if (ret == ESP_OK) {
+                uart_send_text("\nInfo: configuración guardada correctamente. Saliendo del modo configuración\r\n");
+                return true;
+            }
+            uart_send_text("Error: no se pudo guardar la configuracion\r\n");
+            return false;
+        }
+    } else {   // Cargando una config
+        if (strcmp(cmd, CMD_EXIT) == 0 && setting_is_device_configured()) {
+            const esp_err_t ret = setting_save_to_nvs();
+            if (ret == ESP_OK) {
+                uart_send_text("\nInfo: configuración guardada correctamente. Saliendo del modo configuración\r\n");
+                return true;
+            }
+            uart_send_text("Error: no se pudo guardar la configuracion\r\n");
+            return false;
+        }
+
+        if (strcmp(cmd, CMD_EXIT) == 0 && !setting_is_device_configured()) {
+            uart_send_text("Info: para salir del modo configuración, deben estar todos los campos configurados\r\n");
+        }
+        else {
+            uart_send_text("Error: comando desconocido. Use HELP para ver comandos disponibles\r\n");
+        }
+    }
+
     return false;
 }
 
@@ -950,19 +1085,22 @@ void create_mqtt_topics() {
         "iot/%s/new_firmware", settings.network.id_network);
 
     snprintf(settings.mqtt.topic_new_settings, sizeof(settings.mqtt.topic_new_settings),
-        "iot/%s/new_settings_to_hub", settings.network.id_network);
+        "iot/%s/new_setting", settings.network.id_network);
 
     snprintf(settings.mqtt.topic_edge_setting_ok, sizeof(settings.mqtt.topic_edge_setting_ok),
-        "iot/%s/setting_ok", settings.network.id_network);
+        "iot/%s/new_setting_ok", settings.network.id_network);
 
     snprintf(settings.mqtt.topic_delete_hub, sizeof(settings.mqtt.topic_delete_hub),
         "iot/%s/delete_hub", settings.network.id_network);
 
     snprintf(settings.mqtt.topic_active_hub, sizeof(settings.mqtt.topic_active_hub),
-        "iot/%s/active_hub", settings.network.id_network);
+        "iot/%s/active", settings.network.id_network);
 
     snprintf(settings.mqtt.topic_ping, sizeof(settings.mqtt.topic_ping),
         "iot/%s/hub/%s/ping", settings.network.id_network, settings.node.mac_address);
+
+    snprintf(settings.mqtt.topic_ping_ack, sizeof(settings.mqtt.topic_ping_ack),
+    "iot/%s/ping", settings.network.id_network);
 
     snprintf(settings.mqtt.topic_empty_queue, sizeof(settings.mqtt.topic_empty_queue),
         "iot/%s/hub/%s/empty_queue", settings.network.id_network, settings.node.mac_address);
@@ -987,7 +1125,7 @@ void send_settings_task(void *pvParameter) {
         xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
 
         if (notification & NOTIFY_CMD_START) {
-            ESP_LOGI(TAG, "- INFO: Tarea de envio de mensajes activa -");
+            ESP_LOGI(TAG, "Info: tarea de envio de mensajes activa");
             bool running = true;
 
             while (running) {
@@ -997,11 +1135,11 @@ void send_settings_task(void *pvParameter) {
 
                 if (generate_message_settings(&packet)) {
                     if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW(TAG, "- WARNING: Cola llena, descartando paquete -");
+                        ESP_LOGW(TAG, "Warning: cola llena, descartando paquete");
                         free(packet.payload);
                     }
                 } else {
-                    ESP_LOGE(TAG, "- ERROR: Problema en RAM al generar paquete -");
+                    ESP_LOGE(TAG, "Error: problema en RAM al generar paquete");
                 }
 
                 uint32_t signal = 0;
@@ -1009,12 +1147,12 @@ void send_settings_task(void *pvParameter) {
 
                 if (result == pdTRUE) {
                     if (signal & NOTIFY_CMD_DESTROY) {
-                        ESP_LOGW(TAG, "- WARNING: Orden de destrucción recibida -");
+                        ESP_LOGW(TAG, "Warning: orden de destrucción recibida");
                         goto delete_task;
                     }
 
                     if (signal & NOTIFY_CMD_STOP) {
-                        ESP_LOGI(TAG, "- INFO: Orden de PAUSA recibida. Deteniendo envíos -");
+                        ESP_LOGI(TAG, "Info: orden de pausa recibida. Deteniendo envíos");
                         running = false;
                     }
                 }
@@ -1023,7 +1161,7 @@ void send_settings_task(void *pvParameter) {
     }
 
 delete_task:
-    ESP_LOGI("Settings", "Tarea Eliminada.");
+    ESP_LOGI(TAG, "Info: tarea send_settings_task eliminada");
     vTaskDelete(NULL);
 }
 
@@ -1032,7 +1170,7 @@ delete_task:
  * @brief Configuracion manual del sistema a traves de UART.
  * @return bool Devuelve true cuando el proceso termina con exito, sino retorna false.
  */
-static bool setting_mode_start(void) {
+static bool setting_mode_start(const bool flag_process) {
     char buffer_aux[100];
     char c;
     bool flag = false;
@@ -1050,12 +1188,12 @@ static bool setting_mode_start(void) {
             if (c == '\n' || c == '\r') {
                 if (strlen(uart_buffer) == 0) continue;
                 uart_send_text("\r\n");
-                flag = process_command(uart_buffer);
+                flag = process_command(uart_buffer, flag_process);
                 if (flag) break;
                 memset(uart_buffer, 0, sizeof(uart_buffer));
                 uart_send_text("\r\n");  // Nueva linea
                 show_menu();
-                uart_send_text("config>  ");
+                uart_send_text(" >  ");
             }
             else {
                 // Solo concatenar si hay espacio disponible en el buffer
@@ -1084,7 +1222,6 @@ static bool setting_mode_change(void) {
     uart_flush_input(UART_NUM_2);
 
     show_menu_change_settings();
-    strcpy(buffer_aux, "config>  ");
     uart_send_text(buffer_aux);
 
     TickType_t start = xTaskGetTickCount();
@@ -1102,7 +1239,7 @@ static bool setting_mode_change(void) {
                 uart_send_text("\r\n");
                 const int parsed = sscanf(uart_buffer, "%c", cmd);
                 if (parsed < 1) {
-                    uart_send_text("- ERROR: Comando invalido. Ingrese y o n -\r\n");
+                    uart_send_text("Error: comando invalido. Ingrese y o n -\r\n");
                 }
                 else {
                     to_uppercase(cmd);
@@ -1113,12 +1250,11 @@ static bool setting_mode_change(void) {
                     if (strcmp(cmd, CMD_NOT_CHANGE) == 0) {
                         return false;
                     }
-                    uart_send_text("- ERROR: Comando invalido. Ingrese y o n -\r\n");
+                    uart_send_text("Error: comando invalido. Ingrese y o n -\r\n");
                 }
                 memset(uart_buffer, 0, sizeof(uart_buffer));
                 uart_send_text("\r\n");
                 show_menu_change_settings();
-                uart_send_text("config>  ");
             }
             else {
                 // Solo concatenar si hay espacio disponible en el buffer
@@ -1141,12 +1277,12 @@ esp_err_t uart_init(void) {
 
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "- WARNING: Borrando NVS -");
+        ESP_LOGW(TAG, "Warning: borrando NVS");
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "- INFO: NVS inicializado correctamente -");
+    ESP_LOGI(TAG, "Info: NVS inicializado correctamente");
 
     ret = uart_config();
     if (ret != ESP_OK) return ESP_FAIL;
@@ -1158,14 +1294,14 @@ esp_err_t uart_init(void) {
         memset(&settings, 0, sizeof(settings));
         bool flag = false;
         while (!flag) {
-            flag = setting_mode_start();
+            flag = setting_mode_start(false);
         }
     }
     else {  // Si existe
         if (setting_mode_change()) {  // Cambiar parametros de la configuracion
             bool flag = false;
             while (!flag) {
-                flag = setting_mode_start();
+                flag = setting_mode_start(true);
             }
         }
     }

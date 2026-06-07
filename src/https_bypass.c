@@ -11,6 +11,9 @@
 #include "System/system.h"
 
 
+static const char *TAG = "Bypass";
+
+
 /**
  * @brief Crea una conexión HTTPS efímera, envía el paquete y libera recursos.
  *
@@ -51,10 +54,10 @@ static void create_https_send_and_delete(const mqtt_packet_t *packet) {
         const esp_err_t err = esp_http_client_perform(client);
 
         if (err == ESP_OK) {
-            ESP_LOGI("HTTPS", "Alerta enviada OK. Status: %d",
+            ESP_LOGI(TAG, "Info: alerta enviada. Status: %d",
                      esp_http_client_get_status_code(client));
         } else {
-            ESP_LOGE("HTTPS", "Fallo envío: %s", esp_err_to_name(err));
+            ESP_LOGE(TAG, "Error: fallo envío %s", esp_err_to_name(err));
         }
 
         esp_http_client_cleanup(client);

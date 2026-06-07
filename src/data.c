@@ -25,6 +25,9 @@
 #include "Message/message.h"
 
 
+static const char *TAG = "Data";
+
+
 /**
  * @brief Estructura local para almacenar en caché los tópicos MQTT.
  * Evita reconstruir strings en cada envío, ahorrando CPU.
@@ -163,7 +166,7 @@ void data_collection_task(void *pvParameter) {
                 uint32_t stop_signal = 0;
                 if (xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0) == pdTRUE) {
                     if (stop_signal & NOTIFY_CMD_STOP) {
-                        ESP_LOGW("Data", "WARNING: Señal STOP recibida. Suspendiendo...");
+                        ESP_LOGW(TAG, "Warning: señal STOP recibida. Suspendiendo...");
                         running = false;
                         continue; // Sale del bucle interno y espera un nuevo START limpio
                     }
@@ -173,11 +176,11 @@ void data_collection_task(void *pvParameter) {
                     get_formated_data(&dht11, &ky037, &mq135, &data);
                     if (generate_message_data(data, &packet)) {
                         if (xQueueSend(queues.data_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                            ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                            ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
                             free(packet.payload);
                         }
                     } else {
-                        ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                        ESP_LOGE(TAG, "Error: fallo al generar paquete");
                     }
                 }
             }

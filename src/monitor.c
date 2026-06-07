@@ -18,12 +18,18 @@ static void get_formated_data(stats_monitor_t *stats) {
     stats->memory.mem_free_hm = esp_get_minimum_free_heap_size();
     stats->memory.mem_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     stats->memory.mem_free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    stats->stack.https_handle = uxTaskGetStackHighWaterMark(task_handle.https_handle);
+    stats->stack.health_handle = uxTaskGetStackHighWaterMark(task_handle.health_handle);
+    stats->stack.parser_handle = uxTaskGetStackHighWaterMark(task_handle.parser_handle);
+    stats->stack.converter_handle = uxTaskGetStackHighWaterMark(task_handle.converter_handle);
+    stats->stack.heartbeat_handle = uxTaskGetStackHighWaterMark(task_handle.heartbeat_handle);
     stats->stack.collector = uxTaskGetStackHighWaterMark(task_handle.data_ct_handle);
     stats->stack.publisher = uxTaskGetStackHighWaterMark(task_handle.data_pt_handle);
     stats->stack.ky037 = uxTaskGetStackHighWaterMark(task_handle.ky037_handle);
     stats->stack.dht11 = uxTaskGetStackHighWaterMark(task_handle.dht11_handle);
     stats->stack.mq135 = uxTaskGetStackHighWaterMark(task_handle.mq135_handle);
     stats->stack.monitor = uxTaskGetStackHighWaterMark(task_handle.monitor_handle);
+    stats->stack.fsm = uxTaskGetStackHighWaterMark(task_handle.fsm_handle);
     get_stats_wifi(&(stats->wifi_stats));
     stats->energy_mode = settings_get_node_energy_mode();
 }

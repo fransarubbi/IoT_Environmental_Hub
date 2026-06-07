@@ -103,7 +103,7 @@ static bool adc_calibration_init(adc_unit_t unit,
         ret = adc_cali_create_scheme_line_fitting(&cali_cfg, &handle);
         if (ret == ESP_OK) {
             calibrated = true;
-            ESP_LOGI(TAG, "Calibración ADC: Line Fitting activada");
+            ESP_LOGD(TAG, "Info: Calibración ADC Line Fitting activada");
         }
     }
 #endif
@@ -111,7 +111,7 @@ static bool adc_calibration_init(adc_unit_t unit,
     *out_handle = handle;
 
     if (!calibrated) {
-        ESP_LOGW(TAG, "Calibración ADC no disponible – se usarán valores raw convertidos");
+        ESP_LOGW(TAG, "Warning: Calibración ADC no disponible – se usarán valores raw convertidos");
     }
     return calibrated;
 }
@@ -121,9 +121,9 @@ static bool adc_calibration_init(adc_unit_t unit,
 
 esp_err_t mq135_init(void) {
 
-    config.rzero_kohm      = MQ135_RZERO_KOHM;
+    config.rzero_kohm      = settings_get_node_mq135_r0();
     config.rload_kohm      = MQ135_RLOAD_KOHM;
-    config.ema_alpha       = MQ135_EMA_ALPHA;
+    config.ema_alpha       = settings_get_node_mq135_alpha_ema();
     config.ema_value       = 0.0f;
     config.ema_initialized = false;
 
@@ -150,8 +150,8 @@ esp_err_t mq135_init(void) {
                                          MQ135_ADC_ATTEN,
                                          &s_cali_handle);
 
-    ESP_LOGI(TAG, "MQ135 inicializado – GPIO34 / ADC1_CH6");
-    ESP_LOGI(TAG, "R0=%.2f kΩ  RL=%.2f kΩ  EMA α=%.2f",
+    ESP_LOGD(TAG, "MQ135 inicializado – GPIO34 / ADC1_CH6");
+    ESP_LOGD(TAG, "R0=%.2f kΩ  RL=%.2f kΩ  EMA α=%.2f",
              config.rzero_kohm, config.rload_kohm, config.ema_alpha);
 
     return ESP_OK;
@@ -165,7 +165,7 @@ static float mq135_raw_to_voltage(int raw) {
         return (float)mv / 1000.0f;
     }
     // Conversión lineal sin calibración (aproximada)
-    return ((float)raw / 4095.0f) * MQ135_VCC;
+    return ((float)raw / 4095.0f) * 3.3f;
 }
 
 
@@ -215,14 +215,14 @@ static esp_err_t mq135_read_co2_ppm(float *ppm_out) {
     float voltage = mq135_raw_to_voltage(median_raw);
 
     if (voltage <= 0.01f || voltage >= MQ135_VCC) {
-        ESP_LOGW(TAG, "Voltaje fuera de rango: %.3f V – verifica el cableado", voltage);
+        ESP_LOGW(TAG, "Warning: voltaje fuera de rango: %.3f V – verifica el cableado", voltage);
         return ESP_ERR_INVALID_STATE;
     }
 
     // Calcular Rs
     float rs = mq135_voltage_to_rs(voltage, config.rload_kohm);
     if (rs < 0.0f) {
-        ESP_LOGW(TAG, "Rs inválido (voltaje=%.3f V)", voltage);
+        ESP_LOGW(TAG, "Warning: Rs inválido (voltaje=%.3f V)", voltage);
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -243,11 +243,6 @@ static esp_err_t mq135_read_co2_ppm(float *ppm_out) {
     }
 
     *ppm_out = config.ema_value;
-
-    ESP_LOGD(TAG,
-             "raw_med=%d  V=%.3fV  Rs=%.2fkΩ  ppm_inst=%.1f  ppm_ema=%.1f",
-             median_raw, voltage, rs, ppm_raw, config.ema_value);
-
     return ESP_OK;
 }
 
@@ -280,16 +275,16 @@ static void alert_analysis(data_t *data, const bool get_data) {
                 data->alert.co2ppm_a = ppm_actual;
                 if (generate_message_alert_air(&data->packet, data->alert)) {
                     if (xQueueSend(queues.alert_air_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
                         free(data->packet.payload);
                     }
                 } else {
-                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                    ESP_LOGE(TAG, "Error: fallo al generar paquete (RAM)");
                 }
             } else {
                 data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
             }
-            data->ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * data->ema_ppm);
+            data->ema_ppm = (config.ema_alpha * ppm_actual) + ((1 - config.ema_alpha) * data->ema_ppm);
             break;
 
         case ALERT_MQ135:
@@ -297,15 +292,15 @@ static void alert_analysis(data_t *data, const bool get_data) {
                 data->state_mq135 = NORMAL_MQ135;
                 if (generate_message_alert_air(&data->packet, data->alert)) {
                     if (xQueueSend(queues.alert_air_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
                         free(data->packet.payload);
                     }
                 } else {
-                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                    ESP_LOGE(TAG, "Error: fallo al generar paquete (RAM)");
                 }
                 data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
             }
-            data->ema_ppm = (ALFA_TEMP * ppm_actual) + ((1 - ALFA_TEMP) * data->ema_ppm);
+            data->ema_ppm = (config.ema_alpha * ppm_actual) + ((1 - config.ema_alpha) * data->ema_ppm);
             break;
     }
 }
@@ -318,6 +313,8 @@ static void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t sl
 
     if (err != ESP_OK) flag_error = true;
 
+    ESP_LOGD(TAG, "PPM: %f", data->mq135.co2ppm);
+
     if (ppm < 350.0f) {
         flag_error = true;
     } else {
@@ -327,7 +324,7 @@ static void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t sl
     if (*counter >= slices) {
         *counter = 0;
         if (flag_error) {
-            // Mandamos un dato vacío para no bloquear el ALL_DATA_READY
+            // Mandamos un dato vacio para no bloquear el ALL_DATA_READY
             const mq135_data_t err_data = {0};
             xQueueSend(queues.mq135_buffer, &err_data, pdMS_TO_TICKS(100));
         } else {
@@ -379,7 +376,7 @@ void mq135_task(void *pvParameters) {
 
                 switch (mode) {
                     case LOW_CONSUMPTION: {
-                        target_delay_ms = MQ135_LOW_DELAY; // <-- O DHT11_LOW_DELAY en dht11.c
+                        target_delay_ms = MQ135_LOW_DELAY;
                         counter = 0;
                         alert_analysis(&data, true);
                         break;

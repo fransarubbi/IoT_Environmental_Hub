@@ -87,7 +87,7 @@ static int compare_semver(const char *remote_version, const char *local_version)
     sanitize_string(remote);
     sanitize_string(local);
 
-    ESP_LOGI(TAG, "Comparando: Remoto='%s' vs Local='%s'", remote, local);
+    ESP_LOGI(TAG, "Info: comparando: Remoto='%s' vs Local='%s'", remote, local);
 
     char *token_rem = strtok_r(remote, ".", &saveptr_rem);
     char *token_loc = strtok_r(local, ".", &saveptr_loc);
@@ -115,7 +115,7 @@ static int compare_semver(const char *remote_version, const char *local_version)
  * * @note Esta función no retorna error explícito al caller, guarda el resultado en response_buffer.
  */
 esp_err_t get_repository_version() {
-    ESP_LOGI(TAG, "INFO: Chequeando version del repo...");
+    ESP_LOGI(TAG, "Info: chequeando version del repo...");
     memset(response_buffer, 0, MAX_HTTP_OUTPUT_BUFFER);
 
     version_data_t vdata = {
@@ -138,11 +138,11 @@ esp_err_t get_repository_version() {
     esp_err_t err = esp_http_client_perform(client);
     if (err == ESP_OK) {
         if (esp_http_client_get_status_code(client) != 200) {
-            ESP_LOGW(TAG, "HTTP Status: %d", esp_http_client_get_status_code(client));
+            ESP_LOGW(TAG, "Warning: HTTP Status %d", esp_http_client_get_status_code(client));
             err = ESP_FAIL;
         }
     } else {
-        ESP_LOGE(TAG, "Fallo HTTP: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error: fallo HTTP %s", esp_err_to_name(err));
     }
     esp_http_client_cleanup(client);
     return err;
@@ -155,7 +155,7 @@ esp_err_t get_repository_version() {
  * * @return esp_err_t ESP_OK si tuvo éxito (el sistema se reiniciará antes de retornar), o código de error.
  */
 esp_err_t ota_from_github() {
-    ESP_LOGI(TAG, "INFO: Iniciando descarga de Firmware...");
+    ESP_LOGI(TAG, "Info: iniciando descarga de firmware");
 
     esp_http_client_config_t config = {
         .url = URL_BIN,
@@ -174,7 +174,7 @@ esp_err_t ota_from_github() {
     esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
 
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error OTA Begin: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error: OTA %s", esp_err_to_name(err));
         return err;
     }
 
@@ -184,18 +184,18 @@ esp_err_t ota_from_github() {
     }
 
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error OTA Download: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error: OTA descarga %s", esp_err_to_name(err));
         esp_https_ota_finish(https_ota_handle); // Limpiar
         return err;
     }
 
     esp_err_t ota_finish_err = esp_https_ota_finish(https_ota_handle);
     if (ota_finish_err != ESP_OK) {
-        ESP_LOGE(TAG, "Error OTA Finish: %s", esp_err_to_name(ota_finish_err));
+        ESP_LOGE(TAG, "Error: OTA final %s", esp_err_to_name(ota_finish_err));
         return ota_finish_err;
     }
 
-    ESP_LOGI(TAG, "OTA Completo y Validado");
+    ESP_LOGI(TAG, "Info: OTA completo y validado");
     return ESP_OK;
 }
 
@@ -209,17 +209,17 @@ void check_update(void) {
         const int result = compare_semver(response_buffer, CURRENT_FIRMWARE_VERSION);
 
         if (result == 1) {   // Remoto > Local
-            ESP_LOGW(TAG, "WARNING: Actualizacion REAL encontrada. Iniciando...");
+            ESP_LOGW(TAG, "Warning: actualizacion encontrada. Iniciando...");
             const uint32_t flag = UPDATE_FLAG;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         }
         if (result <= 0) {
-            ESP_LOGI(TAG, "INFO: Sistema actualizado (Remoto <= Local). No se requiere OTA.");
+            ESP_LOGI(TAG, "Info: sistema actualizado (Remoto <= Local). No se requiere OTA");
             const uint32_t flag = 0;    // Salir de estado CHECK_FIRMWARE
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         }
     } else {
-        ESP_LOGE(TAG, "ERROR: No se pudo verificar la version");
+        ESP_LOGE(TAG, "Error: no se pudo verificar la version");
         const uint32_t flag = 0;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }

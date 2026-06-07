@@ -23,7 +23,7 @@
 #include "KY037/ky037.h"
 
 
-static const char *TAG = "MESSAGE";
+static const char *TAG = "Message";
 
 
 /**
@@ -41,7 +41,7 @@ bool generate_message_data(const data_sensors_t data, mqtt_packet_t *packet) {
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para Measurement");
         return false;
     }
 
@@ -74,12 +74,12 @@ bool generate_message_data(const data_sensors_t data, mqtt_packet_t *packet) {
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE(TAG, "- ERROR: Error codificando MPack data -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar Measurement");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de data -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de Measurement");
     packet->len = used;
     return true;
 }
@@ -95,7 +95,7 @@ bool generate_message_alert_air(mqtt_packet_t *packet, const mq135_alert_t alert
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para AlertAir");
         return false;
     }
 
@@ -124,12 +124,12 @@ bool generate_message_alert_air(mqtt_packet_t *packet, const mq135_alert_t alert
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack alert_air -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar AlertAir");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de alert_air -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de AlertAir");
     packet->len = used;
     return true;
 }
@@ -145,7 +145,7 @@ bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t 
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para AlertTemp");
         return false;
     }
 
@@ -174,12 +174,12 @@ bool generate_message_alert_temp(mqtt_packet_t *packet, uint8_t temp_i, uint8_t 
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("DHT11", "- ERROR: Error codificando MPack alert_temp -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar AlertTemp");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de alert_temp -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de AlertTemp");
     packet->len = used;
     return true;
 }
@@ -195,7 +195,7 @@ bool generate_message_monitor(mqtt_packet_t *packet, const stats_monitor_t *stat
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para Monitor");
         return false;
     }
 
@@ -212,7 +212,7 @@ bool generate_message_monitor(mqtt_packet_t *packet, const stats_monitor_t *stat
     mpack_writer_t writer;
     mpack_writer_init(&writer, packet->payload, buffer_size);
 
-    mpack_start_array(&writer, 15);
+    mpack_start_array(&writer, 21);
 
     mpack_start_array(&writer, 3);
     mpack_write_cstr(&writer, mac);
@@ -231,6 +231,12 @@ bool generate_message_monitor(mqtt_packet_t *packet, const stats_monitor_t *stat
     mpack_write_u32(&writer, stats->stack.dht11);
     mpack_write_u32(&writer, stats->stack.mq135);
     mpack_write_u32(&writer, stats->stack.monitor);
+    mpack_write_u32(&writer, stats->stack.https_handle);
+    mpack_write_u32(&writer, stats->stack.health_handle);
+    mpack_write_u32(&writer, stats->stack.parser_handle);
+    mpack_write_u32(&writer, stats->stack.converter_handle);
+    mpack_write_u32(&writer, stats->stack.heartbeat_handle);
+    mpack_write_u32(&writer, stats->stack.fsm);
     const size_t ssid_len = strnlen((const char*)stats->wifi_stats.ssid, WIFI_SSID);
     mpack_write_str(&writer, (const char*)stats->wifi_stats.ssid, ssid_len);
     mpack_write_i8(&writer, stats->wifi_stats.rssi);
@@ -240,12 +246,12 @@ bool generate_message_monitor(mqtt_packet_t *packet, const stats_monitor_t *stat
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Monitor", "- ERROR: Error codificando MPack monitor -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar Monitor");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de monitor -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de Monitor");
     packet->len = used;
     return true;
 }
@@ -261,7 +267,7 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para SettingOk");
         return false;
     }
 
@@ -293,12 +299,12 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack setting_ok -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar SettingOk");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de setting_ok -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de SettingOk");
     packet->len = used;
     return true;
 }
@@ -314,7 +320,7 @@ bool generate_message_firmware_ok(mqtt_msg_general_t *packet, const bool is_ok) 
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para FirmwareOk");
         return false;
     }
 
@@ -340,12 +346,12 @@ bool generate_message_firmware_ok(mqtt_msg_general_t *packet, const bool is_ok) 
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack firmware_ok -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar FirmwareOk");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de firmware_ok -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de FirmwareOk");
     packet->len = used;
     packet->topic = FIRMWARE_OK;
     return true;
@@ -362,7 +368,7 @@ bool generate_message_balance_mode_handshake(mqtt_msg_general_t *packet) {
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para Handshake");
         return false;
     }
 
@@ -397,12 +403,12 @@ bool generate_message_balance_mode_handshake(mqtt_msg_general_t *packet) {
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack handshake -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar Handshake");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de handshake -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de Handshake");
     packet->len = used;
     packet->topic = HANDSHAKE;
     return true;
@@ -419,7 +425,7 @@ bool generate_message_settings(mqtt_packet_t *packet) {
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para Settings");
         return false;
     }
 
@@ -469,12 +475,12 @@ bool generate_message_settings(mqtt_packet_t *packet) {
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Settings", "- ERROR: Error codificando MPack settings -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar Settings");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de settings -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de Settings");
     packet->len = used;
     return true;
 }
@@ -490,7 +496,7 @@ bool generate_message_ping(mqtt_msg_general_t *packet) {
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para Ping");
         return false;
     }
 
@@ -520,12 +526,12 @@ bool generate_message_ping(mqtt_msg_general_t *packet) {
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack ping -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar Ping");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de ping -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de Ping");
     packet->len = used;
     packet->topic = PING;
     return true;
@@ -542,7 +548,7 @@ bool generate_message_empty_queue(mqtt_msg_general_t *packet, const State curren
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para EmptyQueue");
         return false;
     }
 
@@ -598,12 +604,12 @@ bool generate_message_empty_queue(mqtt_msg_general_t *packet, const State curren
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack empty_queue -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar EmptyQueue");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de empty_queue -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de EmptyQueue");
     packet->len = used;
     packet->topic = QUEUE_EMPTY;
     return true;
@@ -620,7 +626,7 @@ bool generate_message_linkage_request(mqtt_msg_general_t *packet) {
     packet->payload = malloc(buffer_size);
 
     if (packet->payload == NULL) {
-        ESP_LOGE("Data", "- ERROR: No hay RAM para MPack -");
+        ESP_LOGE(TAG, "Error: no hay RAM para LinkageRequest");
         return false;
     }
 
@@ -654,12 +660,12 @@ bool generate_message_linkage_request(mqtt_msg_general_t *packet) {
 
     const size_t used = mpack_writer_buffer_used(&writer);
     if (mpack_writer_destroy(&writer) != mpack_ok) {
-        ESP_LOGE("Data", "- ERROR: Error codificando MPack linkage_request -");
+        ESP_LOGE(TAG, "Error: no se pudo serializar LinkageRequest");
         free(packet->payload);
         packet->payload = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "- OK: Serializacion correcta de linkage_request -");
+    ESP_LOGI(TAG, "Info: serializacion correcta de LinkageRequest");
     packet->len = used;
     packet->topic = LINKAGE_REQUEST;
     return true;
@@ -709,13 +715,13 @@ bool parse_message_state_normal(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje state_normal -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje StateNormal");
         return false;
     }
 
     if (sender_ok && dest_ok && state_ok) {
         const uint32_t flag = STATE_NORMAL;
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de state_normal -");
+        ESP_LOGI(TAG, "Info: parseo correcto de StateNormal");
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
     }
 
@@ -772,7 +778,7 @@ bool parse_message_state_balance(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje state_balance -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje StateBalance");
         return false;
     }
 
@@ -784,7 +790,7 @@ bool parse_message_state_balance(const char* data, const size_t len) {
         atomic_store(&balance.balance, epoch);
 
         const uint32_t flag = STATE_BALANCE_MODE;
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de state_balance -");
+        ESP_LOGI(TAG, "Info: parseo correcto de StateBalance");
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(10));
     }
 
@@ -841,7 +847,7 @@ bool parse_message_state_safe(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje state_safe_mode -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje StateSafeMode");
         return false;
     }
 
@@ -849,7 +855,7 @@ bool parse_message_state_safe(const char* data, const size_t len) {
         atomic_store(&safe_mode.frequency, frequency);
         atomic_store(&safe_mode.jitter, jitter);
         const uint32_t flag = STATE_SAFE_MODE;
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de state_safe_mode -");
+        ESP_LOGI(TAG, "Info: parseo correcto de StateSafeMode");
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -921,7 +927,7 @@ bool parse_message_phase(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje phase -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje Phase");
         return false;
     }
 
@@ -934,17 +940,17 @@ bool parse_message_phase(const char* data, const size_t len) {
             atomic_store(&phase.jitter, jitter);
             if (phase_number == FLAG_PHASE_ALERT) {
                 const uint32_t flag = PHASE_ALERT;
-                ESP_LOGI(TAG, "- OK: Decodificacion correcta de phase_alert -");
+                ESP_LOGI(TAG, "Info: parseo correcto de PhaseAlert");
                 xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             }
             if (phase_number == FLAG_PHASE_DATA) {
                 const uint32_t flag = PHASE_DATA;
-                ESP_LOGI(TAG, "- OK: Decodificacion correcta de phase_data -");
+                ESP_LOGI(TAG, "Info: parseo correcto de PhaseData");
                 xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             }
             if (phase_number == FLAG_PHASE_MONITOR) {
                 const uint32_t flag = PHASE_MONITOR;
-                ESP_LOGI(TAG, "- OK: Decodificacion correcta de phase_monitor -");
+                ESP_LOGI(TAG, "Info: parseo correcto de PhaseMonitor");
                 xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             }
         }
@@ -953,12 +959,12 @@ bool parse_message_phase(const char* data, const size_t len) {
             atomic_store(&phase.frequency, frequency);
             atomic_store(&phase.jitter, jitter);
             const uint32_t flag = NEWER_EPOCH;
-            ESP_LOGI(TAG, "- OK: Decodificacion correcta. Mensaje de fase con epoch mas nuevo -");
+            ESP_LOGI(TAG, "Info: parseo correcto. Mensaje de fase con epoch mas nuevo");
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             settings_set_balance_epoch(bal);
             setting_save_to_nvs();
         } else {
-            ESP_LOGW(TAG, "- WARN: Mensaje de fase ignorado (Epoch muy viejo) -");
+            ESP_LOGW(TAG, "Warning: mensaje de fase ignorado (Epoch viejo)");
         }
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -1007,7 +1013,7 @@ bool parse_message_handshake(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje handshake -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje Handshake");
         return false;
     }
 
@@ -1016,13 +1022,13 @@ bool parse_message_handshake(const char* data, const size_t len) {
         const uint32_t diff = epoch - bal;
         if (diff == 0) {
             const uint32_t flag = HANDSHAKE_REQUEST;
-            ESP_LOGI(TAG, "- OK: Decodificacion correcta de handshake -");
+            ESP_LOGI(TAG, "Info: parseo correcto de Handshake");
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         }
         else if (diff < 0x80000000UL) {   // 0x80000000 es 2^31
             atomic_store(&balance.balance, epoch);
             const uint32_t flag = NEWER_EPOCH;
-            ESP_LOGI(TAG, "- OK: Decodificacion correcta. Mensaje con epoch mas nuevo -");
+            ESP_LOGI(TAG, "Info: parseo correcto. Mensaje con epoch mas nuevo");
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
             settings_set_balance_epoch(epoch);
             setting_save_to_nvs();
@@ -1070,13 +1076,13 @@ bool parse_message_heartbeat(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje heartbeat -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje Heartbeat");
         return false;
     }
 
     if (sender_ok && dest_ok && beat_ok) {
         const uint32_t flag = HEARTBEAT_INCOMING;
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de heartbeat -");
+        ESP_LOGI(TAG, "Info: parseo correcto de Heartbeat");
         xQueueSend(queues.heartbeat, &flag, pdMS_TO_TICKS(100));
     }
 
@@ -1124,12 +1130,12 @@ bool parse_message_new_firmware(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje new_firmware -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje NewFirmware");
         return false;
     }
 
     if (sender_ok && dest_ok && network_ok) {
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de new_firmware -");
+        ESP_LOGI(TAG, "Info: parseo correcto de NewFirmware");
         esp_restart();
     }
     return (mpack_reader_destroy(&reader) == mpack_ok);
@@ -1205,12 +1211,12 @@ bool parse_message_setting(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje setting -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje Setting");
         return false;
     }
 
     if (sender_ok && apply && flag_id) {
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de setting -");
+        ESP_LOGI(TAG, "Info: parseo correcto de Setting");
         safe_strcpy(settings.network.id_network, id_network, sizeof(settings.network.id_network));
         safe_strcpy((char *)settings.wifi.ssid, wifi_ssid, sizeof(settings.wifi.ssid));
         safe_strcpy((char *)settings.wifi.password, wifi_password, sizeof(settings.wifi.password));
@@ -1279,12 +1285,12 @@ bool parse_message_setting_ok(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje setting_ok -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje SettingOk");
         return false;
     }
 
     if (sender_ok && dest_ok && hand_ok && net_ok && id_flag) {
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de setting_ok -");
+        ESP_LOGI(TAG, "Info: parseo correcto de SettingOk");
         if (task_handle.send_settings_handle != NULL) {
             xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_DESTROY, eSetBits);
         }
@@ -1335,12 +1341,12 @@ bool parse_message_delete(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje delete -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje Delete");
         return false;
     }
 
     if (sender_ok && dest_ok && net_ok) {
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de delete -");
+        ESP_LOGI(TAG, "Info: parseo correcto de Delete");
         settings_empty_network();
         setting_save_to_nvs();
         esp_wifi_stop();
@@ -1395,12 +1401,12 @@ bool parse_message_active(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje active -");
+        ESP_LOGE(TAG, "Error: no se pudo parseo mensaje Active");
         return false;
     }
 
     if (sender_ok && dest_ok && net_ok) {
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de active -");
+        ESP_LOGI(TAG, "Info: parseo correcto de Active");
         if (!is_active) {
             xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_STOP, eSetBits);
             xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_STOP, eSetBits);
@@ -1462,14 +1468,14 @@ bool parse_message_linkage_ack(const char* data, const size_t len) {
 
     if (mpack_reader_error(&reader) != mpack_ok) {
         mpack_reader_destroy(&reader);
-        ESP_LOGE(TAG, "- ERROR: No se pudo decodificar mensaje linkage_ack -");
+        ESP_LOGE(TAG, "Error: no se pudo parsear mensaje LinkageAck");
         return false;
     }
 
     if (sender_ok && dest_ok && linkage) {
         xTaskNotify(task_handle.linkage_handle, NOTIFY_CMD_STOP, eSetBits);
         const uint32_t flag = LINKAGE_OK;
-        ESP_LOGI(TAG, "- OK: Decodificacion correcta de linkage_ack -");
+        ESP_LOGI(TAG, "Info: parseo correcto de LinkageAck");
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         settings_set_linkage_ok();
         setting_save_to_nvs();

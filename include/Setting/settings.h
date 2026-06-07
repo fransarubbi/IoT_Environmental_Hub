@@ -7,7 +7,7 @@
 #include <stdatomic.h>
 
 
-/* ---- Configuraciones del sistema ---- */
+// ---- Configuraciones del sistema ----
 #define SETTINGS_UART_PORT_NUM        UART_NUM_2
 #define SETTINGS_UART_TX_PIN          GPIO_NUM_17
 #define SETTINGS_UART_RX_PIN          GPIO_NUM_16
@@ -20,7 +20,7 @@
 #define MIN_FREQ                      80
 
 
-/* ---- Macros de longitudes ---- */
+// ---- Macros de longitudes ----
 #define MAC           18
 #define DEVICE_NAME   20
 #define ID_NETWORK    20
@@ -35,25 +35,55 @@
 #define MAX_TOPIC     73
 
 
-/* ---- Comandos disponibles ---- */
-#define CMD_SET_WIFI_SSID            "W_SSID"
-#define CMD_SET_WIFI_PASS            "W_PASS"
-#define CMD_SET_MQTT_URI             "M_URI"
-#define CMD_SET_NETWORK              "NET"
-#define CMD_SET_URL_HTTPS            "URL_BYPASS"
-#define CMD_SET_EDGE                 "EDGE"
-#define CMD_SET_DEVICE_NAME          "NAME"
-#define CMD_SET_SAMPLE               "SAMPLE"
-#define CMD_SET_ENERGY_MODE          "ENERGY"
-#define CMD_DELETE_LINKAGE_FLAG      "DELETE_LINKAGE"
-#define CMD_SET_HEARTBEAT_BM         "HEARTBEAT_BALANCE"
-#define CMD_SET_HEARTBEAT_N          "HEARTBEAT_NORMAL"
-#define CMD_SET_HEARTBEAT_SM         "HEARTBEAT_SAFE"
+// ---- Comandos disponibles ----
+#define CMD_SET_WIFI_SSID            "WIFI-SSID"
+#define CMD_SET_WIFI_PASS            "WIFI-PASS"
+#define CMD_SET_MQTT_URI             "MQTT-URI"
+#define CMD_SET_NETWORK              "NETWORK"
+#define CMD_SET_URL_HTTPS            "URL-BYPASS"
+#define CMD_SET_EDGE                 "EDGE-ID"
+#define CMD_SET_DEVICE_NAME          "NAME-DEVICE"
+#define CMD_SET_SAMPLE               "SAMPLE-TIME"
+#define CMD_SET_ENERGY_MODE          "ENERGY-MODE"
+#define CMD_DELETE_LINKAGE_FLAG      "DELETE-LINKAGE"
+#define CMD_SET_HEARTBEAT_BM         "HEARTBEAT-BALANCE"
+#define CMD_SET_HEARTBEAT_N          "HEARTBEAT-NORMAL"
+#define CMD_SET_HEARTBEAT_SM         "HEARTBEAT-SAFE"
+#define CMD_SET_MQ135_RZERO          "MQ135-R0"
+#define CMD_SET_EMA_ALPHA_MQ135      "EMA-ALPHA-MQ135"
+#define CMD_SET_EMA_ALPHA_DHT11      "EMA-ALPHA-DHT11"
 #define CMD_SHOW_CONFIG              "SHOW"
 #define CMD_EXIT                     "EXIT"
 #define CMD_CHANGE                   "Y"
 #define CMD_NOT_CHANGE               "N"
 #define CMD_HELP                     "HELP"
+
+
+#define FLAG_WIFI_SSID_OK        (1 << 0)
+#define FLAG_WIFI_PASS_OK        (1 << 1)
+#define FLAG_MQTT_URI_OK         (1 << 2)
+#define FLAG_DEVICE_NAME_OK      (1 << 3)
+#define FLAG_NETWORK_OK          (1 << 4)
+#define FLAG_EDGE_OK             (1 << 5)
+#define FLAG_URL_HTTPS_OK        (1 << 6)
+#define FLAG_SAMPLE_OK           (1 << 7)
+#define FLAG_ENERGY_OK           (1 << 8)
+#define FLAG_TBM_OK              (1 << 9)
+#define FLAG_TN_OK               (1 << 10)
+#define FLAG_TSM_OK              (1 << 11)
+#define FLAG_MQ135_R0_OK         (1 << 12)
+#define FLAG_MQ135_ALPHA_EMA_OK  (1 << 13)
+#define FLAG_DHT11_ALPHA_EMA_OK  (1 << 14)
+#define FLAG_OK                  0x7fff
+
+
+// Colores de la interfaz UART
+#define B_WHT "\033[1;37m" // Bordes: Blanco Brillante
+#define T_RST "\033[0m"    // Texto Descripciones: Reseteo al color por defecto de la terminal
+#define C_MAG "\033[1;35m" // Título Principal: Magenta Brillante
+#define C_CYN "\033[1;36m" // Sección Configuración: Cian Brillante
+#define C_YEL "\033[1;33m" // Sección Sensores: Amarillo Brillante
+#define C_GRN "\033[1;32m" // Sección Interfaz: Verde Brillante
 
 
 typedef enum {
@@ -81,6 +111,9 @@ typedef struct {
         atomic_uint_fast32_t timeout_heartbeat_balance_mode;
         atomic_uint_fast32_t timeout_heartbeat_normal_mode;
         atomic_uint_fast32_t timeout_heartbeat_safe_mode;
+        float mq135_r0;
+        float mq135_alpha_ema;
+        float dht11_alpha_ema;
     } node;
     struct {
         char id_network[ID_NETWORK];
@@ -129,6 +162,7 @@ typedef struct {
         char topic_delete_hub[MAX_TOPIC];
         char topic_active_hub[MAX_TOPIC];
         char topic_linkage_ack[MAX_TOPIC];
+        char topic_ping_ack[MAX_TOPIC];
     } mqtt;
 } settings_t;
 
@@ -161,6 +195,9 @@ energy_mode_t settings_get_node_energy_mode(void);
 uint32_t settings_get_node_timeout_heartbeat_balance_mode(void);
 uint32_t settings_get_node_timeout_heartbeat_normal_mode(void);
 uint32_t settings_get_node_timeout_heartbeat_safe_mode(void);
+float settings_get_node_mq135_r0(void);
+float settings_get_node_mq135_alpha_ema(void);
+float settings_get_node_dht11_alpha_ema(void);
 void settings_get_network(char* dest, size_t dest_size);
 void settings_get_network_id_edge(char* dest, size_t dest_size);
 uint8_t settings_get_network_linkage_flag(void);
@@ -199,6 +236,7 @@ void settings_get_mqtt_topic_ping(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_empty_queue(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_linkage_request(char* dest, size_t dest_size);
 void settings_get_mqtt_topic_linkage_ack(char* dest, size_t dest_size);
+void settings_get_mqtt_topic_ping_ack(char* dest, size_t dest_size);
 
 
 #endif //SETTINGS_H

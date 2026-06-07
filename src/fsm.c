@@ -153,7 +153,7 @@ void fsm_task(void *pvParameter) {
     while (1) {
         if (xQueueReceive(queues.event, &event, portMAX_DELAY) == pdTRUE) {
             event_processor(&fsm, event);
-            ESP_LOGI(TAG, " - Estado actual: %s -", get_state_name(fsm.state));
+            ESP_LOGI(TAG, "Estado actual: %s", get_state_name(fsm.state));
         }
     }
 }
@@ -163,14 +163,12 @@ void fsm_task(void *pvParameter) {
 
 
 void action_entry_check_firmware(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry CHECK_FIRMWARE -");
     xTaskNotify(task_handle.health_handle, NOTIFY_CMD_START, eSetBits);
     check_update();
 }
 
 
 void action_entry_update(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry UPDATE -");
     if (ota_from_github() == ESP_OK) {
         const uint32_t flag = UPDATE_OK;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
@@ -187,7 +185,6 @@ void action_entry_update(Fsm *fsm) {
 
 
 void action_entry_linkage(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry LINKAGE -");
     xTaskNotify(task_handle.parser_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.converter_handle, NOTIFY_CMD_START, eSetBits);
     xTaskNotify(task_handle.data_pt_handle, NOTIFY_CMD_START, eSetBits);
@@ -202,27 +199,24 @@ void action_entry_linkage(Fsm *fsm) {
 
 
 void action_entry_init_system(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry INIT_SYSTEM -");
     mqtt_enable_subscribe_topics();
     init_timer(INIT_SYSTEM_TIMER);
 }
 
 
 void action_entry_notify_ok(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry NOTIFY_OK -");
     mqtt_msg_general_t packet;
     generate_message_firmware_ok(&packet, true);
     if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
         free(packet.payload);
     }
     vTaskDelay(pdMS_TO_TICKS(5000));
-    ESP_LOGW(TAG, "- WARNING: Reiniciando sistema... -");
+    ESP_LOGW(TAG, "Warning: reiniciando sistema...");
     esp_restart();
 }
 
 
 void action_entry_init_balance_mode(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry INIT_BALANCE_MODE -");
     xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_STOP, eSetBits);
     delete_timer(HEARTBEAT_NORMAL_TIMER);
     delete_timer(INIT_SYSTEM_TIMER);
@@ -241,7 +235,6 @@ void action_entry_init_balance_mode(Fsm *fsm) {
 
 
 void action_entry_in_handshake(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry IN_HANDSHAKE -");
     delete_timer(HANDSHAKE_TIMER);
     delete_timer(INIT_BALANCE_TIMER);
     init_timer(HANDSHAKE_TIMER);
@@ -254,14 +247,12 @@ void action_entry_in_handshake(Fsm *fsm) {
 
 
 void action_entry_alert(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry ALERT -");
     delete_timer(HANDSHAKE_TIMER);
     init_timer(HEARTBEAT_BALANCE_MODE_TIMER);
 }
 
 
 void action_entry_data(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry DATA -");
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
@@ -269,7 +260,6 @@ void action_entry_data(Fsm *fsm) {
 
 
 void action_entry_monitor(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry MONITOR -");
     xTaskNotify(task_handle.dht11_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
@@ -277,7 +267,6 @@ void action_entry_monitor(Fsm *fsm) {
 
 
 void action_entry_out_handshake(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry OUT_HANDSHAKE -");
     delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
     delete_timer(HANDSHAKE_TIMER);
     init_timer(HANDSHAKE_TIMER);
@@ -290,7 +279,6 @@ void action_entry_out_handshake(Fsm *fsm) {
 
 
 void action_entry_normal(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry NORMAL -");
     xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_STOP, eSetBits);
     delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
     delete_timer(BYPASS_TIMER);
@@ -312,7 +300,6 @@ void action_entry_normal(Fsm *fsm) {
 
 
 void action_entry_store(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry STORE -");
     xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.health_handle, NOTIFY_CMD_STOP, eSetBits);
     delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
@@ -331,7 +318,6 @@ void action_entry_store(Fsm *fsm) {
 
 
 void action_entry_cooling(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry COOLING -");
     xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_STOP, eSetBits);
     delete_timer(HEARTBEAT_NORMAL_TIMER);
     init_timer(COOLING_TIMER);
@@ -347,7 +333,6 @@ void action_entry_cooling(Fsm *fsm) {
 
 
 void action_entry_update_score(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry UPDATE_SCORE -");
     delete_timer(COOLING_TIMER);
     mqtt_msg_general_t packet;
     generate_message_ping(&packet);
@@ -358,7 +343,6 @@ void action_entry_update_score(Fsm *fsm) {
 
 
 void action_entry_bypass(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry BYPASS -");
     delete_timer(COOLING_TIMER);
     xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_STOP, eSetBits);
@@ -370,7 +354,6 @@ void action_entry_bypass(Fsm *fsm) {
 
 
 void action_entry_safe(Fsm *fsm) {
-    ESP_LOGI(TAG, "- INFO: Ejecutando acciones on entry SAFE_MODE -");
     delete_timer(HANDSHAKE_TIMER);
     delete_timer(INIT_SYSTEM_TIMER);
     delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
