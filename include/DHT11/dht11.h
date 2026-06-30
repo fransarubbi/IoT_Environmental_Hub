@@ -20,7 +20,6 @@
 #define DHT11_DURATION1_BIT1       65              // 65 micro seg para bit 1
 
 
-#define ALFA_TEMP                  0.1f          // Factor de suavizado para la temperatura (0.1 = lento)
 #define BETA_ERROR                 0.05f         // Factor de suavizado para el error (0.05 = muy lento)
 #define K_SENSIBILIDAD             2.0f          // 2 "sigmas". Más alto = menos sensible
 #define UMBRAL_MINIMO_ABS          100.0f

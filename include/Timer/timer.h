@@ -16,7 +16,7 @@
 #define MAX_SIMULTANEOUS_TIMERS         3
 #define TIMEOUT_INIT_SYSTEM             60000000  // 60 seg
 #define TIMEOUT_COOLING_TIMER           30000000  // 30 seg
-#define TIMEOUT_BYPASS_TIMER            40000000  // 40 seg
+#define TIMEOUT_BYPASS_TIMER            60000000  // 60 seg
 
 #include <esp_timer.h>
 

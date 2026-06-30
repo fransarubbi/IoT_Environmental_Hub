@@ -13,8 +13,6 @@
 #include "System/system.h"
 
 
-static const char *TAG = "PARSER";
-
 
 /**
  * @brief Estructura interna para almacenar en caché los tópicos del sistema.
@@ -48,7 +46,7 @@ static void get_all_topics(topics *topics) {
     settings_get_mqtt_topic_heartbeat(topics->topic_heartbeat, sizeof(topics->topic_heartbeat));
     settings_get_mqtt_topic_new_firmware(topics->topic_new_firmware, sizeof(topics->topic_new_firmware));
     settings_get_mqtt_topic_new_settings(topics->topic_new_settings_to_hub, sizeof(topics->topic_new_settings_to_hub));
-    settings_get_mqtt_topic_settings_ok(topics->topic_setting_ok, sizeof(topics->topic_setting_ok));
+    settings_get_mqtt_topic_edge_setting_ok(topics->topic_setting_ok, sizeof(topics->topic_setting_ok));
     settings_get_mqtt_topic_delete_hub(topics->topic_delete_hub, sizeof(topics->topic_delete_hub));
     settings_get_mqtt_topic_active_hub(topics->topic_active_hub, sizeof(topics->topic_active_hub));
     settings_get_mqtt_topic_linkage_ack(topics->topic_linkage_ack, sizeof(topics->topic_linkage_ack));
@@ -81,7 +79,6 @@ void parser_task(void *pvParameter) {
 
             while (running) {
                 if (xQueueReceive(queues.parser, &to_parse, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    ESP_LOGI(TAG, "- INFO: Mensaje entrante para parsear -");
                     if (strcmp(to_parse.topic, topics.topic_state_normal) == 0) {
                         parse_message_state_normal(to_parse.payload, to_parse.len);
                     }

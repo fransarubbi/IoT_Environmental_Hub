@@ -61,6 +61,9 @@ static void subscribe_to_all_topics(esp_mqtt_client_handle_t client) {
     esp_mqtt_client_subscribe(client, topic_buff, 0);
 
     settings_get_mqtt_topic_active_hub(topic_buff, sizeof(topic_buff));
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
+
+    settings_get_mqtt_topic_ping_ack(topic_buff, sizeof(topic_buff));
     esp_mqtt_client_subscribe(client, topic_buff, 0);
 }
 
@@ -96,8 +99,6 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
 
             if (subscribe) {
                 subscribe_to_all_topics(event->client);
-            } else {
-                ESP_LOGI(TAG, "Conectado a MQTT (Suscripciones en espera de INIT_SYSTEM)");
             }
             break;
 
@@ -110,46 +111,62 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
                 .timestamp = 0
             };
             xQueueSend(queues.health, &health, pdMS_TO_TICKS(0));
-            ESP_LOGW(TAG, "- WARNING: Desconectado del broker -");
+            ESP_LOGW(TAG, "Warning: desconectado del broker");
             break;
         }
 
         case MQTT_EVENT_PUBLISHED: {
-            const health_event_t health = {
+            uint8_t return_code = 0x00;  // Default: Success
+    
+            if (event->data && event->data_len > 0) {
+                // El return code esta en la variable header del PUBACK
+                return_code = ((uint8_t*)event->data)[0];
+            }
+    
+            health_event_t health = {
                 .event = HEALTH_EVT_PUBACK,
                 .msg_id = event->msg_id,
-                .timestamp = esp_timer_get_time()
+                .timestamp = esp_timer_get_time(),
+                .return_code = return_code,
+                .is_mqtt5_ack = true
             };
+    
             xQueueSend(queues.health, &health, pdMS_TO_TICKS(0));
-            ESP_LOGI(TAG, "- INFO: Publicado msg_id = %d -", event->msg_id);
+    
+            if (return_code == 0x00) {
+                ESP_LOGD(TAG, "INFO: PUBACK msg_id=%d - SUCCESS", event->msg_id);
+            } else if (return_code == 0x10) {
+                ESP_LOGW(TAG, "WARNING: PUBACK msg_id=%d - Recibido por el broker pero nadie esta suscripto al topico", event->msg_id);
+            } else {
+                ESP_LOGW(TAG, "WARNING: PUBACK msg_id=%d - Return code: 0x%02X", event->msg_id, return_code);
+            }
             break;
         }
 
         case MQTT_EVENT_ERROR:
-            ESP_LOGE(TAG, "- ERROR: Error tipo: %d -", event->error_handle->error_type);
             if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-                ESP_LOGE(TAG, "- ERROR: Error SSL/TLS -");
+                ESP_LOGE(TAG, "Error: SSL/TLS");
+            } else {
+                ESP_LOGE(TAG, "Error: %d", event->error_handle->error_type);
             }
             break;
 
         case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "- INFO: SUBSCRIBED -");
             break;
 
         case MQTT_EVENT_DATA: {
             static char *rx_buffer = NULL;
             static int rx_total_len = 0;
-            // NUEVO: Variables estáticas para almacenar el tópico y su longitud
             static char rx_topic[MAX_TOPIC];
             static int rx_topic_len = 0;
 
-            // 1. Llegada del primer fragmento
+            // Llegada del primer fragmento
             if (event->current_data_offset == 0) {
                 rx_total_len = event->total_data_len;
                 rx_buffer = malloc(rx_total_len + 1);
 
                 if (rx_buffer == NULL) {
-                    ESP_LOGE(TAG, "ERROR: No hay RAM para reensamblar mensaje MQTT");
+                    ESP_LOGE(TAG, "Error: no hay RAM para reensamblar mensaje MQTT");
                     break;
                 }
 
@@ -164,18 +181,18 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
                 }
             }
 
-            // 2. Copiar los datos del fragmento actual al buffer
+            // Copiar los datos del fragmento actual al buffer
             if (rx_buffer != NULL) {
                 memcpy(rx_buffer + event->current_data_offset, event->data, event->data_len);
             }
 
-            // 3. Evaluar si ya recibimos todo el mensaje
+            // Evaluar si ya recibimos todo el mensaje
             if (event->current_data_offset + event->data_len >= rx_total_len) {
                 if (rx_buffer != NULL) {
                     rx_buffer[rx_total_len] = '\0'; // Aseguramos finalización del payload
                     mqtt_msg_to_parse_t new_msg;
 
-                    // Asignar el tópico utilizando la caché que guardamos en el primer fragmento
+                    // Asignar el topico utilizando la cache que guardamos en el primer fragmento
                     if (rx_topic_len > 0) {
                         strcpy(new_msg.topic, rx_topic);
                     } else {
@@ -187,11 +204,11 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
 
                     // Enviar a parseo y validar que no haya fuga de memoria si la cola falla
                     if (xQueueSend(queues.parser, &new_msg, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW(TAG, "WARNING: Cola de parseo llena. Descartando mensaje ensamblado.");
+                        ESP_LOGW(TAG, "Warning: cola de parseo llena. Descartando mensaje ensamblado");
                         free(rx_buffer);
                     }
 
-                    // Reiniciar las variables estáticas para el próximo mensaje
+                    // Reiniciar las variables estaticas para el proximo mensaje
                     rx_buffer = NULL;
                     rx_total_len = 0;
                     rx_topic_len = 0;
@@ -227,7 +244,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
  * @return Retorna ESP_OK si no hubo fallas en la configuracion, sino ESP_FAIL.
  */
 esp_err_t mqtt_init(void) {
-    esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
+    esp_log_level_set("MQTT_CLIENT", ESP_LOG_INFO);
     esp_err_t ret = get_mac_address();
     memset(&mqtt.config, 0, sizeof(esp_mqtt_client_config_t));
 
@@ -256,7 +273,7 @@ esp_err_t mqtt_init(void) {
         mqtt.config.network.reconnect_timeout_ms = 5000;  // Esperar 5 seg entre intentos de reconexion
         mqtt.client = esp_mqtt_client_init(&mqtt.config);
         if (!mqtt.client) {
-            ESP_LOGE(TAG, "- ERROR: No se pudo crear el cliente MQTT -");
+            ESP_LOGE(TAG, "Error: no se pudo crear el cliente MQTT");
             return ESP_FAIL;
         }
         esp_mqtt_client_register_event(mqtt.client, ESP_EVENT_ANY_ID,

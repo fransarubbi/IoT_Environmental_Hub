@@ -47,7 +47,7 @@ bool init_queues(void) {
         !queues.data_buffer || !queues.monitor_buffer || !queues.dht11_buffer ||
         !queues.ky037_buffer || !queues.mq135_buffer || !queues.dht11_to_mq135 ||
         !queues.alert_air_buffer || !queues.alert_temp_buffer || !queues.settings_buffer) {
-        ESP_LOGE(TAG, "- ERROR: Error creando queues -");
+        ESP_LOGE(TAG, "Error: no se pudo crear las queues");
         return false;
     }
     return true;
@@ -64,7 +64,7 @@ bool init_event_group(void) {
     event_group.mqtt_event_group = xEventGroupCreate();
     event_group.wifi_event_group = xEventGroupCreate();
     if (!event_group.collector_events || !event_group.mqtt_event_group || !event_group.wifi_event_group) {
-        ESP_LOGE(TAG, "- ERROR: Error creando event_group -");
+        ESP_LOGE(TAG, "Error: no se pudo crear event_group");
         return false;
     }
     return true;
@@ -78,10 +78,10 @@ bool init_event_group(void) {
  * correctamente. Caso contrario el sistema se reiniciara.
  */
 bool init_base_drivers(void) {
-    if (uart_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: UART fallo -"); return false; }
-    if (wifi_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: WiFi fallo -"); return false; }
-    if (time_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: Time fallo -"); return false; }
-    if (mqtt_init() != ESP_OK) { ESP_LOGE(TAG, "- ERROR: MQTT fallo -"); return false; }
+    if (uart_init() != ESP_OK) { ESP_LOGE(TAG, "Error: UART fallo"); return false; }
+    if (wifi_init() != ESP_OK) { ESP_LOGE(TAG, "Error: WiFi fallo"); return false; }
+    if (time_init() != ESP_OK) { ESP_LOGE(TAG, "Error: Time fallo"); return false; }
+    if (mqtt_init() != ESP_OK) { ESP_LOGE(TAG, "Error: MQTT fallo"); return false; }
     return true;
 }
 
@@ -95,7 +95,6 @@ void wait_for_sensors(void) {
     while (1) {
         if (retMQ135 != ESP_OK) retMQ135 = mq135_init();
         if (retDHT11 != ESP_OK) retDHT11 = dht11_init();
-        //if (retKY037 != ESP_OK) retKY037 = ky037_init();
 
         if (retMQ135 == ESP_OK && retDHT11 == ESP_OK) break;
         vTaskDelay(pdMS_TO_TICKS(1000));

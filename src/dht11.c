@@ -44,6 +44,7 @@ typedef struct {
     float ema_temp;
     float ema_error;
     float temp_before_alert;
+    float alpha_ema;
     dht11_data_t dht11;
     mqtt_packet_t packet;
 } data_t;
@@ -159,7 +160,7 @@ static esp_err_t dht11_rmt_rx_config(void) {
 
     esp_err_t ret = rmt_new_rx_channel(&rx_chan_cfg, &g_rx_channel);  // Crea el canal RMT
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: Error creando canal RMT RX: %s -", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Error: no se pudo crear canal RMT RX: %s", esp_err_to_name(ret));
         goto cleanup;
     }
 
@@ -168,11 +169,11 @@ static esp_err_t dht11_rmt_rx_config(void) {
     ret = rmt_rx_register_event_callbacks(g_rx_channel, &cbs, g_receive_queue);
 
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: Error registrando callbacks: %s -", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Error: no se pudo registrar callbacks: %s", esp_err_to_name(ret));
         goto cleanup;
     }
 
-    ESP_LOGI(TAG, "- INFO: Canal RMT RX configurado correctamente -");
+    ESP_LOGI(TAG, "Info: canal RMT RX configurado correctamente");
     return ESP_OK;
 
     cleanup:
@@ -218,7 +219,7 @@ static esp_err_t dht11_start_and_receive(void) {
     while (gpio_get_level(DHT11_PIN) == 1) {
         ets_delay_us(1); // Espera 1µs
         if (++timeout_us > 100) { // El sensor debe responder en ~50µs
-            ESP_LOGE(TAG, "- ERROR: Timeout esperando respuesta (LOW) del sensor -");
+            ESP_LOGE(TAG, "Error: timeout esperando respuesta (LOW) del sensor");
             return ESP_ERR_TIMEOUT;
         }
     }
@@ -228,27 +229,27 @@ static esp_err_t dht11_start_and_receive(void) {
     while (gpio_get_level(DHT11_PIN) == 0) {
         ets_delay_us(1); // Espera 1µs
         if (++timeout_us > 120) { // El pulso es de 80µs nominales
-            ESP_LOGE(TAG, "- ERROR: Timeout esperando pulso idle (HIGH) del sensor -");
+            ESP_LOGE(TAG, "Error: timeout esperando pulso idle (HIGH) del sensor");
             return ESP_ERR_TIMEOUT;
         }
     }
 
     ret = rmt_enable(g_rx_channel);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: Error activando canal RMT: %s -", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Error: no se pudo activar canal RMT: %s", esp_err_to_name(ret));
         return ret;
     }
 
     ret = rmt_receive(g_rx_channel, g_rx_buffer, sizeof(g_rx_buffer), &rx_cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "- ERROR: Error iniciando recepcion: %s -", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Error: no se pudo iniciar recepcion: %s", esp_err_to_name(ret));
         rmt_disable(g_rx_channel);
         return ret;
     }
 
     rmt_rx_done_event_data_t event_data;
     if (xQueueReceive(g_receive_queue, &event_data, pdMS_TO_TICKS(RMT_TIMEOUT)) != pdTRUE) {
-        ESP_LOGE(TAG, "- ERROR: Timeout esperando datos -");
+        ESP_LOGE(TAG, "Error: timeout esperando datos");
         rmt_disable(g_rx_channel);
         return ESP_ERR_TIMEOUT;
     }
@@ -304,7 +305,7 @@ static esp_err_t dht11_decode_data(dht11_data_t *dht11_data) {
     // Verificar checksum
     uint8_t checksum = dht11_data->humidity + dht11_data->hum_decimal + dht11_data->temperature + dht11_data->temp_decimal;
     if (checksum != dht11_data->checksum) {
-        ESP_LOGE(TAG, "- ERROR: Checksum invalido: calculado %d, recibido %d -", checksum, dht11_data->checksum);
+        ESP_LOGE(TAG, "Error: checksum invalido. Calculado %d, recibido %d", checksum, dht11_data->checksum);
         return ESP_FAIL;
     }
     return ESP_OK;
@@ -326,12 +327,6 @@ static esp_err_t dht11_read_data(dht11_data_t *dht11_data) {
     if (ret != ESP_OK) {
         return ret;
     }
-
-    /*
-    ESP_LOGI(TAG, "Cantidad de simbolos: %u", num_symbols);
-    for (uint8_t i = 0; i < num_symbols; i++) {
-        ESP_LOGI(TAG, "D0: %u S0: %u  -  D1: %u S1: %u", g_rx_buffer[i].duration0, g_rx_buffer[i].level0, g_rx_buffer[i].duration1, g_rx_buffer[i].level1);
-    }*/
 
     ret = dht11_decode_data(dht11_data);
     if (ret != ESP_OK) return ret;
@@ -392,34 +387,50 @@ static void alert_analysis(data_t *data, const bool get_data) {
             if (error_abs > umbral_alerta_dinamico) {
                 data->state_dht11 = ALERT_DHT11;
                 data->temp_before_alert = data->ema_temp;   // Guardamos la "normalidad" previa
+                const State state = atomic_load(&shared_state);
+                if (state == STORE) {
+                    Event event = eFromStoreToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                } else if (state == UPDATE_SCORE) {
+                    Event event = eToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                }
                 if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
                     if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
                         free(data->packet.payload);
                     }
                 } else {
-                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                    ESP_LOGE(TAG, "Error: fallo al generar paquete (RAM)");
                 }
             } else {
                 data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
             }
-            data->ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * data->ema_temp);
+            data->ema_temp = (data->alpha_ema * temp_actual) + ((1 - data->alpha_ema) * data->ema_temp);
             break;
 
         case ALERT_DHT11:
             if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                 data->state_dht11 = NORMAL_DHT11;
+                const State state = atomic_load(&shared_state);
+                if (state == STORE) {
+                    Event event = eFromStoreToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                } else if (state == UPDATE_SCORE) {
+                    Event event = eToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                }
                 if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
                     if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGW("Data", "- INFO: Cola llena, descartando paquete -");
+                        ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
                         free(data->packet.payload);
                     }
                 } else {
-                    ESP_LOGE("Data", "- ERROR: Fallo al generar paquete (RAM) -");
+                    ESP_LOGE(TAG, "Error: fallo al generar paquete (RAM)");
                 }
                 data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
             }
-            data->ema_temp = (ALFA_TEMP * temp_actual) + ((1 - ALFA_TEMP) * data->ema_temp);
+            data->ema_temp = (data->alpha_ema * temp_actual) + ((1 - data->alpha_ema) * data->ema_temp);
             break;
     }
 }
@@ -474,6 +485,7 @@ static void init_data(data_t *data) {
     data->ema_temp = 20.0f;
     data->ema_error = 0.0f;
     data->temp_before_alert = 0.0f;
+    data->alpha_ema = settings_get_node_dht11_alpha_ema();
 }
 
 

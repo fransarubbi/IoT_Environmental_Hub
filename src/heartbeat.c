@@ -19,6 +19,9 @@ typedef struct {
 } state_heartbeat;
 
 
+static const char *TAG = "Heartbeat";
+
+
 /**
  * @brief Lógica central de gestión de vidas.
  *
@@ -32,24 +35,24 @@ typedef struct {
  * @param heart Tipo de evento recibido (TIMEOUT_HEARTBEAT o HEARTBEAT_INCOMING).
  */
 static void check_beat(state_heartbeat *heartbeat, const uint32_t heart) {
-    if (heartbeat->old_state != heartbeat->new_state) {
+    /*if (heartbeat->old_state != heartbeat->new_state) {
         heartbeat->old_state = heartbeat->new_state;
         heartbeat->count_beat = 2;
-    }
+    }*/
 
     if (heart == TIMEOUT_HEARTBEAT) {
         if (heartbeat->count_beat > 0) {
             heartbeat->count_beat -= 1;
         }
-        ESP_LOGW("HEARTBEAT", "Timeout detectado. Vidas restantes: %d", heartbeat->count_beat);
+        ESP_LOGW(TAG, "Warning: timeout detectado. Vidas restantes: %d", heartbeat->count_beat);
     }
     else if (heart == HEARTBEAT_INCOMING) {
         heartbeat->count_beat = 2;
-        ESP_LOGI("HEARTBEAT", "- INFO: Latido recibido. Vidas restauradas -");
+        ESP_LOGI(TAG, "Info: latido recibido. Vidas restauradas");
     }
 
     if (heartbeat->count_beat == 0) {
-        ESP_LOGE("HEARTBEAT", "- FATAL: Enlace perdido (0 vidas). Notificando a FSM -");
+        ESP_LOGE(TAG, "Error: enlace perdido (0 vidas). Notificando a FSM");
         const uint32_t flag = TIMEOUT_HEARTBEAT;
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
 
@@ -75,14 +78,16 @@ void heartbeat_task(void *pvParameter) {
     uint32_t notification = 0;
 
     heartbeat.old_state = CHECK_FIRMWARE;
-    heartbeat.count_beat = 2; // Inicializar en 2 por seguridad
+    heartbeat.count_beat = 2;
 
     while (1) {
-        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+        xTaskNotifyWait(0, NOTIFY_CMD_START, &notification, portMAX_DELAY);
 
         if (notification & NOTIFY_CMD_START) {
             xQueueReset(queues.heartbeat);
             bool running = true;
+            
+            heartbeat.count_beat = 2; 
 
             while (running) {
                 if (xQueueReceive(queues.heartbeat, &heart, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -98,8 +103,9 @@ void heartbeat_task(void *pvParameter) {
                         default: break;
                     }
                 }
+                
                 uint32_t stop_signal = 0;
-                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0);
+                const BaseType_t result = xTaskNotifyWait(0, NOTIFY_CMD_STOP, &stop_signal, 0);
 
                 if (result == pdTRUE) {
                     if (stop_signal & NOTIFY_CMD_STOP) {

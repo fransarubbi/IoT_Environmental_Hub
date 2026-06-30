@@ -22,13 +22,8 @@
 /* ─────────────────────────────────────────────
  * Parámetros del circuito
  * ───────────────────────────────────────────── */
-#define MQ135_RLOAD_KOHM        1.0f    /*!< Resistencia de carga en kΩ */
-#define MQ135_VCC               5.0f    /*!< Tensión de alimentación del módulo (V) */
-
-/* ─────────────────────────────────────────────
- * Calibración del sensor
- * ───────────────────────────────────────────── */
-#define MQ135_RZERO_KOHM        8.51f   /*!< Rs en aire limpio medido en runtime (kΩ) */
+#define MQ135_RLOAD_KOHM        10.0f    /*!< Resistencia de carga en kΩ */
+#define MQ135_VCC               5.0f    /*!< Tension de alimentación del módulo (V) */
 
 /* ─────────────────────────────────────────────
  * Curva CO2 – ecuación: PPM = PARA * (Rs/R0)^PARB
@@ -44,7 +39,6 @@
  * Parámetros del filtro
  * ───────────────────────────────────────────── */
 #define MQ135_MEDIAN_WINDOW     9       /*!< Muestras para filtro de mediana */
-#define MQ135_EMA_ALPHA         0.2f    /*!< Factor EMA: 0=muy suave … 1=sin filtro */
 
 /* ─────────────────────────────────────────────
  * Rangos válidos de salida

@@ -9,7 +9,7 @@
 
 
 static wifi_ap_record_t ap_info;
-static const char *TAG = "Wifi";
+static const char *TAG = "WiFi";
 static int s_retry_num = 0;
 
 
@@ -38,10 +38,10 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base,
         if ( s_retry_num < WIFI_MAX_RETRY ) {
             esp_wifi_connect();
             s_retry_num++;
-            ESP_LOGI(TAG, "- INFO: Reintentando conexion al AP -");
+            ESP_LOGI(TAG, "Info: reintentando conexion al AP");
         }
         else {
-            ESP_LOGE(TAG, "- ERROR: Fallo al conectar al AP tras %d intentos -", WIFI_MAX_RETRY);
+            ESP_LOGE(TAG, "Error: fallo al conectar al AP tras %d intentos", WIFI_MAX_RETRY);
             xEventGroupSetBits(event_group.wifi_event_group, WIFI_FAIL_BIT);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -77,14 +77,14 @@ static esp_err_t wifi_wait_for_connection() {
                                            pdMS_TO_TICKS(WIFI_TIMEOUT));
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "- INFO: Conexion Wi-Fi exitosa -");
+        ESP_LOGI(TAG, "Info: conexion WiFi exitosa");
         return ESP_OK;
     }
     if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGE(TAG, "- ERROR: Fallo al conectar Wi-Fi -");
+        ESP_LOGE(TAG, "Error: fallo al conectar WiFi");
         return ESP_FAIL;
     }
-    ESP_LOGE(TAG, "- ERROR: Timeout esperando conexion Wi-Fi -");
+    ESP_LOGE(TAG, "Error: timeout esperando conexion WiFi");
     return ESP_ERR_TIMEOUT;
 }
 

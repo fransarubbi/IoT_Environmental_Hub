@@ -150,10 +150,10 @@ static void update_score_socket_error(uint8_t *current_score) {
 
 
 /**
- * @brief Resetea el score a 0 debido a una desconexión crítica.
+ * @brief Resetea el score a 1 debido a una desconexión crítica.
  */
 static void update_score_disconnected(uint8_t *current_score) {
-    *current_score = 0;
+    *current_score = 1;
     const State state = atomic_load(&shared_state);
     if (state == NORMAL || state == UPDATE_SCORE) {
         send_flag(current_score);
@@ -200,11 +200,17 @@ void health_score_task(void *pvParam) {
                 case HEALTH_EVT_PUBACK: {
                     // Buscar msg_id en array
                     const int idx = find_msg_index(&msg_pending, evt.msg_id);
-                    if (idx != -1) {   // Calcular RTT
-                        const int64_t rtt_us = evt.timestamp - msg_pending.msg[idx].start_time;
-                        const int64_t rtt_ms = rtt_us / 1000;
-                        update_score_rtt(&current_score, rtt_ms); // Pasamos ms
-                        msg_pending.msg[idx].active = false; // Liberamos slot
+                    if (idx != -1) {
+                        if (evt.is_mqtt5_ack && evt.return_code != 0x00) {
+                            ESP_LOGE("HEALTHSCORE", "PUBACK error: 0x%02X", evt.return_code);
+                            update_score_disconnected(&current_score);  // Crítico
+                        } else {
+                            // Código 0x00: Éxito
+                            const int64_t rtt_us = evt.timestamp - msg_pending.msg[idx].start_time;
+                            const int64_t rtt_ms = rtt_us / 1000;
+                            update_score_rtt(&current_score, rtt_ms);
+                        }
+                        msg_pending.msg[idx].active = false;
                     }
                     break;
                 }

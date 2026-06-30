@@ -20,7 +20,7 @@ static esp_err_t wait_for_time_sync(void) {
     const int retry_count = 15;
 
     while (timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
-        ESP_LOGI(TAG, "- INFO: Esperando sincronizacion SNTP... (%d/%d) -", retry, retry_count);
+        ESP_LOGI(TAG, "Info: esperando sincronizacion SNTP ... (%d/%d) -", retry, retry_count);
         vTaskDelay(pdMS_TO_TICKS(TIME_WAIT));
         time(&now);
         localtime_r(&now, &timeinfo);
@@ -38,7 +38,7 @@ static esp_err_t wait_for_time_sync(void) {
  * @return esp_err_t Devuelve ESP_OK cuando el proceso fue correcto y ESP_FAIL cuando falla.
  */
 esp_err_t time_init(void) {
-    ESP_LOGI(TAG, "- INFO: Inicializando SNTP -");
+    ESP_LOGI(TAG, "Info: inicializando SNTP");
     esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
