@@ -9,7 +9,7 @@
 
 
 #define URL_VERSION "https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/master/version.txt"
-#define URL_BIN     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v0.9.0/firmware.bin"
+#define URL_BIN     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v0.10.0/firmware.bin"
 #define MAX_HTTP_OUTPUT_BUFFER 64
 
 
