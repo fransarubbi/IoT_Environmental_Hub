@@ -116,6 +116,7 @@ typedef enum {
     eFromUpdateScoreToNormal,
     eFromUpdateScoreToInitBalance,
     eFromUpdateScoreToInHandshake,
+    eFromUpdateScoreToStore,
     eToBypass,
     eFromStoreToBalance,
     eFromStoreToBypass,

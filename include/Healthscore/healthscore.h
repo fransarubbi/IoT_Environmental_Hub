@@ -49,6 +49,8 @@ typedef struct {
     event_type_t event;     // Tipo de evento
     int32_t msg_id;         // Importante para matchear SENT con PUBACK
     int64_t timestamp;      // Momento del evento
+    uint8_t return_code;    // Codigo de retorno
+    bool is_mqtt5_ack;      
 } health_event_t;
 
 

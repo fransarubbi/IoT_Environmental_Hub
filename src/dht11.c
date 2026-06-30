@@ -387,6 +387,14 @@ static void alert_analysis(data_t *data, const bool get_data) {
             if (error_abs > umbral_alerta_dinamico) {
                 data->state_dht11 = ALERT_DHT11;
                 data->temp_before_alert = data->ema_temp;   // Guardamos la "normalidad" previa
+                const State state = atomic_load(&shared_state);
+                if (state == STORE) {
+                    Event event = eFromStoreToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                } else if (state == UPDATE_SCORE) {
+                    Event event = eToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                }
                 if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
                     if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                         ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
@@ -404,6 +412,14 @@ static void alert_analysis(data_t *data, const bool get_data) {
         case ALERT_DHT11:
             if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                 data->state_dht11 = NORMAL_DHT11;
+                const State state = atomic_load(&shared_state);
+                if (state == STORE) {
+                    Event event = eFromStoreToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                } else if (state == UPDATE_SCORE) {
+                    Event event = eToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                }
                 if (generate_message_alert_temp(&data->packet, (uint8_t)data->temp_before_alert, (uint8_t)temp_actual)) {
                     if (xQueueSend(queues.alert_temp_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                         ESP_LOGW(TAG, "Info: cola llena, descartando paquete");

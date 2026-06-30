@@ -68,6 +68,7 @@ bool generate_message_data(const data_sensors_t data, mqtt_packet_t *packet) {
     mpack_write_float(&writer, (float)data.dht11_temperature);
     mpack_write_float(&writer, (float)data.dht11_humidity);
     mpack_write_float(&writer, data.co2ppm);
+    ESP_LOGI(TAG, "PPM: %f", data.co2ppm);
     mpack_write_u32(&writer, settings_get_node_sample_rate());
 
     mpack_finish_array(&writer);
@@ -260,7 +261,7 @@ bool generate_message_monitor(mqtt_packet_t *packet, const stats_monitor_t *stat
 /**
  * @brief Genera respuesta de confirmación de configuración recibida.
  */
-bool generate_message_setting_ok(mqtt_packet_t *packet) {
+bool generate_message_setting_ok(mqtt_msg_general_t *packet) {
     packet->payload = NULL;
     packet->len = 0;
     const size_t buffer_size = MPACK_SETTINGS_OK_SIZE;
@@ -291,7 +292,6 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
     mpack_finish_array(&writer);
 
     mpack_write_u32(&writer, message_id);
-
     mpack_write_cstr(&writer, network);
     mpack_write_bool(&writer, true);
 
@@ -306,6 +306,7 @@ bool generate_message_setting_ok(mqtt_packet_t *packet) {
     }
     ESP_LOGI(TAG, "Info: serializacion correcta de SettingOk");
     packet->len = used;
+    packet->topic = SETTING_OK;
     return true;
 }
 
@@ -1229,6 +1230,11 @@ bool parse_message_setting(const char* data, const size_t len) {
         if (ret != ESP_OK) {
             return false;
         }
+        mqtt_msg_general_t packet;
+        generate_message_setting_ok(&packet);
+        if (xQueueSend(queues.general, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {
+            free(packet.payload);
+        }
     }
     return true;
 }
@@ -1242,7 +1248,7 @@ bool parse_message_setting_ok(const char* data, const size_t len) {
     mpack_reader_init_data(&reader, data, len);
 
     const uint32_t heartbeat_array_size = mpack_expect_array(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok || heartbeat_array_size != 3) {
+    if (mpack_reader_error(&reader) != mpack_ok || heartbeat_array_size != 4) {
         return false;
     }
 
@@ -1260,7 +1266,7 @@ bool parse_message_setting_ok(const char* data, const size_t len) {
     settings_get_node_mac(mac, sizeof(mac));
 
     const uint32_t meta_array_size = mpack_expect_array(&reader);
-    if (mpack_reader_error(&reader) != mpack_ok || meta_array_size != 4) {
+    if (mpack_reader_error(&reader) != mpack_ok || meta_array_size != 3) {
         return false;
     }
 
@@ -1270,7 +1276,7 @@ bool parse_message_setting_ok(const char* data, const size_t len) {
     mpack_expect_cstr(&reader, buffer, sizeof(buffer));
     if (strcmp(buffer, mac) == 0) dest_ok = true;
 
-    mpack_expect_i64(&reader);
+    mpack_expect_i64(&reader); // finaliza la metadata con el timestamp
 
     const uint32_t id = mpack_expect_u32(&reader);
     if (id == message_id) {
@@ -1412,6 +1418,7 @@ bool parse_message_active(const char* data, const size_t len) {
             xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_STOP, eSetBits);
             xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
             xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_STOP, eSetBits);
+            xTaskNotify(task_handle.data_ct_handle, NOTIFY_CMD_STOP, eSetBits);
             if (task_handle.send_settings_handle != NULL) {
                 xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_STOP, eSetBits);
             }
@@ -1421,6 +1428,7 @@ bool parse_message_active(const char* data, const size_t len) {
             xTaskNotify(task_handle.mq135_handle, NOTIFY_CMD_START, eSetBits);
             xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_START, eSetBits);
             xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_START, eSetBits);
+            xTaskNotify(task_handle.data_ct_handle, NOTIFY_CMD_START, eSetBits);
             if (task_handle.send_settings_handle != NULL) {
                 xTaskNotify(task_handle.send_settings_handle, NOTIFY_CMD_START, eSetBits);
             }

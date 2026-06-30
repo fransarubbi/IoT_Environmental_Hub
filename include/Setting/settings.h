@@ -98,7 +98,8 @@ typedef enum {
     HANDSHAKE,
     PING,
     QUEUE_EMPTY,
-    LINKAGE_REQUEST
+    LINKAGE_REQUEST,
+    SETTING_OK
 } topic_general;
 
 

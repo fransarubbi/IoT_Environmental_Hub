@@ -294,11 +294,6 @@ void flag_converter_task(void *pvParameters) {
                         Event event = eFromStoreToSafe;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
-                    if (flag == MESSAGE_ALERT) {
-                        ESP_LOGD(TAG, "Estado: STORE, Flag: MESSAGE_ALERT");
-                        Event event = eFromStoreToBypass;
-                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
-                    }
                     if (flag == STATE_BALANCE_MODE) {
                         ESP_LOGD(TAG, "Estado: STORE, Flag: STATE_BALANCE_MODE");
                         Event event = eFromStoreToBalance;
@@ -315,11 +310,6 @@ void flag_converter_task(void *pvParameters) {
                     if (flag == TIMEOUT_COOLING) {
                         ESP_LOGD(TAG, "Estado: COOLING_TIME, Flag: TIMEOUT_COOLING");
                         Event event = eFromCoolingToUpdateScore;
-                        xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
-                    }
-                    if (flag == MESSAGE_ALERT) {
-                        ESP_LOGD(TAG, "Estado: COOLING_TIME, Flag: MESSAGE_ALERT");
-                        Event event = eToBypass;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     if (flag == STATE_BALANCE_MODE) {
@@ -340,14 +330,14 @@ void flag_converter_task(void *pvParameters) {
                         Event event = eFromUpdateScoreToNormal;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
-                    if (flag == HEALTH_SCORE_UNAVAILABLE || flag == HEALTH_SCORE_CRITICAL) {
-                        ESP_LOGD(TAG, "Estado: UPDATE_SCORE, Flag: HEALTH_SCORE_UNAVAILABLE o HEALTH_SCORE_CRITICAL");
+                    if (flag == HEALTH_SCORE_CRITICAL) {
+                        ESP_LOGD(TAG, "Estado: UPDATE_SCORE, Flag: HEALTH_SCORE_CRITICAL");
                         Event event = eFromUpdateScoreToCooling;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
-                    if (flag == MESSAGE_ALERT) {
-                        ESP_LOGD(TAG, "Estado: UPDATE_SCORE, Flag: MESSAGE_ALERT");
-                        Event event = eToBypass;
+                    if (flag == HEALTH_SCORE_UNAVAILABLE) {
+                        ESP_LOGD(TAG, "Estado: UPDATE_SCORE, Flag: HEALTH_SCORE_UNAVAILABLE");
+                        Event event = eFromUpdateScoreToStore;
                         xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
                     }
                     if (flag == STATE_BALANCE_MODE) {

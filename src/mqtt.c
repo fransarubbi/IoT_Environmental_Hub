@@ -61,7 +61,7 @@ static void subscribe_to_all_topics(esp_mqtt_client_handle_t client) {
     esp_mqtt_client_subscribe(client, topic_buff, 0);
 
     settings_get_mqtt_topic_active_hub(topic_buff, sizeof(topic_buff));
-    esp_mqtt_client_subscribe(client, topic_buff, 0);
+    esp_mqtt_client_subscribe(client, topic_buff, 1);
 
     settings_get_mqtt_topic_ping_ack(topic_buff, sizeof(topic_buff));
     esp_mqtt_client_subscribe(client, topic_buff, 0);
@@ -116,12 +116,30 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
         }
 
         case MQTT_EVENT_PUBLISHED: {
-            const health_event_t health = {
+            uint8_t return_code = 0x00;  // Default: Success
+    
+            if (event->data && event->data_len > 0) {
+                // El return code esta en la variable header del PUBACK
+                return_code = ((uint8_t*)event->data)[0];
+            }
+    
+            health_event_t health = {
                 .event = HEALTH_EVT_PUBACK,
                 .msg_id = event->msg_id,
-                .timestamp = esp_timer_get_time()
+                .timestamp = esp_timer_get_time(),
+                .return_code = return_code,
+                .is_mqtt5_ack = true
             };
+    
             xQueueSend(queues.health, &health, pdMS_TO_TICKS(0));
+    
+            if (return_code == 0x00) {
+                ESP_LOGD(TAG, "INFO: PUBACK msg_id=%d - SUCCESS", event->msg_id);
+            } else if (return_code == 0x10) {
+                ESP_LOGW(TAG, "WARNING: PUBACK msg_id=%d - Recibido por el broker pero nadie esta suscripto al topico", event->msg_id);
+            } else {
+                ESP_LOGW(TAG, "WARNING: PUBACK msg_id=%d - Return code: 0x%02X", event->msg_id, return_code);
+            }
             break;
         }
 

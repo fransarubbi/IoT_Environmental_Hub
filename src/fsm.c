@@ -80,6 +80,7 @@ const StateTable table[] = {
     {COOLING_TIME, eFromCoolingToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
     {UPDATE_SCORE, eFromUpdateScoreToCooling, COOLING_TIME, action_entry_cooling},
     {UPDATE_SCORE, eFromUpdateScoreToNormal, NORMAL, action_entry_normal},
+    {UPDATE_SCORE, eFromUpdateScoreToStore, STORE, action_entry_store},
     {UPDATE_SCORE, eToBypass, BYPASS, action_entry_bypass},
     {UPDATE_SCORE, eFromUpdateScoreToInitBalance, INIT_BALANCE_MODE, action_entry_init_balance_mode},
     {UPDATE_SCORE, eFromUpdateScoreToInHandshake, IN_HANDSHAKE, action_entry_in_handshake},
@@ -102,7 +103,6 @@ static void event_processor(Fsm *fsm, const Event event) {
         if (table[i].current == fsm->state && table[i].event == event) {
             fsm->state = table[i].next;
             atomic_store(&shared_state, fsm->state);
-            xQueueReset(queues.flag);
             if (table[i].action) table[i].action(fsm);
             return;
         }
@@ -218,6 +218,7 @@ void action_entry_notify_ok(Fsm *fsm) {
 
 void action_entry_init_balance_mode(Fsm *fsm) {
     xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_STOP, eSetBits);
+    xTaskNotify(task_handle.https_handle, NOTIFY_CMD_STOP, eSetBits);
     delete_timer(HEARTBEAT_NORMAL_TIMER);
     delete_timer(INIT_SYSTEM_TIMER);
     delete_timer(BYPASS_TIMER);
@@ -235,6 +236,7 @@ void action_entry_init_balance_mode(Fsm *fsm) {
 
 
 void action_entry_in_handshake(Fsm *fsm) {
+    xTaskNotify(task_handle.https_handle, NOTIFY_CMD_STOP, eSetBits);
     delete_timer(HANDSHAKE_TIMER);
     delete_timer(INIT_BALANCE_TIMER);
     init_timer(HANDSHAKE_TIMER);
@@ -279,7 +281,7 @@ void action_entry_out_handshake(Fsm *fsm) {
 
 
 void action_entry_normal(Fsm *fsm) {
-    xTaskNotify(task_handle.heartbeat_handle, NOTIFY_CMD_STOP, eSetBits);
+    xTaskNotify(task_handle.https_handle, NOTIFY_CMD_STOP, eSetBits);
     delete_timer(HEARTBEAT_BALANCE_MODE_TIMER);
     delete_timer(BYPASS_TIMER);
     delete_timer(INIT_SYSTEM_TIMER);
@@ -344,6 +346,7 @@ void action_entry_update_score(Fsm *fsm) {
 
 void action_entry_bypass(Fsm *fsm) {
     delete_timer(COOLING_TIMER);
+    init_timer(BYPASS_TIMER);
     xTaskNotify(task_handle.ky037_handle, NOTIFY_CMD_STOP, eSetBits);
     xTaskNotify(task_handle.monitor_handle, NOTIFY_CMD_STOP, eSetBits);
     if (task_handle.send_settings_handle != NULL) {

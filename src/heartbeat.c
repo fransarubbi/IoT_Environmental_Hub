@@ -35,10 +35,10 @@ static const char *TAG = "Heartbeat";
  * @param heart Tipo de evento recibido (TIMEOUT_HEARTBEAT o HEARTBEAT_INCOMING).
  */
 static void check_beat(state_heartbeat *heartbeat, const uint32_t heart) {
-    if (heartbeat->old_state != heartbeat->new_state) {
+    /*if (heartbeat->old_state != heartbeat->new_state) {
         heartbeat->old_state = heartbeat->new_state;
         heartbeat->count_beat = 2;
-    }
+    }*/
 
     if (heart == TIMEOUT_HEARTBEAT) {
         if (heartbeat->count_beat > 0) {
@@ -78,14 +78,16 @@ void heartbeat_task(void *pvParameter) {
     uint32_t notification = 0;
 
     heartbeat.old_state = CHECK_FIRMWARE;
-    heartbeat.count_beat = 2; // Inicializar en 2 por seguridad
+    heartbeat.count_beat = 2;
 
     while (1) {
-        xTaskNotifyWait(0, ULONG_MAX, &notification, portMAX_DELAY);
+        xTaskNotifyWait(0, NOTIFY_CMD_START, &notification, portMAX_DELAY);
 
         if (notification & NOTIFY_CMD_START) {
             xQueueReset(queues.heartbeat);
             bool running = true;
+            
+            heartbeat.count_beat = 2; 
 
             while (running) {
                 if (xQueueReceive(queues.heartbeat, &heart, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -101,8 +103,9 @@ void heartbeat_task(void *pvParameter) {
                         default: break;
                     }
                 }
+                
                 uint32_t stop_signal = 0;
-                const BaseType_t result = xTaskNotifyWait(0, ULONG_MAX, &stop_signal, 0);
+                const BaseType_t result = xTaskNotifyWait(0, NOTIFY_CMD_STOP, &stop_signal, 0);
 
                 if (result == pdTRUE) {
                     if (stop_signal & NOTIFY_CMD_STOP) {

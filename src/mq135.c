@@ -273,6 +273,14 @@ static void alert_analysis(data_t *data, const bool get_data) {
                 data->state_mq135 = ALERT_MQ135;
                 data->alert.co2ppm_i = data->ema_ppm;
                 data->alert.co2ppm_a = ppm_actual;
+                const State state = atomic_load(&shared_state);
+                if (state == STORE) {
+                    Event event = eFromStoreToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                } else if (state == UPDATE_SCORE) {
+                    Event event = eToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                }
                 if (generate_message_alert_air(&data->packet, data->alert)) {
                     if (xQueueSend(queues.alert_air_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                         ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
@@ -290,6 +298,14 @@ static void alert_analysis(data_t *data, const bool get_data) {
         case ALERT_MQ135:
             if (error_abs < (umbral_alerta_dinamico * HYSTERESIS)) {
                 data->state_mq135 = NORMAL_MQ135;
+                const State state = atomic_load(&shared_state);
+                if (state == STORE) {
+                    Event event = eFromStoreToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                } else if (state == UPDATE_SCORE) {
+                    Event event = eToBypass;
+                    xQueueSend(queues.event, &event, pdMS_TO_TICKS(100));
+                }
                 if (generate_message_alert_air(&data->packet, data->alert)) {
                     if (xQueueSend(queues.alert_air_buffer, &data->packet, pdMS_TO_TICKS(100)) != pdTRUE) {
                         ESP_LOGW(TAG, "Info: cola llena, descartando paquete");

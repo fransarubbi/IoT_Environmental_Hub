@@ -43,6 +43,7 @@ typedef struct {
     char topic_ping[MAX_TOPIC];
     char topic_queue[MAX_TOPIC];
     char topic_linkage_request[MAX_TOPIC];
+    char topic_setting_ok[MAX_TOPIC];
 } topic;
 
 
@@ -61,6 +62,7 @@ static void init_topics(topic *topics) {
     settings_get_mqtt_topic_ping(topics->topic_ping, sizeof(topics->topic_ping));
     settings_get_mqtt_topic_empty_queue(topics->topic_queue, sizeof(topics->topic_queue));
     settings_get_mqtt_topic_linkage_request(topics->topic_linkage_request, sizeof(topics->topic_linkage_request));
+    settings_get_mqtt_topic_settings_ok(topics->topic_setting_ok, sizeof(topics->topic_setting_ok));
 }
 
 
@@ -197,6 +199,7 @@ static void get_data_from_queue_data_buffer(mqtt_packet_t *packet_data, const to
         const esp_err_t ret = mqtt_publish(topics->topic_data, packet_data->payload, (int)packet_data->len, QOS_DATA, NOT_RETAIN);
         free(packet_data->payload);
         update_health_score(ret, QOS_DATA);
+        ESP_LOGI(TAG, "Info: se ha enviado un mensaje Measurement");
     }
 }
 
@@ -209,6 +212,7 @@ static void get_data_from_queue_monitor_buffer(mqtt_packet_t *packet_monitor, co
         const esp_err_t ret = mqtt_publish(topics->topic_monitor, packet_monitor->payload, (int)packet_monitor->len, QOS_MONITOR, NOT_RETAIN);
         free(packet_monitor->payload);
         update_health_score(ret, QOS_MONITOR);
+        ESP_LOGI(TAG, "Info: se ha enviado un mensaje Monitor");
     }
 }
 
@@ -235,6 +239,7 @@ static void get_data_from_queue_alert_air_buffer(mqtt_packet_t *packet_alert, co
             const esp_err_t ret = mqtt_publish(topics->topic_alert_air, packet_alert->payload, (int)packet_alert->len, QOS_ALERT, NOT_RETAIN);
             free(packet_alert->payload);
             update_health_score(ret, QOS_ALERT);
+            ESP_LOGI(TAG, "Info: se ha enviado un mensaje AlertAir");
         }
     }
 }
@@ -250,13 +255,14 @@ static void get_data_from_queue_alert_temp_buffer(mqtt_packet_t *packet_alert, c
             const esp_err_t ret = mqtt_publish(topics->topic_alert_temp, packet_alert->payload, (int)packet_alert->len, QOS_ALERT, NOT_RETAIN);
             free(packet_alert->payload);
             update_health_score(ret, QOS_ALERT);
+            ESP_LOGI(TAG, "Info: se ha enviado un mensaje AlertTemp");
         }
     }
 }
 
 
 /**
- * @brief Procesa la cola de alertas de temperatura.
+ * @brief Procesa la cola general de mensajes.
  */
 static void get_data_from_queue_general_buffer(mqtt_msg_general_t *packet_general, const topic *topics) {
     if (xQueueReceive(queues.general, packet_general, 0)) {
@@ -265,30 +271,41 @@ static void get_data_from_queue_general_buffer(mqtt_msg_general_t *packet_genera
                 const esp_err_t ret = mqtt_publish(topics->topic_firmware, packet_general->payload, (int)packet_general->len, QOS_FIRMWARE, NOT_RETAIN);
                 free(packet_general->payload);
                 update_health_score(ret, QOS_FIRMWARE);
+                ESP_LOGI(TAG, "Info: se ha enviado un mensaje FirmwareOk");
                 break;
             }
             case HANDSHAKE: {
                 const esp_err_t ret = mqtt_publish(topics->topic_handshake, packet_general->payload, (int)packet_general->len, QOS_HANDSHAKE, NOT_RETAIN);
                 free(packet_general->payload);
                 update_health_score(ret, QOS_HANDSHAKE);
+                ESP_LOGI(TAG, "Info: se ha enviado un mensaje Handshake");
                 break;
             }
             case PING: {
                 const esp_err_t ret = mqtt_publish(topics->topic_ping, packet_general->payload, (int)packet_general->len, QOS_PING, NOT_RETAIN);
                 free(packet_general->payload);
                 update_health_score(ret, QOS_PING);
+                ESP_LOGI(TAG, "Info: se ha enviado un mensaje Ping");
                 break;
             }
             case QUEUE_EMPTY: {
                 const esp_err_t ret = mqtt_publish(topics->topic_queue, packet_general->payload, (int)packet_general->len, QOS_EMPTY, NOT_RETAIN);
                 free(packet_general->payload);
                 update_health_score(ret, QOS_EMPTY);
+                ESP_LOGI(TAG, "Info: se ha enviado un mensaje EmptyQueue");
                 break;
             }
             case LINKAGE_REQUEST: {
                 const esp_err_t ret = mqtt_publish(topics->topic_linkage_request, packet_general->payload, (int)packet_general->len, QOS_LINKAGE, NOT_RETAIN);
                 free(packet_general->payload);
                 update_health_score(ret, QOS_LINKAGE);
+                ESP_LOGI(TAG, "Info: se ha enviado un mensaje LinkageRequest");
+                break;
+            }
+            case SETTING_OK: {
+                mqtt_publish(topics->topic_setting_ok, packet_general->payload, (int)packet_general->len, QOS_SETTING_OK, NOT_RETAIN);
+                free(packet_general->payload);
+                ESP_LOGI(TAG, "Info: se ha enviado un mensaje SettingOk");
                 break;
             }
         }

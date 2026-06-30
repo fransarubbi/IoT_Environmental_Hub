@@ -25,6 +25,7 @@
 #define QOS_PING         1
 #define QOS_EMPTY        1
 #define QOS_LINKAGE      1
+#define QOS_SETTING_OK   0
 
 
 /**
