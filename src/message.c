@@ -1122,7 +1122,7 @@ bool parse_message_new_firmware(const char* data, const size_t len) {
     if (strcmp(buffer, "server0") == 0) sender_ok = true;
 
     mpack_expect_cstr(&reader, buffer, sizeof(buffer));
-    if (strcmp(buffer, mac) == 0) dest_ok = true;
+    if (strcmp(buffer, mac) == 0 || strcmp(buffer, "all") == 0) dest_ok = true;
 
     mpack_expect_i64(&reader);
 
