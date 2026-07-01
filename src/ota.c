@@ -8,13 +8,19 @@
 #include "System/system.h"
 
 
-#define URL_VERSION "https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/master/version.txt"
-#define URL_BIN     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v0.10.0/firmware.bin"
+#define URL_VERSION      "https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/master/version.txt"
+#define URL_BIN_TEMPLATE "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v%s/firmware.bin"
 #define MAX_HTTP_OUTPUT_BUFFER 64
+#define MAX_VERSION_LEN 32
+#define MAX_URL_LEN 256
 
 
 static const char *TAG = "OTA";
 static char response_buffer[MAX_HTTP_OUTPUT_BUFFER] = {0};
+
+// Guarda la última versión remota (saneada) detectada por check_update().
+// ota_from_github() la usa para armar dinámicamente la URL del binario.
+static char latest_remote_version[MAX_VERSION_LEN] = {0};
 
 
 typedef struct {
@@ -151,14 +157,31 @@ esp_err_t get_repository_version() {
 
 /**
  * @brief Ejecuta el proceso de actualización OTA (Over The Air).
- * * Descarga el binario, lo escribe en la partición OTA libre y reinicia el ESP32.
- * * @return esp_err_t ESP_OK si tuvo éxito (el sistema se reiniciará antes de retornar), o código de error.
+ * * Arma dinámicamente la URL del binario a partir de la última versión remota
+ * detectada por check_update() y descarga el firmware correspondiente,
+ * lo escribe en la partición OTA libre y reinicia el ESP32.
+ * * @return esp_err_t ESP_OK si tuvo éxito (el sistema se reiniciará antes de retornar),
+ * o código de error (incluye ESP_ERR_INVALID_STATE si no hay una versión remota
+ * conocida con la cual armar la URL).
  */
 esp_err_t ota_from_github() {
-    ESP_LOGI(TAG, "Info: iniciando descarga de firmware");
+
+    if (latest_remote_version[0] == '\0') {
+        ESP_LOGE(TAG, "Error: no hay version remota conocida para armar la URL del binario");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    char ota_url[MAX_URL_LEN] = {0};
+    const int written = snprintf(ota_url, sizeof(ota_url), URL_BIN_TEMPLATE, latest_remote_version);
+    if (written < 0 || written >= (int)sizeof(ota_url)) {
+        ESP_LOGE(TAG, "Error: URL de OTA demasiado larga o invalida");
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    ESP_LOGI(TAG, "Info: iniciando descarga de firmware desde %s", ota_url);
 
     esp_http_client_config_t config = {
-        .url = URL_BIN,
+        .url = ota_url,
         .timeout_ms = 30000,
         .buffer_size = 4096,
         .buffer_size_tx = 1024,
@@ -209,7 +232,11 @@ void check_update(void) {
         const int result = compare_semver(response_buffer, CURRENT_FIRMWARE_VERSION);
 
         if (result == 1) {   // Remoto > Local
-            ESP_LOGW(TAG, "Warning: actualizacion encontrada. Iniciando...");
+            strncpy(latest_remote_version, response_buffer, sizeof(latest_remote_version) - 1);
+            latest_remote_version[sizeof(latest_remote_version) - 1] = '\0';
+            sanitize_string(latest_remote_version);
+
+            ESP_LOGW(TAG, "Warning: actualizacion encontrada (v%s). Iniciando...", latest_remote_version);
             const uint32_t flag = UPDATE_FLAG;
             xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
         }
@@ -224,4 +251,3 @@ void check_update(void) {
         xQueueSend(queues.flag, &flag, pdMS_TO_TICKS(100));
     }
 }
-
