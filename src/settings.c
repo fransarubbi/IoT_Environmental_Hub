@@ -1131,7 +1131,7 @@ void send_settings_task(void *pvParameter) {
             while (running) {
                 uint32_t rate = settings_get_node_sample_rate();
                 if (rate == 0) rate = 1;
-                const TickType_t loop_delay = pdMS_TO_TICKS(rate * 2 * 60000);
+                const TickType_t loop_delay = pdMS_TO_TICKS(20000);
 
                 if (generate_message_settings(&packet)) {
                     if (xQueueSend(queues.settings_buffer, &packet, pdMS_TO_TICKS(100)) != pdTRUE) {

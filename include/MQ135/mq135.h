@@ -1,15 +1,12 @@
 #ifndef MQ135_H
 #define MQ135_H
 
-
 #include <freertos/queue.h>
 #include <freertos/task.h>
 #include "esp_err.h"
 
-
 #define MQ135_DELAY 10000
 #define MQ135_DATA_READY  (1 << 1)
-
 
 /* ─────────────────────────────────────────────
  * Pines y canal ADC
@@ -22,66 +19,49 @@
 /* ─────────────────────────────────────────────
  * Parámetros del circuito
  * ───────────────────────────────────────────── */
-#define MQ135_RLOAD_KOHM        10.0f    /*!< Resistencia de carga en kΩ */
-#define MQ135_VCC               5.0f    /*!< Tension de alimentación del módulo (V) */
+#define MQ135_RLOAD_KOHM        10.0f    
+#define MQ135_VCC               5.0f    
 
 /* ─────────────────────────────────────────────
- * Curva CO2 – ecuación: PPM = PARA * (Rs/R0)^PARB
- * Derivados de la hoja de datos del MQ135
+ * Parámetros de Calidad de Aire (Índice VOC)
  * ───────────────────────────────────────────── */
-#define MQ135_PARA              116.6020682f
-#define MQ135_PARB              (-2.769034857f)
-
-/* CO2 atmosférico de referencia (ppm) */
-#define MQ135_ATMOCO2           400.0f
+#define MQ135_RATIO_CLEAN       3.6f   /*!< Rs/R0 en aire limpio (100%) */
+#define MQ135_RATIO_DIRTY       1.0f   /*!< Rs/R0 en aire viciado (0%) */
 
 /* ─────────────────────────────────────────────
- * Parámetros del filtro
+ * Parámetros del filtro y tiempos
  * ───────────────────────────────────────────── */
-#define MQ135_MEDIAN_WINDOW     9       /*!< Muestras para filtro de mediana */
+#define MQ135_MEDIAN_WINDOW     9       
+
+#define MQ135_LOW_DELAY            10000    
+#define MQ135_BALANCED_DELAY       5000     
+#define MQ135_PERFORMANCE_DELAY    2000     
 
 /* ─────────────────────────────────────────────
- * Rangos válidos de salida
- * ───────────────────────────────────────────── */
-#define MQ135_PPM_MIN           10.0f
-#define MQ135_PPM_MAX           10000.0f
-
-#define MQ135_LOW_DELAY            10000    // 10 seg
-#define MQ135_BALANCED_DELAY       5000     // 5 seg
-#define MQ135_PERFORMANCE_DELAY    2000     // 2 seg
-
-
-/* ─────────────────────────────────────────────
- * Estructura de configuración / estado
+ * Estructuras de configuración / estado
  * ───────────────────────────────────────────── */
 typedef struct {
-    float    rzero_kohm;       /*!< Rzero calibrado (kΩ) */
-    float    rload_kohm;       /*!< Resistencia de carga (kΩ) */
-    float    ema_alpha;        /*!< Factor de suavizado EMA */
-    float    ema_value;        /*!< Último valor EMA (estado interno) */
-    bool     ema_initialized;  /*!< Indica si EMA ya tiene primer valor */
+    float    rzero_kohm;       
+    float    rload_kohm;       
+    float    ema_alpha;        
+    float    ema_value;        
+    bool     ema_initialized;  
 } mq135_config_t;
-
 
 /* ===== Estructura de datos ===== */
 typedef struct {
-    float co2ppm;
+    float air_quality; // Rango: 0.0 a 100.0 (%)
 } mq135_data_t;
 
 typedef struct {
-    float co2ppm_i;
-    float co2ppm_a;
+    float quality_i; // Calidad inicial al saltar alerta
+    float quality_a; // Calidad actual
 } mq135_alert_t;
 
-
-
 typedef enum{INIT_MQ135, NORMAL_MQ135, ALERT_MQ135} state_mq135_t;
-
 
 /* ----- API publica ----- */
 void mq135_task(void *);
 esp_err_t mq135_init(void);
-
-
 
 #endif // MQ135_H
