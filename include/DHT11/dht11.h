@@ -22,7 +22,7 @@
 
 #define BETA_ERROR                 0.05f         // Factor de suavizado para el error (0.05 = muy lento)
 #define K_SENSIBILIDAD             2.0f          // 2 "sigmas". Más alto = menos sensible
-#define UMBRAL_MINIMO_ABS          100.0f
+#define UMBRAL_MINIMO_ABS          10.0f
 #define HYSTERESIS                 0.8f          // Necesita bajar al 80% del umbral para desactivar
 
 #define DHT11_DATA_READY  (1 << 0)

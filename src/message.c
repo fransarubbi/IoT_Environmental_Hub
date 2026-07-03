@@ -67,8 +67,7 @@ bool generate_message_data(const data_sensors_t data, mqtt_packet_t *packet) {
     mpack_write_u32(&writer, (uint32_t)data.ky037_max_duration);
     mpack_write_float(&writer, (float)data.dht11_temperature);
     mpack_write_float(&writer, (float)data.dht11_humidity);
-    mpack_write_float(&writer, data.co2ppm);
-    ESP_LOGI(TAG, "PPM: %f", data.co2ppm);
+    mpack_write_float(&writer, data.air_quality);
     mpack_write_u32(&writer, settings_get_node_sample_rate());
 
     mpack_finish_array(&writer);
@@ -118,8 +117,8 @@ bool generate_message_alert_air(mqtt_packet_t *packet, const mq135_alert_t alert
     mpack_finish_array(&writer);
 
     mpack_write_cstr(&writer, network);
-    mpack_write_float(&writer, alert.co2ppm_i);
-    mpack_write_float(&writer, alert.co2ppm_a);
+    mpack_write_float(&writer, alert.quality_i);
+    mpack_write_float(&writer, alert.quality_a);
 
     mpack_finish_array(&writer);
 

@@ -128,7 +128,7 @@ static void get_formated_data(dht11_data_t *dht11, ky037_t *ky037, mq135_data_t 
     }
 
     if (xQueueReceive(queues.mq135_buffer, mq135, 0)) {
-        data->co2ppm = mq135->co2ppm;
+        data->air_quality = mq135->air_quality;
     }
 }
 

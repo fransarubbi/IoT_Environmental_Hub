@@ -38,7 +38,7 @@ typedef struct {
     uint32_t ky037_max_duration;    // Maxima duracion de pulso de microfono
     uint8_t dht11_temperature;      // Parte entera de temperatura
     uint8_t dht11_humidity;         // Parte entera de humedad
-    float co2ppm;
+    float air_quality;              // Puntaje 0 - 100 de la calidad del aire (100 es OK)
     uint64_t time;
 } data_sensors_t;
 

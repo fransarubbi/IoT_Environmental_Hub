@@ -1,11 +1,8 @@
 /**
  * @file mq135.c
- * @brief Driver para sensor de calidad de aire MQ135 (CO2)
+ * @brief Driver para sensor de calidad de aire MQ135 (Índice VOC / Calidad 0-100%)
  * @author Franco Sarubbi
  * @date 2025
- *
- * Este driver implementa la lectura y calibracion del sensor MQ135 usando
- * el ADC del ESP32 con corrección de temperatura y humedad.
  */
 
 #include "Data/data.h"
@@ -28,17 +25,15 @@
 #include "Fsm/fsm.h"
 #include "Message/message.h"
 
-
 typedef struct {
     state_mq135_t state_mq135;
     uint32_t counter;
-    float ema_ppm;
+    float ema_aqi;      // Promedio móvil de calidad del aire
     float ema_error;
     mq135_data_t mq135;
     mq135_alert_t alert;
     mqtt_packet_t packet;
 } data_t;
-
 
 static const char *TAG = "MQ135";
 static adc_oneshot_unit_handle_t s_adc_handle  = NULL;
@@ -46,11 +41,8 @@ static adc_cali_handle_t         s_cali_handle = NULL;
 static bool                      s_cali_enable = false;
 static mq135_config_t config = {0};
 
-
-
 /* ─────────────────────────────────────────────
- * Utilidad: ordenamiento por inserción (in-place)
- * Usado únicamente sobre arreglos pequeños (≤9 elem)
+ * Utilidad: ordenamiento por inserción
  * ───────────────────────────────────────────── */
 static void insertion_sort(int *arr, int n) {
     for (int i = 1; i < n; i++) {
@@ -64,15 +56,10 @@ static void insertion_sort(int *arr, int n) {
     }
 }
 
-
 /* ─────────────────────────────────────────────
- * Calibración ADC (Line Fitting o Curve Fitting)
- * ESP-IDF v5.x provee dos esquemas según el chip.
+ * Calibración ADC
  * ───────────────────────────────────────────── */
-static bool adc_calibration_init(adc_unit_t unit,
-                                 adc_channel_t channel,
-                                 adc_atten_t atten,
-                                 adc_cali_handle_t *out_handle) {
+static bool adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle) {
     adc_cali_handle_t handle = NULL;
     esp_err_t ret            = ESP_FAIL;
     bool calibrated          = false;
@@ -111,23 +98,18 @@ static bool adc_calibration_init(adc_unit_t unit,
     *out_handle = handle;
 
     if (!calibrated) {
-        ESP_LOGW(TAG, "Warning: Calibración ADC no disponible – se usarán valores raw convertidos");
+        ESP_LOGW(TAG, "Warning: Calibración ADC no disponible");
     }
     return calibrated;
 }
 
-
-
-
 esp_err_t mq135_init(void) {
-
-    config.rzero_kohm      = settings_get_node_mq135_r0();
+    config.rzero_kohm      = settings_get_node_mq135_r0(); // Asegúrate de que retorne kOhms (ej. 12.5)
     config.rload_kohm      = MQ135_RLOAD_KOHM;
     config.ema_alpha       = settings_get_node_mq135_alpha_ema();
     config.ema_value       = 0.0f;
     config.ema_initialized = false;
 
-    /* ── Configurar ADC oneshot ── */
     if (s_adc_handle == NULL) {
         adc_oneshot_unit_init_cfg_t adc_cfg = {
             .unit_id  = MQ135_ADC_UNIT,
@@ -140,23 +122,13 @@ esp_err_t mq135_init(void) {
         .atten    = MQ135_ADC_ATTEN,
         .bitwidth = MQ135_ADC_BITWIDTH,
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle,
-                                               MQ135_ADC_CHANNEL,
-                                               &chan_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, MQ135_ADC_CHANNEL, &chan_cfg));
 
-    /* ── Calibración ── */
-    s_cali_enable = adc_calibration_init(MQ135_ADC_UNIT,
-                                         MQ135_ADC_CHANNEL,
-                                         MQ135_ADC_ATTEN,
-                                         &s_cali_handle);
+    s_cali_enable = adc_calibration_init(MQ135_ADC_UNIT, MQ135_ADC_CHANNEL, MQ135_ADC_ATTEN, &s_cali_handle);
 
-    ESP_LOGD(TAG, "MQ135 inicializado – GPIO34 / ADC1_CH6");
-    ESP_LOGD(TAG, "R0=%.2f kΩ  RL=%.2f kΩ  EMA α=%.2f",
-             config.rzero_kohm, config.rload_kohm, config.ema_alpha);
-
+    ESP_LOGD(TAG, "MQ135 inicializado - R0=%.2f kΩ", config.rzero_kohm);
     return ESP_OK;
 }
-
 
 static float mq135_raw_to_voltage(int raw) {
     if (s_cali_enable && s_cali_handle != NULL) {
@@ -164,12 +136,9 @@ static float mq135_raw_to_voltage(int raw) {
         adc_cali_raw_to_voltage(s_cali_handle, raw, &mv);
         return (float)mv / 1000.0f;
     }
-    // Conversión lineal sin calibración (aproximada)
     return ((float)raw / 4095.0f) * 3.3f;
 }
 
-
-// Rs = RL * (Vcc - Vout) / Vout
 static float mq135_voltage_to_rs(float voltage_v, float rload_kohm) {
     if (voltage_v <= 0.0f) {
         return -1.0f;
@@ -177,93 +146,78 @@ static float mq135_voltage_to_rs(float voltage_v, float rload_kohm) {
     return rload_kohm * (MQ135_VCC - voltage_v) / voltage_v;
 }
 
-
-// PPM = PARA * (Rs/R0)^PARB
-static float mq135_rs_to_ppm(float rs_kohm, float r0_kohm) {
+// Convertir Ratio Rs/R0 a porcentaje de Calidad de Aire (0% a 100%)
+static float mq135_rs_to_aqi_percent(float rs_kohm, float r0_kohm) {
     if (rs_kohm <= 0.0f || r0_kohm <= 0.0f) {
         return -1.0f;
     }
     float ratio = rs_kohm / r0_kohm;
-    return MQ135_PARA * powf(ratio, MQ135_PARB);
+    
+    // Ecuación lineal: 3.6 = 100% (Limpio) | 1.0 = 0% (Viciado)
+    float aqi = ((ratio - MQ135_RATIO_DIRTY) / (MQ135_RATIO_CLEAN - MQ135_RATIO_DIRTY)) * 100.0f;
+    ESP_LOGI(TAG, "AIRE: %.2f", aqi);
+
+    // Clamp para mantenerlo en un porcentaje lógico
+    if (aqi > 100.0f) aqi = 100.0f;
+    if (aqi < 0.0f) aqi = 0.0f;
+
+    return aqi;
 }
 
-
-
-// Pipeline: muestras raw → mediana → voltaje → Rs → ppm → EMA
-static esp_err_t mq135_read_co2_ppm(float *ppm_out) {
-
-    // Tomar MQ135_MEDIAN_WINDOW muestras raw
+static esp_err_t mq135_read_air_quality(float *aqi_out) {
     int raw_buf[MQ135_MEDIAN_WINDOW];
     for (int i = 0; i < MQ135_MEDIAN_WINDOW; i++) {
-        ESP_ERROR_CHECK(adc_oneshot_read(s_adc_handle,
-                                        MQ135_ADC_CHANNEL,
-                                        &raw_buf[i]));
-        /*
-         * Pequeña espera entre muestras para que el ADC SAR
-         * se estabilice entre conversiones consecutivas
-         */
+        ESP_ERROR_CHECK(adc_oneshot_read(s_adc_handle, MQ135_ADC_CHANNEL, &raw_buf[i]));
         esp_rom_delay_us(200);
     }
 
-    // Filtro de mediana (elimina outliers / ruido impulsivo)
     int sorted[MQ135_MEDIAN_WINDOW];
     memcpy(sorted, raw_buf, sizeof(raw_buf));
     insertion_sort(sorted, MQ135_MEDIAN_WINDOW);
     int median_raw = sorted[MQ135_MEDIAN_WINDOW / 2];
 
-    // Convertir a voltaje
     float voltage = mq135_raw_to_voltage(median_raw);
 
     if (voltage <= 0.01f || voltage >= MQ135_VCC) {
-        ESP_LOGW(TAG, "Warning: voltaje fuera de rango: %.3f V – verifica el cableado", voltage);
+        ESP_LOGW(TAG, "Warning: voltaje fuera de rango: %.3f V", voltage);
         return ESP_ERR_INVALID_STATE;
     }
 
-    // Calcular Rs
     float rs = mq135_voltage_to_rs(voltage, config.rload_kohm);
     if (rs < 0.0f) {
-        ESP_LOGW(TAG, "Warning: Rs inválido (voltaje=%.3f V)", voltage);
         return ESP_ERR_INVALID_STATE;
     }
 
-    // Convertir a PPM
-    float ppm_raw = mq135_rs_to_ppm(rs, config.rzero_kohm);
+    float aqi_raw = mq135_rs_to_aqi_percent(rs, config.rzero_kohm);
 
-    // Clamp al rango físico razonable
-    if (ppm_raw < MQ135_PPM_MIN) ppm_raw = MQ135_PPM_MIN;
-    if (ppm_raw > MQ135_PPM_MAX) ppm_raw = MQ135_PPM_MAX;
-
-    // Filtro EMA
     if (!config.ema_initialized) {
-        config.ema_value = ppm_raw;
+        config.ema_value = aqi_raw;
         config.ema_initialized = true;
     } else {
-        config.ema_value = config.ema_alpha * ppm_raw
-                       + (1.0f - config.ema_alpha) * config.ema_value;
+        config.ema_value = config.ema_alpha * aqi_raw + (1.0f - config.ema_alpha) * config.ema_value;
     }
 
-    *ppm_out = config.ema_value;
+    *aqi_out = config.ema_value;
     return ESP_OK;
 }
 
-
 static void alert_analysis(data_t *data, const bool get_data) {
-
     if (get_data) {
-        float ppm;
-        const esp_err_t err  = mq135_read_co2_ppm(&ppm);
+        float aqi;
+        const esp_err_t err  = mq135_read_air_quality(&aqi);
         if (err != ESP_OK) return;
-        if (ppm < 350.0f) return; // Evita envenenar el EMA en modo Low Consumption
-        data->mq135.co2ppm = ppm;
+        data->mq135.air_quality = aqi;
     }
-    const float ppm_actual = data->mq135.co2ppm;
-    const float error_actual = ppm_actual - data->ema_ppm;
+    
+    const float aqi_actual = data->mq135.air_quality;
+    const float error_actual = aqi_actual - data->ema_aqi;
     const float error_abs = fabsf(error_actual);
+    
     const float umbral_alerta_dinamico = (K_SENSIBILIDAD * data->ema_error) + UMBRAL_MINIMO_ABS;
 
     switch (data->state_mq135) {
         case INIT_MQ135:
-            data->ema_ppm = data->mq135.co2ppm;
+            data->ema_aqi = data->mq135.air_quality;
             data->ema_error = 0.0f;
             data->state_mq135 = NORMAL_MQ135;
             break;
@@ -271,8 +225,8 @@ static void alert_analysis(data_t *data, const bool get_data) {
         case NORMAL_MQ135:
             if (error_abs > umbral_alerta_dinamico) {
                 data->state_mq135 = ALERT_MQ135;
-                data->alert.co2ppm_i = data->ema_ppm;
-                data->alert.co2ppm_a = ppm_actual;
+                data->alert.quality_i = data->ema_aqi;
+                data->alert.quality_a = aqi_actual;
                 const State state = atomic_load(&shared_state);
                 if (state == STORE) {
                     Event event = eFromStoreToBypass;
@@ -286,13 +240,11 @@ static void alert_analysis(data_t *data, const bool get_data) {
                         ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
                         free(data->packet.payload);
                     }
-                } else {
-                    ESP_LOGE(TAG, "Error: fallo al generar paquete (RAM)");
                 }
             } else {
                 data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
             }
-            data->ema_ppm = (config.ema_alpha * ppm_actual) + ((1 - config.ema_alpha) * data->ema_ppm);
+            data->ema_aqi = (config.ema_alpha * aqi_actual) + ((1 - config.ema_alpha) * data->ema_aqi);
             break;
 
         case ALERT_MQ135:
@@ -311,59 +263,50 @@ static void alert_analysis(data_t *data, const bool get_data) {
                         ESP_LOGW(TAG, "Info: cola llena, descartando paquete");
                         free(data->packet.payload);
                     }
-                } else {
-                    ESP_LOGE(TAG, "Error: fallo al generar paquete (RAM)");
                 }
                 data->ema_error = (BETA_ERROR * error_abs) + ((1 - BETA_ERROR) * data->ema_error);
             }
-            data->ema_ppm = (config.ema_alpha * ppm_actual) + ((1 - config.ema_alpha) * data->ema_ppm);
+            data->ema_aqi = (config.ema_alpha * aqi_actual) + ((1 - config.ema_alpha) * data->ema_aqi);
             break;
     }
 }
 
-
 static void mq135_task_in_balanced_or_performance(uint32_t *counter, uint32_t slices, data_t *data) {
-    float ppm;
+    float aqi;
     bool flag_error = false;
-    const esp_err_t err = mq135_read_co2_ppm(&ppm);
+    const esp_err_t err = mq135_read_air_quality(&aqi);
 
-    if (err != ESP_OK) flag_error = true;
-
-    ESP_LOGD(TAG, "PPM: %f", data->mq135.co2ppm);
-
-    if (ppm < 350.0f) {
+    if (err != ESP_OK) {
         flag_error = true;
     } else {
-        data->mq135.co2ppm = ppm;
+        data->mq135.air_quality = aqi;
     }
+
+    ESP_LOGD(TAG, "Calidad del Aire: %.1f %%", data->mq135.air_quality);
 
     if (*counter >= slices) {
         *counter = 0;
         if (flag_error) {
-            // Mandamos un dato vacio para no bloquear el ALL_DATA_READY
             const mq135_data_t err_data = {0};
             xQueueSend(queues.mq135_buffer, &err_data, pdMS_TO_TICKS(100));
         } else {
             xQueueSend(queues.mq135_buffer, &data->mq135, pdMS_TO_TICKS(100));
         }
-        // Bandera corregida:
         xEventGroupSetBits(event_group.collector_events, MQ135_DATA_READY);
     }
 
     if (flag_error) {
-        return; // Evita envenenar el EMA con valores erroneos
+        return; 
     }
     alert_analysis(data, false);
 }
 
-
 static void init_data(data_t *data) {
     data->state_mq135 = INIT_MQ135;
     data->counter = 0;
-    data->ema_ppm = 440.0f;
+    data->ema_aqi = 100.0f; // Asumimos que inicia en aire limpio
     data->ema_error = 0.0f;
 }
-
 
 void mq135_task(void *pvParameters) {
     static data_t data;
@@ -398,15 +341,15 @@ void mq135_task(void *pvParameters) {
                         break;
                     }
                     case BALANCED: {
-                        target_delay_ms = MQ135_BALANCED_DELAY; // <-- O DHT11_BALANCED_DELAY
+                        target_delay_ms = MQ135_BALANCED_DELAY; 
                         const uint32_t slices = (sample_rate_min * 60) / (target_delay_ms / 1000);
-                        mq135_task_in_balanced_or_performance(&counter, slices, &data); // o dht11_...
+                        mq135_task_in_balanced_or_performance(&counter, slices, &data); 
                         break;
                     }
                     case PERFORMANCE: {
-                        target_delay_ms = MQ135_PERFORMANCE_DELAY; // <-- O DHT11_PERFORMANCE_DELAY
+                        target_delay_ms = MQ135_PERFORMANCE_DELAY; 
                         const uint32_t slices = (sample_rate_min * 60) / (target_delay_ms / 1000);
-                        mq135_task_in_balanced_or_performance(&counter, slices, &data); // o dht11_...
+                        mq135_task_in_balanced_or_performance(&counter, slices, &data); 
                         break;
                     }
                 }
@@ -418,7 +361,6 @@ void mq135_task(void *pvParameters) {
                 if (target_delay_ms > elapsed_ms) {
                     dynamic_delay = pdMS_TO_TICKS(target_delay_ms - elapsed_ms);
                 } else {
-                    // Si el sensor fue tan lento que se pasó del tiempo, no dormimos nada
                     dynamic_delay = 0;
                 }
 
