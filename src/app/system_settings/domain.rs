@@ -67,11 +67,8 @@ struct Network {
 
 #[derive(Clone, Debug, Default)]
 struct Wifi {
-    pub ssid: u8,
-    pub ssid_len: u8,
+    pub ssid: String,
     pub password: String,
-    pub password_len: u8,
-    pub ipv4: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -124,20 +121,11 @@ impl SystemSettings {
     pub fn message_id(&self) -> u32 {
         self.network.message_id
     }
-    pub fn wifi_ssid(&self) -> u8 {
-        self.wifi.ssid
-    }
-    pub fn wifi_ssid_len(&self) -> u8 {
-        self.wifi.ssid_len
+    pub fn wifi_ssid(&self) -> &str {
+        self.wifi.ssid.as_str()
     }
     pub fn wifi_password(&self) -> &str {
         self.wifi.password.as_str()
-    }
-    pub fn password_len(&self) -> u8 {
-        self.wifi.password_len
-    }
-    pub fn ipv4(&self) -> &str {
-        self.wifi.ipv4.as_str()
     }
     pub fn mqtt_uri(&self) -> &str {
         self.mqtt_uri.as_str()
