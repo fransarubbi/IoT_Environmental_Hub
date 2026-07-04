@@ -70,7 +70,7 @@ impl<'a> EspIdfWifiManager<'a> {
 }
 
 /// Implementamos el trait para nuestra estructura específica de ESP-IDF
-impl<'a> WifiService for EspIdfWifiManager<'a> {
+impl<'a> Wifi for EspIdfWifiManager<'a> {
     fn connect(&mut self) -> Result<(), String> {
         let mut retry_count = 0;
 

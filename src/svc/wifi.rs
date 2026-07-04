@@ -1,5 +1,5 @@
 /// Contrato que cualquier implementador de WiFi debe cumplir
-pub trait WifiService {
+pub trait Wifi {
     /// Inicia la conexión y espera hasta obtener una IP
     fn connect(&mut self) -> Result<(), String>;
     /// Se desconecta de la red actual
