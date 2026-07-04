@@ -8,8 +8,12 @@ cmake-build-*/
 .pio/build/
 .pio/libdeps/
 
-.vscode/
+/.vscode
 ./certs
 
 .DS_Store
 Thumbs.db
+
+/.embuild
+/target
+/Cargo.lock
