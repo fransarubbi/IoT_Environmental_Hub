@@ -1,27 +1,13 @@
-/// Trait que abstrae comunicación UART
-pub trait Uart {
-    type Error;
+/// Abstracción sobre el UART físico, para desacoplar el parser del driver concreto.
+pub trait UartIo {
+    /// Envío bloqueante de bytes crudos
+    fn send(&mut self, bytes: &[u8]);
 
-    /// Inicializa UART con baudrate
-    fn init(&mut self, baudrate: u32) -> Result<(), Self::Error>;
+    /// Lee un byte. `None` como timeout equivale a bloqueo indefinido
+    /// `Some(d)` espera como máximo `d`. Devuelve `None` si no llegó
+    /// ningún byte dentro del timeout.
+    fn read_byte(&mut self, timeout: Option<Duration>) -> Option<u8>;
 
-    /// Envía un byte
-    fn send_byte(&mut self, byte: u8) -> Result<(), Self::Error>;
-
-    /// Envía un buffer de bytes
-    fn send_buffer(&mut self, buffer: &[u8]) -> Result<(), Self::Error> {
-        for &byte in buffer {
-            self.send_byte(byte)?;
-        }
-        Ok(())
-    }
-
-    /// Recibe un byte (bloqueante)
-    fn receive_byte(&mut self) -> Result<u8, Self::Error>;
-
-    /// Recibe múltiples bytes con timeout
-    fn receive_buffer(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<usize, Self::Error>;
-
-    /// Verifica si hay datos disponibles
-    fn data_available(&self) -> bool;
+    /// Descarta cualquier byte pendiente en el buffer de recepción
+    fn flush_input(&mut self);
 }

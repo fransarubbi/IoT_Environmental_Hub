@@ -134,3 +134,24 @@ impl OtaService for EspIdfOtaManager {
         Ok(())
     }
 }
+
+/// Compara versiones semánticas (ej. "1.2.3" vs "1.2.0")
+/// Retorna `true` si `remote` es mayor que `local`
+fn is_newer_version(remote: &str, local: &str) -> bool {
+    let r_parts: Vec<&str> = remote.split('.').collect();
+    let l_parts: Vec<&str> = local.split('.').collect();
+
+    let max_len = std::cmp::max(r_parts.len(), l_parts.len());
+
+    for i in 0..max_len {
+        let r_num: u32 = r_parts.get(i).unwrap_or(&"0").parse().unwrap_or(0);
+        let l_num: u32 = l_parts.get(i).unwrap_or(&"0").parse().unwrap_or(0);
+
+        match r_num.cmp(&l_num) {
+            Ordering::Greater => return true,
+            Ordering::Less => return false,
+            Ordering::Equal => continue,
+        }
+    }
+    false
+}
