@@ -7,6 +7,8 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi};
 use log::{error, info, warn};
 use std::time::Duration;
+use crate::svc::wifi::{Wifi, WifiStats};
+
 
 // FFI para acceder a funciones de bajo nivel de C si es estrictamente necesario
 use esp_idf_sys::{esp_wifi_set_max_tx_power, esp_wifi_sta_get_ap_info, wifi_ap_record_t};

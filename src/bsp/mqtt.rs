@@ -1,13 +1,15 @@
 //! Módulo MQTT.
 //! Abstrae la implementación específica del hardware detrás de traits.
 
-use crate::bsp::mqtt::Mqtt;
+
+use crate::svc::mqtt::Mqtt;
 use async_channel::Sender;
 use esp_idf_svc::mqtt::client::{
-    EspError, EspMqttClient, Event as MqttEvent, MqttClientConfiguration, MqttProtocolVersion, QoS,
+    EspMqttClient, Event as MqttEvent, MqttClientConfiguration, MqttProtocolVersion, QoS,
 };
 use log::{debug, error, info, warn};
 use std::sync::{Arc, Mutex};
+use crate::app::system_settings::domain::SystemSettings;
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -75,16 +77,16 @@ impl EspIdfMqttManager {
                     info!("conectado al broker MQTT");
                     // Enviar evento de conectado (no bloqueante)
                     match data_tx.try_send(MqttData::Connected) {
-                        Ok => {}
-                        Err => error!("no se pudo enviar MqttData por el canal."),
+                        Ok() => {}
+                        Err(e) => error!("no se pudo enviar MqttData por el canal. {e}"),
                     }
                 }
 
                 Ok(MqttEvent::Disconnected) => {
                     warn!("desconectado del broker");
                     match data_tx.try_send(MqttData::Disconnected) {
-                        Ok => {}
-                        Err => error!("no se pudo enviar MqttData por el canal."),
+                        Ok() => {}
+                        Err(e) => error!("no se pudo enviar MqttData por el canal. {e}"),
                     }
                 }
 
@@ -94,8 +96,8 @@ impl EspIdfMqttManager {
                         msg_id: *msg_id as u16,
                         return_code: 0,
                     }) {
-                        Ok => {}
-                        Err => error!("no se pudo enviar MqttData por el canal."),
+                        Ok() => {}
+                        Err(e) => error!("no se pudo enviar MqttData por el canal.{e}"),
                     }
                 }
 
@@ -125,8 +127,8 @@ impl EspIdfMqttManager {
                         };
 
                         // Enviamos para parsear
-                        if let Err(_) = data_tx.try_send(MqttData::IncomingMessage(parsed_msg)) {
-                            warn!("no se pudo enviar mensaje para parsear, mensaje descartado.");
+                        if let Err(e) = data_tx.try_send(MqttData::IncomingMessage(parsed_msg)) {
+                            warn!("no se pudo enviar mensaje para parsear, mensaje descartado. {e}");
                         }
                     }
                 }
@@ -165,65 +167,21 @@ impl Mqtt for EspIdfMqttManager {
             .map_err(|e| format!("error suscribiendo: {}", e))
     }
 
-    fn enable_subscriptions(&mut self, id_edge: String, id_network: String) {
+    fn enable_subscriptions(&mut self, settings: Arc<SystemSettings>) {
         let mut enabled = self.subscriptions_enabled.lock().unwrap();
         if !*enabled {
             *enabled = true;
-            let topic_balance_state = format!("iot/{id_edge}/state/balance");
-            let topic_normal_state = format!("iot/{id_edge}/state/normal");
-            let topic_safe_state = format!("iot/{id_edge}/state/safe");
-            let topic_phase_state = format!("iot/{id_edge}/state/phase");
-            let topic_handshake = format!("iot/{id_edge}/handshake");
-            let topic_heartbeat = format!("iot/{id_edge}/heartbeat");
-            let topic_new_firmware = format!("iot/{id_network}/new_firmware");
-            let topic_new_setting = format!("iot/{id_network}/new_setting");
-            let topic_new_setting_ok = format!("iot/{id_network}/new_setting_ok");
-            let topic_linkage_ack = format!("iot/{id_edge}/linkage_ack");
 
-            match self.subscribe(topic_balance_state, QoS::AtLeastOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_balance_state}"),
-            }
-            match self.subscribe(topic_normal_state, QoS::AtLeastOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_normal_state}"),
-            }
-            match self.subscribe(topic_safe_state, QoS::AtLeastOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_safe_state}"),
-            }
-            match self.subscribe(topic_phase_state, QoS::AtLeastOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_phase_state}"),
-            }
-            match self.subscribe(topic_handshake, QoS::AtLeastOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_handshake}"),
-            }
-            match self.subscribe(topic_heartbeat, QoS::AtMostOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_heartbeat}"),
-            }
-            match self.subscribe(topic_new_firmware, QoS::AtMostOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_new_firmware}"),
-            }
-            match self.subscribe(topic_new_setting, QoS::AtMostOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_new_setting}"),
-            }
-            match self.subscribe(topic_new_setting_ok, QoS::AtMostOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_new_setting_ok}"),
-            }
-            match self.subscribe(topic_linkage_ack, QoS::AtMostOnce) {
-                Ok => {}
-                EspError => error!("no se pudo subscribir a topico {topic_linkage_ack}"),
-            }
+            let _ = self.subscribe(&settings.topic_edge_state_balance().topic, settings.topic_edge_state_balance().qos);
+            let _ = self.subscribe(&settings.topic_edge_state_normal().topic, settings.topic_edge_state_normal().qos);
+            let _ = self.subscribe(&settings.topic_edge_state_safe().topic, settings.topic_edge_state_safe().qos);
+            let _ = self.subscribe(&settings.topic_edge_phase().topic, settings.topic_edge_phase().qos);
+            let _ = self.subscribe(&settings.topic_edge_handshake().topic, settings.topic_edge_handshake().qos);
+            let _ = self.subscribe(&settings.topic_heartbeat().topic, settings.topic_heartbeat().qos);
+            let _ = self.subscribe(&settings.topic_new_firmware().topic, settings.topic_new_firmware().qos);
+            let _ = self.subscribe(&settings.topic_new_setting().topic, settings.topic_new_setting().qos);
+            let _ = self.subscribe(&settings.topic_new_setting_ok().topic, settings.topic_new_setting_ok().qos);
+            let _ = self.subscribe(&settings.topic_linkage_ack().topic, settings.topic_linkage_ack().qos);
         }
     }
 }
-
-/*
-    "iot/{id_network}/ping"
-*/

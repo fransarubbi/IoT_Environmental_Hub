@@ -1,5 +1,7 @@
 use log::{info, error};
-
+use futures::select;
+use async_channel::{Sender, Receiver};
+use crate::app::fsm::domain::{Action, Event, Transition, FsmState};
 
 
 /// Tarea asíncrona que ejecuta la lógica pura de la Máquina de Estados.
@@ -17,20 +19,20 @@ pub async fn run_fsm(
 
     match state.step(Event::Start) {
         Transition::Valid(t) => {
-            state = t.get_change_state();
-            let _ = tx.send(t.get_actions()).await;
+            state = t.change_state();
+            let _ = tx_actions.send(t.actions()).await;
         }
-        Transition::Invalid(t) => error!("fsm transición inválida"),
+        Transition::Invalid(t) => error!("fsm transición inválida {}", t.get_invalid()),
     }
 
     loop {
         if let Ok(event) = rx_event.recv().await {
             match state.step(event) {
                 Transition::Valid(t) => {
-                    state = t.get_change_state();
-                    let _ = tx.send(t.get_actions()).await;
+                    state = t.change_state();
+                    let _ = tx_actions.send(t.actions()).await;
                 }
-                Transition::Invalid(t) => error!("fsm transición inválida"),
+                Transition::Invalid(t) => error!("fsm transición inválida {}", t.get_invalid()),
             }
         }
     }

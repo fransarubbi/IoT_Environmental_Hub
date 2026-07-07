@@ -1,1 +1,2 @@
-pub mod fsm;
+pub mod logic;
+pub mod domain;

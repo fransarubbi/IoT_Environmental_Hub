@@ -8,32 +8,45 @@ rust-version = "1.85"
 
 [[bin]]
 name = "iot_environmental_hub"
-harness = false # do not use the built-in cargo test harness -> resolve rust-analyzer errors
+harness = false # Desactiva el arnés nativo de test para solucionar errores de rust-analyzer
 
-[profile.release]
-opt-level = "s"
-# rustflags = ["-C", "release_max_level_info"]
-
-[profile.dev]
-debug = true    # Symbols are nice, and they don't increase the size on Flash
-opt-level = "z"
-# rustflags = ["-c", "release_max_level_debug"]
-
-
-[patch.crates-io]
-esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys.git" }
-esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal.git" }
-esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf-svc.git" }
 
 [dependencies]
 log = "0.4"
+esp-idf-hal = "0.46.2" 
 esp-idf-svc = { version = "0.52.1", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
-# Remove `generic-queue-8` if you plan to use `embassy-time` WITH `embassy-executor`
 embassy-time = { version = "0.5", features = ["generic-queue-8"] }
 async-channel = "2.3"
 futures = "0.3"
 edge-executor = "0.4.1"
-
+serde = { version = "1.0", features = ["derive"] }
+rmp-serde = "1.1"
+anyhow = "1.0"
 
 [build-dependencies]
 embuild = "0.33"
+
+
+# ==============================================================================
+# PERFILES DE COMPILACIÓN Y CONFIGURACIÓN DE OPTIMIZACIÓN EN ESP32
+# ==============================================================================
+
+[profile.dev]
+debug = true       # Conserva los símbolos de depuración (no incrementan el tamaño real en la Flash física)
+opt-level = "z"    # Optimización agresiva orientada a la reducción de tamaño para desarrollo rápido
+
+# OPCIÓN 1: Optimización de producción muy agresiva (Mayor velocidad y tamaño controlado)
+[profile.release]
+opt-level = "s"           # Optimiza reduciendo el tamaño del binario pero manteniendo optimizaciones de rendimiento
+lto = true                # Link-Time Optimization: Elimina de forma global el código muerto de todas las dependencias
+codegen-units = 1         # Reduce las unidades de generación de código a 1 para permitir que LTO limpie de forma mucho más eficaz
+panic = "abort"           # Desactiva el unwinding del stack en pánicos. Reduce drásticamente el tamaño del firmware
+strip = true              # Remueve automáticamente todos los símbolos de debug y tablas de secciones del binario final
+
+# OPCIÓN 2: Optimización moderada (Déjala comentada para pruebas si la opción superior genera problemas con la asignación de memoria)
+# [profile.release]
+# opt-level = 2           # Optimización estándar orientada al rendimiento puro (puede aumentar el tamaño del binario final)
+# lto = "thin"            # LTO ligero: realiza optimizaciones intermedias sin consumir tanto tiempo en la compilación
+# codegen-units = 16      # Permite compilación en paralelo más rápida
+# panic = "abort"
+# strip = false
