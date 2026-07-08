@@ -8,7 +8,7 @@ use esp_idf_svc::mqtt::client::{
     EspMqttClient, Event as MqttEvent, MqttClientConfiguration, MqttProtocolVersion, QoS,
 };
 use log::{debug, error, info, warn};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use crate::app::system_settings::domain::SystemSettings;
 use std::time::Duration;
 
@@ -37,6 +37,7 @@ struct RxState {
 pub struct EspIdfMqttManager {
     // El cliente nativo de esp-idf-svc
     client: EspMqttClient<'static>,
+    settings: Arc<RwLock<SystemSettings>>
 }
 
 impl EspIdfMqttManager {
@@ -48,6 +49,7 @@ impl EspIdfMqttManager {
         hub_cert: &[u8],
         hub_key: &[u8],
         root_ca: &[u8],
+        settings: Arc<RwLock<SystemSettings>>
     ) -> Result<Self, String> {
         // Configuración
         let config = MqttClientConfiguration {
@@ -55,13 +57,32 @@ impl EspIdfMqttManager {
             protocol_version: MqttProtocolVersion::V5,
             keep_alive: Duration::from_secs(60),
             network_timeout: Duration::from_secs(30),
-            disable_auto_reconnect: false,
             crt_bundle_attach: None,
             server_certificate: Some(root_ca),
             client_certificate: Some(hub_cert),
             private_key: Some(hub_key),
             ..Default::default()
         };
+
+        /*
+        broker: Configuración relacionada con el servidor MQTT .
+        address: Define la dirección del broker. Puedes usar la uri completa o campos específicos como hostname, port y transport .
+        verification: Configuración para la verificación de seguridad del broker (como certificados TLS) .
+        credentials: Configura las credenciales del cliente para autenticarse con el broker .
+        username: Nombre de usuario.
+        password: Contraseña.
+        session: Configuración de la sesión MQTT .
+        keepalive: Intervalo de keep-alive en segundos (por defecto 120) .
+        disable_clean_session: Si es false (por defecto), la sesión se limpia al conectar .
+        last_will: Estructura para configurar el mensaje de "última voluntad" (LWT) .
+        network: Configuración de la red, como el timeout de reconexión (reconnect_timeout_ms) .
+        task: Configuración de la tarea de FreeRTOS que maneja el cliente MQTT .
+        priority: Prioridad de la tarea.
+        stack_size: Tamaño de la pila de la tarea.
+        buffer: Configuración de los tamaños de buffer de envío y recepción .
+        outbox: Configuración de la bandeja de salida para mensajes pendientes 
+         */
+
 
         // Estado local para reensamblar fragmentos dentro del callback
         let rx_state = Arc::new(Mutex::new(RxState {
@@ -167,21 +188,31 @@ impl Mqtt for EspIdfMqttManager {
             .map_err(|e| format!("error suscribiendo: {}", e))
     }
 
-    fn enable_subscriptions(&mut self, settings: Arc<SystemSettings>) {
+    fn enable_subscriptions(&mut self) {
         let mut enabled = self.subscriptions_enabled.lock().unwrap();
         if !*enabled {
             *enabled = true;
 
-            let _ = self.subscribe(&settings.topic_edge_state_balance().topic, settings.topic_edge_state_balance().qos);
-            let _ = self.subscribe(&settings.topic_edge_state_normal().topic, settings.topic_edge_state_normal().qos);
-            let _ = self.subscribe(&settings.topic_edge_state_safe().topic, settings.topic_edge_state_safe().qos);
-            let _ = self.subscribe(&settings.topic_edge_phase().topic, settings.topic_edge_phase().qos);
-            let _ = self.subscribe(&settings.topic_edge_handshake().topic, settings.topic_edge_handshake().qos);
-            let _ = self.subscribe(&settings.topic_heartbeat().topic, settings.topic_heartbeat().qos);
-            let _ = self.subscribe(&settings.topic_new_firmware().topic, settings.topic_new_firmware().qos);
-            let _ = self.subscribe(&settings.topic_new_setting().topic, settings.topic_new_setting().qos);
-            let _ = self.subscribe(&settings.topic_new_setting_ok().topic, settings.topic_new_setting_ok().qos);
-            let _ = self.subscribe(&settings.topic_linkage_ack().topic, settings.topic_linkage_ack().qos);
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_edge_state_balance().topic, match_qos(self.settings.read().unwrap().topic_edge_state_balance().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_edge_state_normal().topic, match_qos(self.settings.read().unwrap().topic_edge_state_normal().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_edge_state_safe().topic, match_qos(self.settings.read().unwrap().topic_edge_state_safe().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_edge_phase().topic, match_qos(self.settings.read().unwrap().topic_edge_phase().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_edge_handshake().topic, match_qos(self.settings.read().unwrap().topic_edge_handshake().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_heartbeat().topic, match_qos(self.settings.read().unwrap().topic_heartbeat().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_new_firmware().topic, match_qos(self.settings.read().unwrap().topic_new_firmware().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_new_settings().topic, match_qos(self.settings.read().unwrap().topic_new_settings().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_edge_setting_ok().topic, match_qos(self.settings.read().unwrap().topic_edge_setting_ok().qos));
+            let _ = self.subscribe(&self.settings.read().unwrap().topic_linkage_ack().topic, match_qos(self.settings.read().unwrap().topic_linkage_ack().qos));
         }
+    }
+}
+
+
+fn match_qos(qos: u8) -> QoS {
+    match qos {
+        0 => QoS::AtMostOnce,
+        1 => QoS::AtLeastOnce,
+        2 => QoS::ExactlyOnce,
+        _ => QoS::AtMostOnce
     }
 }

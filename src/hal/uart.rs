@@ -1,3 +1,6 @@
+use embassy_time::Duration;
+
+
 /// Abstracción sobre el UART físico, para desacoplar el parser del driver concreto.
 pub trait UartIo {
     /// Envío bloqueante de bytes crudos

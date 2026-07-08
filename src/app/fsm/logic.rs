@@ -1,5 +1,4 @@
 use log::{info, error};
-use futures::select;
 use async_channel::{Sender, Receiver};
 use crate::app::fsm::domain::{Action, Event, Transition, FsmState};
 
@@ -17,7 +16,7 @@ pub async fn run_fsm(
     info!("iniciando tarea fsm");
     let mut state = FsmState::new();
 
-    match state.step(Event::Start) {
+    match state.step(Event::EventStart) {
         Transition::Valid(t) => {
             state = t.change_state();
             let _ = tx_actions.send(t.actions()).await;
@@ -42,10 +41,11 @@ pub async fn run_fsm(
 
 
 
-
+/*
 /// Tarea Worker asíncrona para el modo Bypass.
 ///
 /// Utiliza canales (`Receiver`) en lugar de `xQueueReceive` y `xTaskNotifyWait`.
+
 pub async fn run_bypass_worker<S: BypassService>(
     mut service: S,
     control_rx: Receiver<BypassCommand>,
@@ -89,4 +89,4 @@ pub async fn run_bypass_worker<S: BypassService>(
             }
         }
     }
-}
+}*/

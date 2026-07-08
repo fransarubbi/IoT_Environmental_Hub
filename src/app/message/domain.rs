@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
-use async_channel::{bounded};
+use async_channel::{bounded, Sender, Receiver};
 use edge_executor::LocalExecutor;
-use log::{info, error};
-use futures::select;
+use log::{error};
+use embassy_futures::select::{select, Either};
+use std::sync::{Arc, RwLock};
+use crate::app::system_settings::domain::SystemSettings;
 use crate::bsp::mqtt::IncomingMessage;
+use crate::app::message::logic::{parser, generator};
 
 
 pub enum MessageServiceResponse {
@@ -19,34 +22,37 @@ pub enum MessageServiceCommand {
 pub struct MessageService {
     sender: Sender<MessageServiceResponse>,
     receiver:Receiver<MessageServiceCommand>,
-    context: AppContext,
+    settings: Arc<RwLock<SystemSettings>>
 }
 
 impl MessageService {
     pub fn new(
         sender: Sender<MessageServiceResponse>,
         receiver: Receiver<MessageServiceCommand>,
-        context: AppContext,
+        settings: Arc<RwLock<SystemSettings>>
     ) -> Self {
         Self {
             sender,
             receiver,
-            context,
+            settings
         }
     }
 
-    pub async fn run(mut self, executor: &LocalExecutor) {
+    pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
 
         let (to_parser, from_service_parser) = bounded::<IncomingMessage>(10);
         let (to_generator, from_service_generator) = bounded::<MessageToEdge>(10);
         let (tx, rx) = bounded::<MessageServiceResponse>(10);
 
-        executor.spawn(parser(from_service_parser, tx.clone()));
-        executor.spawn(generator(from_service_generator, tx.clone()));
+        let settings_for_generator = Arc::clone(&self.settings);
+
+        executor.spawn(parser(from_service_parser, tx.clone())).detach();
+        executor.spawn(generator(from_service_generator, tx.clone(), settings_for_generator)).detach();
 
         loop {
-            select! {
-                Ok(cmd) = self.receiver.recv() => {
+            match select(self.receiver.recv(), rx.recv()).await {
+                // Caso 1: Recibimos un comando del exterior (receiver)
+                Either::First(Ok(cmd)) => {
                     match cmd {
                         MessageServiceCommand::ParseMessage(msg) => {
                             if let Err(e) = to_parser.try_send(msg) {
@@ -60,11 +66,20 @@ impl MessageService {
                         },
                     }
                 }
+                Either::First(Err(_)) => {
+                    error!("el canal receiver se ha cerrado.");
+                    break;
+                }
 
-                Ok(msg) = rx.recv() => {
+                // Caso 2: Recibimos una respuesta interna de los submódulos (rx)
+                Either::Second(Ok(msg)) => {
                     if let Err(e) = self.sender.try_send(msg) {
                         error!("no se pudo enviar mensaje MessageServiceResponse, mensaje descartado. {e}");
                     }
+                }
+                Either::Second(Err(_)) => {
+                    error!("el canal interno rx se ha cerrado.");
+                    break;
                 }
             }
         }
@@ -327,6 +342,14 @@ pub struct LinkageAck {
     pub metadata: Metadata,
     #[serde(rename = "l")]
     pub linkage_ack: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct UpdateFirmware {
+    #[serde(rename = "m")]
+    pub metadata: Metadata,
+    #[serde(rename = "n")]
+    pub network: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

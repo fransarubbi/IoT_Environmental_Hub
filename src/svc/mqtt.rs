@@ -1,6 +1,4 @@
 use esp_idf_svc::mqtt::client::QoS;
-use std::sync::Arc;
-use crate::app::system_settings::domain::SystemSettings;
 
 
 /// Trait que abstrae implementacion de MQTT
@@ -13,5 +11,5 @@ pub trait Mqtt {
         retain: bool,
     ) -> Result<u16, String>;
     fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<u16, String>;
-    fn enable_subscriptions(&mut self, settings: Arc<SystemSettings>);
+    fn enable_subscriptions(&mut self);
 }

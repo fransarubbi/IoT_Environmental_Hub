@@ -1,31 +1,38 @@
-//! Definición del Contexto de Aplicación (Shared State).
+//! Definición de la configuración compartida del sistema.
 //!
-//! Este módulo implementa el patrón de **Estado Compartido** para aplicaciones asíncronas.
-//! El `SystemSettings` actúa como un contenedor de "Inyección de Dependencias" manual: 
-//! agrupando los recursos que deben ser accesibles por múltiples tareas concurrentes.
+//! Este módulo implementa el patrón de **Estado Compartido**.
+//! El `SystemSettings` actúa como el repositorio central de parámetros vitales.
+
+use serde::{Deserialize, Serialize};
 
 /// Comandos para el gestor de configuración.
 pub enum ConfigCommand {
-    /// Actualizar toda la configuración
+    /// Reemplaza toda la configuración
     UpdateConfig(SystemSettings),
-    /// Actualizar solo un campo (para evitar sobrescribir todo)
+    /// Actualiza solo un campo específico
     UpdateField(ConfigField), 
-    /// Recargar desde NVS
+    /// Obliga a leer nuevamente desde NVS
     Reload, 
-    /// Resetear a valores por defecto
-    Reset,
-    /// Guardar en NVS (persistir)
+    /// Obliga a guardar la configuración actual en NVS
     Save, 
+    /// Pregunta si existia o no config en NVS
+    ThereIsSettingsInNVS
 }
 
-/// Campos que se pueden actualizar individualmente
+/// Campos que se pueden actualizar individualmente.
 pub enum ConfigField {
     BalanceEpoch(u32), 
     LinkageFlag(bool), 
     MessageId(u32),
 }
 
-#[derive(Clone, Debug, Default)]
+pub enum Settings {
+    ExistsInNVS,
+    NotExistsInNVS,
+}
+
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SystemSettings {
     id: IdentificationData, 
     sample_rate: u16,  // Segundos
@@ -66,20 +73,20 @@ pub struct SystemSettings {
     air_r0: f32,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct IdentificationData {
     pub mac_addr: String, 
     pub device_name: String, 
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Heartbeat {
     pub time_between_heartbeats_balance_mode: u32, 
     pub time_between_heartbeats_normal_mode: u32,
     pub time_between_heartbeats_safe_mode: u32, 
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Network {
     pub id_network: String,
     pub id_edge: String,
@@ -89,26 +96,26 @@ struct Network {
     pub message_id: u32, 
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Wifi {
     pub ssid: String,
     pub password: String, 
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Topic {
     pub topic: String, 
     pub qos: u8,
     pub retain: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Filters {
     pub air_alpha_ema: f32,
     pub temp_alpha_ema: f32, 
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EnergyMode {
     #[default]
     LOW,
@@ -248,4 +255,14 @@ impl SystemSettings {
 
     pub fn topic_ping_ack(&self) -> &Topic { &self.topic_ping_ack }
     pub fn set_topic_ping_ack(&mut self, t: Topic) { self.topic_ping_ack = t; }
+
+    /// Aplica una modificación aislada a un campo específico usando el enum ConfigField.
+    /// Esto mueve la lógica de enrutamiento al dominio en lugar de ensuciar la lógica.
+    pub fn apply_field(&mut self, field: ConfigField) {
+        match field {
+            ConfigField::BalanceEpoch(epoch) => self.set_balance_epoch(epoch),
+            ConfigField::LinkageFlag(flag) => self.set_linkage_flag(flag),
+            ConfigField::MessageId(id) => self.set_message_id(id),
+        }
+    }
 }

@@ -17,11 +17,12 @@ esp-idf-hal = "0.46.2"
 esp-idf-svc = { version = "0.52.1", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
 embassy-time = { version = "0.5", features = ["generic-queue-8"] }
 async-channel = "2.3"
-futures = "0.3"
+embassy-futures = "0.1"
 edge-executor = "0.4.1"
 serde = { version = "1.0", features = ["derive"] }
 rmp-serde = "1.1"
 anyhow = "1.0"
+serde_json = "1.0"
 
 [build-dependencies]
 embuild = "0.33"

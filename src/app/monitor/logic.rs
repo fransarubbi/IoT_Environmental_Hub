@@ -1,14 +1,15 @@
 //! Módulo de Métricas del Sistema (ESP-IDF)
 //! Extrae información vital del RTOS.
 
-use esp_idf_sys::{
+
+use esp_idf_svc::sys::{
     esp_get_free_heap_size,
     esp_get_minimum_free_heap_size,
     esp_timer_get_time,
     heap_caps_get_largest_free_block,
     MALLOC_CAP_8BIT,
 };
-use crate::message::domain::{Monitor, Metadata};
+use crate::app::message::domain::{Monitor, Metadata};
 
 
 /// Extrae las métricas actuales de hardware y memoria de la ESP32

@@ -6,8 +6,11 @@ use async_channel::Receiver;
 use esp_idf_svc::http::client::{
     Client as HttpClient, Configuration as HttpConfig, EspHttpConnection,
 };
-use esp_idf_sys::esp_crt_bundle_attach;
-use log::{error, info, warn};
+use esp_idf_svc::sys::esp_crt_bundle_attach;
+use embassy_time::Timer::from_secs;
+use log::{error, info};
+use crate::svc::http::Http;
+
 
 pub struct EspIdfBypassManager {
     url: String,
@@ -22,14 +25,16 @@ impl EspIdfBypassManager {
     }
 }
 
-impl BypassService for EspIdfBypassManager {
+impl Http for EspIdfBypassManager {
+
     /// Crea una conexión HTTPS efímera, envía el paquete y libera recursos.
     /// Reemplaza por completo a `create_https_send_and_delete` en C.
     fn send_payload(&mut self, payload: &[u8]) -> Result<(), String> {
-        // 1. Configuración del cliente (Reemplaza esp_http_client_config_t)
+        
+        // Configuración del cliente
         let config = HttpConfig {
             crt_bundle_attach: Some(esp_crt_bundle_attach),
-            timeout: Some(std::time::Duration::from_secs(5)),
+            timeout: Some(from_secs(5)),
             ..Default::default()
         };
 
@@ -37,18 +42,18 @@ impl BypassService for EspIdfBypassManager {
             .map_err(|e| format!("Fallo al crear HTTP Connection: {}", e))?;
         let mut client = HttpClient::wrap(connection);
 
-        // 2. Configurar Headers y preparar POST
+        // Configurar Headers y preparar POST
         let headers = [("Content-Type", "application/x-msgpack")];
         let mut request = client
             .post(&self.url, &headers)
             .map_err(|e| format!("Error en request POST: {}", e))?;
 
-        // 3. Escribir el payload (Reemplaza esp_http_client_set_post_field)
+        // Escribir el payload
         request
             .write_all(payload)
             .map_err(|e| format!("Error escribiendo payload en la red: {}", e))?;
 
-        // 4. Enviar y esperar respuesta (Reemplaza esp_http_client_perform)
+        // Enviar y esperar respuesta
         let response = request
             .submit()
             .map_err(|e| format!("Error finalizando request POST: {}", e))?;

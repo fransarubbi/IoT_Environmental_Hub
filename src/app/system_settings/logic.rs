@@ -1,219 +1,141 @@
-use log::{error, info, warn};
-use std::sync::Arc;
+//! Lógica de gestión de configuración.
+//!
+//! Controla la lectura concurrente, actualización y persistencia (NVS) de `SystemSettings`.
+
+use log::{info, error};
+use std::{error::Error, sync::{Arc, RwLock}}; 
+use async_channel::{Receiver, Sender};
+use esp_idf_svc::nvs::{EspNvs, NvsDefault, EspDefaultNvsPartition};
+use anyhow::{anyhow, Result};
+use crate::app::system_settings::domain::{ConfigCommand, Settings, SystemSettings};
 
 
+/// Gestor principal de la configuración.
+/// Escucha órdenes de actualización e impacta los cambios en memoria RAM y memoria Flash (NVS).
 pub struct ConfigManager {
-    /// Datos compartidos con RwLock
+    /// Referencia segura y sincronizada a la configuración.
     config: Arc<RwLock<SystemSettings>>,
-    /// Canal para comandos de escritura
-    command_sender: Sender<ConfigCommand>,
-    /// NVS para persistencia
+    /// Receptor de comandos de modificación.
+    receiver: Receiver<ConfigCommand>,
+    /// Envía un comando indicando si habia datos o no en NVS.
+    sender: Sender<Settings>,
+    /// Manipulador de la partición de almacenamiento no volátil.
     nvs: EspNvs<NvsDefault>,
+    /// Flag de datos en NVS
+    flag: bool,
 }
 
 impl ConfigManager {
-    /// Inicializa el gestor de configuración.
-    pub fn new() -> Result<Self> {
-        // Inicializar NVS
-        let nvs = EspNvs::new("config", true)?;
+    
+    /// Construye el gestor, recupera la última configuración desde NVS y devuelve
+    /// la instancia junto con el puntero `Arc` que debe repartirse al resto del sistema.
+    pub fn new(
+        sender: Sender<Settings>,
+        receiver: Receiver<ConfigCommand>,
+        nvs_partition: EspDefaultNvsPartition
+    ) -> Result<(Self, Arc<RwLock<SystemSettings>>)> {
+        
+        let nvs = EspNvs::new(nvs_partition, "config", true)?;
 
-        // Cargar configuración inicial
-        let initial_config = Self::load_from_nvs(&nvs).unwrap_or_default();
+        // Intentamos cargar; si falla, instanciamos el default.
+        match Self::load_from_nvs(&nvs) {
+            Ok((loaded_config, has_data)) => {
+                let shared_config = Arc::new(RwLock::new(loaded_config));
 
-        // Crear RwLock
-        let config = Arc::new(RwLock::new(initial_config));
+                let manager = Self {
+                    config: Arc::clone(&shared_config),
+                    receiver,
+                    sender,
+                    nvs,
+                    flag: has_data
+                };
 
-        // Crear canal para comandos
-        let (tx, rx) = mpsc::channel::<ConfigCommand>();
-
-        let manager = Self {
-            config: Arc::clone(&config),
-            command_sender: tx,
-            nvs,
-        };
-
-        // Iniciar el worker que procesa comandos de escritura
-        manager.start_worker(rx, config);
-
-        Ok(manager)
+                Ok((manager, shared_config))
+            }
+            Err(e) => {
+                // Retornamos el error si falla la inicialización
+                Err(anyhow!("error al inicializar NVS: {}", e))
+            }
+        }
     }
 
-    /// Inicia el worker que procesa los comandos de escritura
-    fn start_worker(&self, rx: Receiver<ConfigCommand>, config: Arc<RwLock<SystemSettings>>) {
-        // Clonamos NVS para el worker
-        let mut nvs = match self.nvs.clone() {
-            Ok(n) => n,
-            Err(e) => {
-                error!("error clonando NVS: {}", e);
-                return;
-            }
-        };
-
-        thread::spawn(move || {
-            info!("worker de configuración iniciado");
-
-            for command in rx {
-                match command {
-                    ConfigCommand::UpdateConfig(new_config) => {
-                        // Escritura con RwLock (bloquea todos los lectores momentáneamente)
-                        let mut cfg = config.write().unwrap();
+    /// Ciclo de vida asíncrono del Manager. Recibe comandos y actúa en consecuencia.
+    pub async fn run(mut self) {
+        
+        while let Ok(cmd) = self.receiver.recv().await { 
+            match cmd {
+                ConfigCommand::UpdateConfig(new_config) => {
+                    {
+                        // Bloqueo explícito y corto para escribir
+                        let mut cfg = self.config.write().unwrap();
                         *cfg = new_config;
-                        info!("configuración actualizada");
-
-                        // Guardar en NVS
-                        if let Err(e) = Self::save_to_nvs(&mut nvs, &cfg) {
-                            error!("error guardando en NVS: {}", e);
-                        }
+                    } 
+                    info!("configuración completamente actualizada.");
+                    let _ = self.save_to_nvs();
+                }
+                
+                ConfigCommand::UpdateField(field) => {
+                    {
+                        let mut cfg = self.config.write().unwrap();
+                        cfg.apply_field(field);
                     }
-
-                    ConfigCommand::UpdateField(field) => {
-                        // Escritura con RwLock
-                        let mut cfg = config.write().unwrap();
-                        Self::apply_field(&mut cfg, field);
-                        info!("campo de configuración actualizado");
-
-                        if let Err(e) = Self::save_to_nvs(&mut nvs, &cfg) {
-                            error!("error guardando en NVS: {}", e);
-                        }
+                    info!("campo de configuración actualizado.");
+                    let _ = self.save_to_nvs();
+                }
+                
+                ConfigCommand::Reload => {
+                    if let Ok(loaded) = Self::load_from_nvs(&self.nvs) {
+                        let mut cfg = self.config.write().unwrap();
+                        *cfg = loaded.0;
+                        info!("configuración recargada exitosamente desde NVS.");
                     }
+                }
+                
+                ConfigCommand::Save => {
+                    let _ = self.save_to_nvs();
+                }
 
-                    ConfigCommand::Reload => {
-                        // Cargar desde NVS
-                        if let Ok(loaded) = Self::load_from_nvs(&nvs) {
-                            let mut cfg = config.write().unwrap();
-                            *cfg = loaded;
-                            info!("configuración recargada desde NVS");
+                ConfigCommand::ThereIsSettingsInNVS => {
+                    if self.flag {
+                        if let Err(e) = self.sender.try_send(Settings::ExistsInNVS) {
+                            error!("no se pudo enviar Settings::ExistsInNVS. {e}");
                         }
-                    }
-
-                    ConfigCommand::Reset => {
-                        let default = SystemConfig::default();
-                        let mut cfg = config.write().unwrap();
-                        *cfg = default.clone();
-
-                        // Guardar defaults en NVS
-                        if let Err(e) = Self::save_to_nvs(&mut nvs, &default) {
-                            error!("error guardando defaults en NVS: {}", e);
-                        }
-                        info!("configuración reseteada a defaults");
-                    }
-
-                    ConfigCommand::Save => {
-                        let cfg = config.read().unwrap();
-                        if let Err(e) = Self::save_to_nvs(&mut nvs, &cfg) {
-                            error!("error guardando en NVS: {}", e);
-                        } else {
-                            info!("configuración guardada en NVS");
+                    } else {
+                        if let Err(e) = self.sender.try_send(Settings::NotExistsInNVS) {
+                            error!("no se pudo enviar Settings::NotExistsInNVS. {e}");
                         }
                     }
                 }
             }
-
-            warn!("worker de configuración terminado");
-        });
+        }
     }
 
-    // ========== LECTURA (RÁPIDA, DIRECTA) ==========
 
-    /// Obtiene una referencia de solo lectura (¡MUY RÁPIDO!)
-    pub fn get_config(&self) -> RwLockReadGuard<'_, SystemSettings> {
-        self.config.read().unwrap() // Bloqueo mínimo para lectura
-    }
+    // --- Funciones internas de NVS ---
 
-    /// Obtiene un valor específico de forma rápida
-    pub fn get_wifi_ssid(&self) -> String {
-        let cfg = self.config.read().unwrap();
-        cfg.wifi_ssid.clone()
-    }
+    /// Carga la configuración como String JSON desde la Flash NVS.
+    fn load_from_nvs(nvs: &EspNvs<NvsDefault>) -> Result<(SystemSettings, bool), Box<dyn Error>> {
 
-    /// Obtiene el periodo de sampleo
-    pub fn get_sample_period(&self) -> u32 {
-        let cfg = self.config.read().unwrap();
-        cfg.sample_period_ms
-    }
+        // Buffer pre-asignado de 4096 bytes (4KB).
+        let mut buf = [0u8; 4096];
 
-    /// Obtiene el modo de energía
-    pub fn get_power_mode(&self) -> PowerMode {
-        let cfg = self.config.read().unwrap();
-        cfg.power_mode.clone()
-    }
-
-    // ========== ESCRITURA (A TRAVÉS DEL CANAL) ==========
-
-    /// Envía un comando para actualizar toda la configuración
-    pub fn update_config(&self, new_config: SystemSettings) -> Result<()> {
-        self.command_sender
-            .send(ConfigCommand::UpdateConfig(new_config))
-            .map_err(|e| anyhow!("Error enviando comando: {}", e))
-    }
-
-    /// Envía un comando para actualizar un campo específico
-    pub fn update_field(&self, field: ConfigField) -> Result<()> {
-        self.command_sender
-            .send(ConfigCommand::UpdateField(field))
-            .map_err(|e| anyhow!("Error enviando comando: {}", e))
-    }
-
-    /// Recarga configuración desde NVS
-    pub fn reload(&self) -> Result<()> {
-        self.command_sender
-            .send(ConfigCommand::Reload)
-            .map_err(|e| anyhow!("Error enviando comando: {}", e))
-    }
-
-    /// Resetea a valores por defecto
-    pub fn reset(&self) -> Result<()> {
-        self.command_sender
-            .send(ConfigCommand::Reset)
-            .map_err(|e| anyhow!("Error enviando comando: {}", e))
-    }
-
-    /// Guarda la configuración actual en NVS
-    pub fn save(&self) -> Result<()> {
-        self.command_sender
-            .send(ConfigCommand::Save)
-            .map_err(|e| anyhow!("Error enviando comando: {}", e))
-    }
-
-    // ========== PERSISTENCIA EN NVS ==========
-
-    fn load_from_nvs(nvs: &EspNvs<NvsDefault>) -> Result<SystemSettings> {
-        // Leer como JSON desde NVS
-        if let Some(data) = nvs.get_str("config")? {
-            let config: SystemConfig = serde_json::from_str(&data)?;
-            Ok(config)
+        if let Some(data) = nvs.get_str("config", &mut buf)? {
+            let config: SystemSettings = serde_json::from_str(&data)?;
+            Ok((config, true))  // Encontrado en NVS
         } else {
-            Err(anyhow!("No hay configuración en NVS"))
+            // Devuelve configuración por defecto y false
+            Ok((SystemSettings::default(), false))  
         }
     }
 
-    fn save_to_nvs(nvs: &mut EspNvs<NvsDefault>, config: &SystemSettings) -> Result<()> {
-        let json = serde_json::to_string(config)?;
-        nvs.set_str("config", &json)?;
-        nvs.commit()?;
+    /// Bloquea temporalmente para leer RAM y persiste la estructura en la memoria Flash NVS.
+    fn save_to_nvs(&mut self) -> Result<()> {
+        let json = {
+            let cfg = self.config.read().unwrap();
+            serde_json::to_string(&*cfg)?
+        };
+        self.nvs.set_str("config", &json)?;
+        info!("configuración guardada en NVS.");
         Ok(())
-    }
-
-    fn apply_field(config: &mut SystemConfig, field: ConfigField) {
-        match field {
-            ConfigField::WifiSsid(ssid) => config.wifi_ssid = ssid,
-            ConfigField::WifiPassword(pass) => config.wifi_password = pass,
-            ConfigField::MqttBroker(broker) => config.mqtt_broker = broker,
-            ConfigField::MqttPort(port) => config.mqtt_port = port,
-            ConfigField::DeviceName(name) => config.device_name = name,
-            ConfigField::SamplePeriodMs(period) => config.sample_period_ms = period,
-            ConfigField::PowerMode(mode) => config.power_mode = mode,
-        }
-    }
-}
-
-// Implementación de Clone para compartir entre tareas
-impl Clone for ConfigManager {
-    fn clone(&self) -> Self {
-        Self {
-            config: Arc::clone(&self.config),
-            command_sender: self.command_sender.clone(),
-            nvs: self.nvs.clone().unwrap(),
-        }
     }
 }

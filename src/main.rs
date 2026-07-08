@@ -19,6 +19,13 @@ use crate::app::message::domain::{MessageService, MessageServiceCommand, Message
 
 
 fn main() -> anyhow::Result<()> {
+
+    /*
+    Crear un solo LocalExecutor por núcleo de CPU. 
+     */
+
+
+
     // 1. Inicialización obligatoria del entorno ESP-IDF y parches de enlazado
     esp_idf_svc::sys::link_patches();
     EspLogger::initialize_default();
@@ -29,6 +36,7 @@ fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("No se pudieron tomar los periféricos: {:?}", e))?;
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
+
 
     // 3. Creación de la configuración global compartida (Singleton de lectura)
     // Aquí cargarías los datos reales usando tu ConfigManager o un valor inicializado por NVS
@@ -49,7 +57,7 @@ fn main() -> anyhow::Result<()> {
     
     // NOTA: Para instanciar tu EspIdfMqttManager necesitarás pasarle los certificados y los canales creados.
     // Ejemplo ilustrativo de cómo se acoplarían tus tareas:
-    let msg_service = MessageService::new(msg_res_tx, msg_cmd_rx, shared_settings.clone());
+    //let msg_service = MessageService::new(msg_res_tx, msg_cmd_rx, shared_settings.clone());
 
     // 6. Configuración del Executor Asíncrono de un solo hilo (ideal para núcleos específicos)
     let executor = LocalExecutor::default();

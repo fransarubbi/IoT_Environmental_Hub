@@ -8,10 +8,9 @@ use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configura
 use log::{error, info, warn};
 use std::time::Duration;
 use crate::svc::wifi::{Wifi, WifiStats};
+use esp_idf_svc::sys::{esp_wifi_set_max_tx_power, esp_wifi_sta_get_ap_info, wifi_ap_record_t};
 
 
-// FFI para acceder a funciones de bajo nivel de C si es estrictamente necesario
-use esp_idf_sys::{esp_wifi_set_max_tx_power, esp_wifi_sta_get_ap_info, wifi_ap_record_t};
 
 const WIFI_MAX_RETRY: u8 = 5;
 
@@ -137,7 +136,7 @@ impl<'a> Wifi for EspIdfWifiManager<'a> {
         let mut ap_info: wifi_ap_record_t = Default::default();
         let err = unsafe { esp_wifi_sta_get_ap_info(&mut ap_info) };
 
-        if err == esp_idf_sys::ESP_OK {
+        if err == esp_idf_svc::sys::ESP_OK {
             stats.rssi = ap_info.rssi;
             // Convertimos el array de u8 de C a un String de Rust, ignorando nulos
             stats.ssid = String::from_utf8_lossy(&ap_info.ssid)

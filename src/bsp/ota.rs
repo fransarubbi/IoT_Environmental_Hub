@@ -5,11 +5,12 @@ use esp_idf_svc::http::client::{
     Client as HttpClient, Configuration as HttpConfig, EspHttpConnection,
 };
 use esp_idf_svc::ota::EspOta;
-use log::{error, info, warn};
+use log::{info, warn};
 use std::cmp::Ordering;
-
 // FFI para adjuntar los certificados raíz globales y permitir HTTPS
-use esp_idf_sys::esp_crt_bundle_attach;
+use esp_idf_svc::sys::{esp_crt_bundle_attach};
+use crate::svc::ota::*;
+
 
 const URL_VERSION: &str =
     "https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/master/version.txt";
@@ -38,7 +39,7 @@ impl EspIdfOtaManager {
     }
 }
 
-impl OtaService for EspIdfOtaManager {
+impl Ota for EspIdfOtaManager {
     fn check_update(&self, current_version: &str) -> Result<Option<String>, String> {
         info!("chequeando versión del repo...");
 
