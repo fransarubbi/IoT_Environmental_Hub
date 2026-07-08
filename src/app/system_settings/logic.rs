@@ -7,7 +7,7 @@ use std::{error::Error, sync::{Arc, RwLock}};
 use async_channel::{Receiver, Sender};
 use esp_idf_svc::nvs::{EspNvs, NvsDefault, EspDefaultNvsPartition};
 use anyhow::{anyhow, Result};
-use crate::app::system_settings::domain::{ConfigCommand, Settings, SystemSettings};
+use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse, SystemSettings};
 
 
 /// Gestor principal de la configuración.
@@ -18,7 +18,7 @@ pub struct ConfigManager {
     /// Receptor de comandos de modificación.
     receiver: Receiver<ConfigCommand>,
     /// Envía un comando indicando si habia datos o no en NVS.
-    sender: Sender<Settings>,
+    sender: Sender<ConfigResponse>,
     /// Manipulador de la partición de almacenamiento no volátil.
     nvs: EspNvs<NvsDefault>,
     /// Flag de datos en NVS
@@ -30,7 +30,7 @@ impl ConfigManager {
     /// Construye el gestor, recupera la última configuración desde NVS y devuelve
     /// la instancia junto con el puntero `Arc` que debe repartirse al resto del sistema.
     pub fn new(
-        sender: Sender<Settings>,
+        sender: Sender<ConfigResponse>,
         receiver: Receiver<ConfigCommand>,
         nvs_partition: EspDefaultNvsPartition
     ) -> Result<(Self, Arc<RwLock<SystemSettings>>)> {
@@ -97,11 +97,11 @@ impl ConfigManager {
 
                 ConfigCommand::ThereIsSettingsInNVS => {
                     if self.flag {
-                        if let Err(e) = self.sender.try_send(Settings::ExistsInNVS) {
+                        if let Err(e) = self.sender.try_send(ConfigResponse::ExistsInNVS) {
                             error!("no se pudo enviar Settings::ExistsInNVS. {e}");
                         }
                     } else {
-                        if let Err(e) = self.sender.try_send(Settings::NotExistsInNVS) {
+                        if let Err(e) = self.sender.try_send(ConfigResponse::NotExistsInNVS) {
                             error!("no se pudo enviar Settings::NotExistsInNVS. {e}");
                         }
                     }

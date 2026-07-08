@@ -26,7 +26,7 @@ pub enum ConfigField {
     MessageId(u32),
 }
 
-pub enum Settings {
+pub enum ConfigResponse {
     ExistsInNVS,
     NotExistsInNVS,
 }

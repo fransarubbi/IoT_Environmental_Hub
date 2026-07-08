@@ -1,6 +1,176 @@
+use esp_idf_hal::reset::restart;
 use log::{info, error};
-use async_channel::{Sender, Receiver};
-use crate::app::fsm::domain::{Action, Event, Transition, FsmState};
+use async_channel::{Sender, Receiver, bounded};
+use edge_executor::LocalExecutor;
+use embassy_futures::select::{select, Either};
+use crate::app::fsm::domain::{Action, Event, FsmState, Transition};
+
+
+pub enum FsmServiceResponse {
+    InitCli,
+    InitWifi,
+    NotifyFirmware,
+    InitMqtt,
+    LinkageProtocol,
+}
+
+pub enum FsmServiceCommand {
+    CliIsReady,
+    NotUpdateFirmware,  // Incluye error tambien
+    UpdateFirmware,
+    MqttIsOk,
+    LinkageOk,
+
+}
+
+pub struct FsmService {
+    sender: Sender<FsmServiceResponse>,
+    receiver: Receiver<FsmServiceCommand>,
+}
+
+impl FsmService {
+    pub fn new(
+        sender: Sender<FsmServiceResponse>,
+        receiver: Receiver<FsmServiceCommand>,
+    ) -> Self {
+        Self {
+            sender,
+            receiver
+        }
+    }
+
+    pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
+
+        let (tx_actions, rx_actions) = bounded::<Vec<Action>>(10);
+        let (tx_event, rx_event) = bounded::<Event>(10);
+        let (tx_response, rx_response) = bounded::<FsmServiceResponse>(10);
+        let (tx_command, rx_command) = bounded::<FsmServiceCommand>(10);
+
+        executor.spawn(handler_events_and_actions(
+            tx_event, 
+            tx_response, 
+            rx_actions, 
+            rx_command
+        )).detach();
+        executor.spawn(run_fsm(tx_actions, rx_event)).detach();
+
+        loop {
+            match select(self.receiver.recv(), rx_response.recv()).await {
+                // Caso 1: Recibimos un comando del exterior (receiver)
+                Either::First(Ok(cmd)) => {
+                    if let Err(e) = tx_command.try_send(cmd) {
+                        error!("no se pudo enviar mensaje para generar, mensaje descartado. {e}");
+                    }
+                }
+                Either::First(Err(_)) => {
+                    error!("el canal receiver se ha cerrado.");
+                    break;
+                }
+
+                // Caso 2: Recibimos una respuesta interna del handler_events_and_actions()
+                Either::Second(Ok(msg)) => {
+                    if let Err(e) = self.sender.try_send(msg) {
+                        error!("no se pudo enviar mensaje MessageServiceResponse, mensaje descartado. {e}");
+                    }
+                }
+                Either::Second(Err(_)) => {
+                    error!("el canal interno rx_command se ha cerrado.");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+
+
+async fn handler_events_and_actions(
+    tx_events: Sender<Event>,
+    tx_response: Sender<FsmServiceResponse>,
+    rx_action: Receiver<Vec<Action>>,
+    rx_extern_events: Receiver<FsmServiceCommand>
+) {
+    loop {
+        match select(rx_action.recv(), rx_extern_events.recv()).await {
+            // Caso 1: acciones de la FSM
+            Either::First(Ok(vec_action)) => {
+                for action in vec_action {
+                    match action {
+                        Action::ActionInitCli => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::InitCli) {
+                                error!("no se pudo enviar InitCli desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionInitWifi => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::InitWifi) {
+                                error!("no se pudo enviar InitWifi desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionNotifyFirmware => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::NotifyFirmware) {
+                                error!("no se pudo enviar NotifyFirmware desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionRestart => {
+                            info!("reiniciando sistema...");
+                            restart();
+                        }
+                        Action::ActionInitMqtt => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::InitMqtt) {
+                                error!("no se pudo enviar InitMqtt desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionLinkageProtocol => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::LinkageProtocol) {
+                                error!("no se pudo enviar LinkageProtocol desde el handler. {e}");
+                            }
+                        }
+                    }
+                }
+            }
+            Either::First(Err(_)) => {
+                error!("el canal rx_action se ha cerrado.");
+                break;
+            }
+
+            // Caso 2: eventos externos
+            Either::Second(Ok(event)) => {
+                match event {
+                    FsmServiceCommand::CliIsReady => {
+                        if let Err(e) = tx_events.try_send(Event::EventOkCli) {
+                            error!("no se pudo enviar evento EventOkCli desde handler. {e}");
+                        }
+                    }
+                    FsmServiceCommand::NotUpdateFirmware => {
+                        if let Err(e) = tx_events.try_send(Event::EventNotUpdate) {
+                            error!("no se pudo enviar evento EventNotUpdate desde handler. {e}");
+                        }
+                    }
+                    FsmServiceCommand::UpdateFirmware => {
+                        if let Err(e) = tx_events.try_send(Event::EventUpdateSuccessful) {
+                            error!("no se pudo enviar evento EventUpdateSuccessful desde handler. {e}");
+                        }
+                    }
+                    FsmServiceCommand::MqttIsOk => {
+                        if let Err(e) = tx_events.try_send(Event::EventOkMqtt) {
+                            error!("no se pudo enviar evento EventOkMqtt desde handler. {e}");
+                        }
+                    }
+                    FsmServiceCommand::LinkageOk => {
+                        if let Err(e) = tx_events.try_send(Event::EventLinkageOk) {
+                            error!("no se pudo enviar evento EventLinkageOk desde handler. {e}");
+                        }
+                    }
+                }
+            }
+            Either::Second(Err(_)) => {
+                error!("el canal rx_command se ha cerrado.");
+                break;
+            }
+        }
+    }
+}
+
 
 
 /// Tarea asíncrona que ejecuta la lógica pura de la Máquina de Estados.
@@ -9,7 +179,7 @@ use crate::app::fsm::domain::{Action, Event, Transition, FsmState};
 ///
 /// * `tx_actions`: Canal para emitir los efectos secundarios que deben ejecutarse.
 /// * `rx_event`: Canal de entrada de eventos (triggers).
-pub async fn run_fsm(
+async fn run_fsm(
     tx_actions: Sender<Vec<Action>>,
     rx_event: Receiver<Event>
 ) {
@@ -19,7 +189,6 @@ pub async fn run_fsm(
     match state.step(Event::EventStart) {
         Transition::Valid(t) => {
             state = t.change_state();
-            let _ = tx_actions.send(t.actions()).await;
         }
         Transition::Invalid(t) => error!("fsm transición inválida {}", t.get_invalid()),
     }
@@ -29,7 +198,9 @@ pub async fn run_fsm(
             match state.step(event) {
                 Transition::Valid(t) => {
                     state = t.change_state();
-                    let _ = tx_actions.send(t.actions()).await;
+                    if let Err(e) = tx_actions.try_send(t.actions()) {
+                        error!("no se pudo enviar vector de acciones desde run_fsm. {e}");
+                    }
                 }
                 Transition::Invalid(t) => error!("fsm transición inválida {}", t.get_invalid()),
             }

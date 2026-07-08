@@ -4,82 +4,129 @@ pub mod svc;
 pub mod bsp;
 pub mod app;
 
+use log::info;
 use std::sync::Arc;
+use std::thread::Builder;
 use edge_executor::LocalExecutor;
 use esp_idf_hal::peripherals::Peripherals;
+use esp_idf_hal::task::thread::ThreadSpawnConfiguration;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::log::EspLogger;
-use async_channel::bounded;
 
-// Importaciones de tus componentes internos
-use crate::app::system_settings::domain::SystemSettings;
-use crate::app::message::domain::{MessageService, MessageServiceCommand, MessageServiceResponse};
+use crate::app::channels::domain::Channels;
+use crate::app::core::domain::*;
+use crate::app::fsm::logic::FsmService;
+use crate::app::message::domain::MessageService;
+use crate::app::system_settings::logic::ConfigManager;
 
+
+
+fn core0_executor_task() {
+    let executor: LocalExecutor = Default::default();
+
+    // Lanzar tareas asíncronas de WiFi y MQTT en este executor
+    // executor.spawn(wifi_manager.run()).detach(); 
+
+    // Ejecutar el executor de forma indefinida
+    esp_idf_hal::task::block_on(executor.run(std::future::pending::<()>()));
+}
+
+
+fn core1_executor_task(
+    core: Core,
+    channels: Channels, 
+    nvs_partition: EspDefaultNvsPartition
+) {
+    let executor: LocalExecutor = Default::default();
+
+    // Como somos dueños de channels, podemos usar sus atributos directamente
+    let res = ConfigManager::new(
+        channels.config_manager_to_core, 
+        channels.config_manager_from_core, 
+        nvs_partition
+    );
+
+    if let Ok((config_manager, settings)) = res {
+        executor.spawn(config_manager.run()).detach();
+
+        executor.spawn(MessageService::new(
+            channels.message_service_to_core, 
+            channels.message_service_from_core, 
+            Arc::clone(&settings)
+        ).run(&executor)).detach();
+
+        executor.spawn(core.run()).detach();
+
+        executor.spawn(FsmService::new(
+            channels.fsm_service_to_core, 
+            channels.fsm_service_from_core
+        ).run(&executor)).detach();
+    }
+
+    esp_idf_hal::task::block_on(executor.run(std::future::pending::<()>()));
+}
+
+
+
+/*
+1. uart_init() 
+2. wifi_init() 
+3. time_init() 
+4. mqtt_init() 
+*/
 
 
 fn main() -> anyhow::Result<()> {
-
-    /*
-    Crear un solo LocalExecutor por núcleo de CPU. 
-     */
-
-
-
-    // 1. Inicialización obligatoria del entorno ESP-IDF y parches de enlazado
+    // Inicialización obligatoria del entorno ESP-IDF y parches de enlazado
     esp_idf_svc::sys::link_patches();
     EspLogger::initialize_default();
-    log::info!("Iniciando IoT Environmental Hub...");
+    info!("Iniciando IoT Environmental Hub...");
 
-    // 2. Tomar el control de los periféricos de la capa de abstracción de hardware
-    let peripherals = Peripherals::take()
-        .map_err(|e| anyhow::anyhow!("No se pudieron tomar los periféricos: {:?}", e))?;
-    let sys_loop = EspSystemEventLoop::take()?;
+    // Tomar el control de los periféricos
+    let _peripherals = Peripherals::take()
+        .map_err(|e| anyhow::anyhow!("no se pudieron tomar los periféricos: {:?}", e))?;
+    let _sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
 
+    let channels = Channels::new(10);
 
-    // 3. Creación de la configuración global compartida (Singleton de lectura)
-    // Aquí cargarías los datos reales usando tu ConfigManager o un valor inicializado por NVS
-    let mut settings = SystemSettings::default();
-    settings.set_wifi_ssid("Mi_Red_WiFi".to_string());
-    settings.set_wifi_password("Contraseña123".to_string());
-    settings.set_mqtt_uri("mqtts://broker.hivemq.com:8883".to_string());
-    
-    let shared_settings = Arc::new(settings);
+    let core = Core::builder()
+        .core_from_fsm_service(channels.core_from_fsm_service.clone())
+        .core_to_fsm_service(channels.core_to_fsm_service.clone())
+        .core_from_msg_service(channels.core_from_message_service.clone())
+        .core_to_msg_service(channels.core_to_message_service.clone())
+        .core_to_config_service(channels.core_to_config_manager.clone())
+        .core_from_config_service(channels.core_from_config_manager.clone())
+        .build()?;
 
-    // 4. Creación de los Canales Globales de Comunicación (Bounded para evitar desbordamientos de memoria)
-    let (msg_cmd_tx, msg_cmd_rx) = bounded::<MessageServiceCommand>(15);
-    let (msg_res_tx, msg_res_rx) = bounded::<MessageServiceResponse>(15);
+    ThreadSpawnConfiguration {
+        name: Some(c"wifi_and_mqtt_core"), 
+        pin_to_core: Some(esp_idf_hal::cpu::Core::Core0), 
+        priority: 10,                   
+        ..Default::default()
+    }.set()?;
 
-    // 5. Instanciación de Servicios y Managers de la capa BSP
-    // Clonamos el Arc antes de pasarlo a los contextos donde se necesite
-    let settings_for_mqtt = Arc::clone(&shared_settings);
-    
-    // NOTA: Para instanciar tu EspIdfMqttManager necesitarás pasarle los certificados y los canales creados.
-    // Ejemplo ilustrativo de cómo se acoplarían tus tareas:
-    //let msg_service = MessageService::new(msg_res_tx, msg_cmd_rx, shared_settings.clone());
+    // El spawn sin argumentos está bien porque `core0_executor_task` se evalúa como puntero de función
+    let _core0_thread = Builder::new()
+        .stack_size(8192) 
+        .spawn(core0_executor_task)?;
 
-    // 6. Configuración del Executor Asíncrono de un solo hilo (ideal para núcleos específicos)
-    //let executor = LocalExecutor::default();
+    ThreadSpawnConfiguration {
+        name: Some(c"logic_core"),
+        pin_to_core: Some(esp_idf_hal::cpu::Core::Core1), 
+        priority: 5,      
+        ..Default::default()
+    }.set()?;
 
-    // 7. Spawning (Planificación) de las tareas en el Executor en segundo plano
-    // Cada función asíncrona se ejecuta de forma cooperativa
-    /*  
-    executor.spawn(msg_service.run(&executor))
-        .map_err(|e| anyhow::anyhow!("Fallo al planificar Message Service Task: {:?}", e))?;
-    */
 
-    // 8. Bucle infinito asíncrono en la tarea principal
-    // esp_idf_hal::task::block_on mantiene vivo el hilo de FreeRTOS ejecutando el planificador.
-    /*esp_idf_hal::task::block_on(executor.run(async {
-        log::info!("Executor en marcha de manera asíncrona. Entrando en bucle de control.");
-        loop {
-            // USAR SIEMPRE un temporizador asíncrono para no congelar el executor.
-            // Si usas delay síncronos de FreeRTOS o std::thread::sleep, romperás el paralelismo cooperativo.
-            embassy_time::Timer::after(embassy_time::Duration::from_secs(60)).await;
-            println!("[Main Thread] Heartbeat del sistema operativo cooperativo");
-        }
-    }));*/
+    let _core1_thread = Builder::new()
+        .stack_size(8192) 
+        .spawn(move || core1_executor_task(core, channels, nvs))?;
+
+    // El hilo principal se bloquea esperando a hilos que nunca terminan.
+    let _ = _core0_thread.join();
+    let _ = _core1_thread.join();
 
     Ok(())
 }

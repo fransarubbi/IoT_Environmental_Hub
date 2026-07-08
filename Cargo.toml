@@ -35,7 +35,7 @@ embuild = "0.33"
 
 [profile.dev]
 debug = true       # Conserva los símbolos de depuración (no incrementan el tamaño real en la Flash física)
-opt-level = "z"    # Optimización agresiva orientada a la reducción de tamaño para desarrollo rápido
+opt-level = 0    # Optimización agresiva orientada a la reducción de tamaño para desarrollo rápido
 
 # OPCIÓN 1: Optimización de producción muy agresiva (Mayor velocidad y tamaño controlado)
 [profile.release]
