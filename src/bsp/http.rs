@@ -1,15 +1,12 @@
-// *todo*
-
 //! Módulo HTTPS.
 
-use async_channel::Receiver;
-use esp_idf_svc::http::client::{
-    Client as HttpClient, Configuration as HttpConfig, EspHttpConnection,
-};
+use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
+use embedded_svc::http::client::Client as HttpClient; 
 use esp_idf_svc::sys::esp_crt_bundle_attach;
-use embassy_time::Timer::from_secs;
+use std::time::Duration; 
 use log::{error, info};
 use crate::svc::http::Http;
+
 
 
 pub struct EspIdfBypassManager {
@@ -34,7 +31,7 @@ impl Http for EspIdfBypassManager {
         // Configuración del cliente
         let config = HttpConfig {
             crt_bundle_attach: Some(esp_crt_bundle_attach),
-            timeout: Some(from_secs(5)),
+            timeout: Some(Duration::from_secs(5)),
             ..Default::default()
         };
 
@@ -50,7 +47,7 @@ impl Http for EspIdfBypassManager {
 
         // Escribir el payload
         request
-            .write_all(payload)
+            .write(payload)
             .map_err(|e| format!("Error escribiendo payload en la red: {}", e))?;
 
         // Enviar y esperar respuesta

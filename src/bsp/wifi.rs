@@ -24,7 +24,7 @@ impl<'a> EspIdfWifiManager<'a> {
     /// Constructor.
     /// Recibe el periférico del Módem (hardware) y las particiones/event_loops del sistema.
     pub fn new(
-        modem: Modem,
+        modem: Modem<'a>,
         sys_loop: EspSystemEventLoop,
         nvs: EspDefaultNvsPartition,
         ssid: &str,

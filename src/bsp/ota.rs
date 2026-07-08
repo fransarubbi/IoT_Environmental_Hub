@@ -1,14 +1,12 @@
 //! Módulo OTA (Over-The-Air).
 //! Gestiona la comprobación de versiones y descarga de nuevo firmware.
 
-use esp_idf_svc::http::client::{
-    Client as HttpClient, Configuration as HttpConfig, EspHttpConnection,
-};
+use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
+use embedded_svc::http::client::Client as HttpClient; // <-- Importación corregida
 use esp_idf_svc::ota::EspOta;
 use log::{info, warn};
 use std::cmp::Ordering;
-// FFI para adjuntar los certificados raíz globales y permitir HTTPS
-use esp_idf_svc::sys::{esp_crt_bundle_attach};
+use esp_idf_svc::sys::esp_crt_bundle_attach;
 use crate::svc::ota::*;
 
 

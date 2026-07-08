@@ -6,7 +6,7 @@ pub mod app;
 
 use std::sync::Arc;
 use edge_executor::LocalExecutor;
-use esp_idf_hal::prelude::Peripherals;
+use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::log::EspLogger;
@@ -60,16 +60,18 @@ fn main() -> anyhow::Result<()> {
     //let msg_service = MessageService::new(msg_res_tx, msg_cmd_rx, shared_settings.clone());
 
     // 6. Configuración del Executor Asíncrono de un solo hilo (ideal para núcleos específicos)
-    let executor = LocalExecutor::default();
+    //let executor = LocalExecutor::default();
 
     // 7. Spawning (Planificación) de las tareas en el Executor en segundo plano
     // Cada función asíncrona se ejecuta de forma cooperativa
+    /*  
     executor.spawn(msg_service.run(&executor))
         .map_err(|e| anyhow::anyhow!("Fallo al planificar Message Service Task: {:?}", e))?;
+    */
 
     // 8. Bucle infinito asíncrono en la tarea principal
     // esp_idf_hal::task::block_on mantiene vivo el hilo de FreeRTOS ejecutando el planificador.
-    esp_idf_hal::task::block_on(executor.run(async {
+    /*esp_idf_hal::task::block_on(executor.run(async {
         log::info!("Executor en marcha de manera asíncrona. Entrando en bucle de control.");
         loop {
             // USAR SIEMPRE un temporizador asíncrono para no congelar el executor.
@@ -77,7 +79,7 @@ fn main() -> anyhow::Result<()> {
             embassy_time::Timer::after(embassy_time::Duration::from_secs(60)).await;
             println!("[Main Thread] Heartbeat del sistema operativo cooperativo");
         }
-    }));
+    }));*/
 
     Ok(())
 }

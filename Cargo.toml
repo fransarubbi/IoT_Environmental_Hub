@@ -16,6 +16,7 @@ log = "0.4"
 esp-idf-hal = "0.46.2" 
 esp-idf-svc = { version = "0.52.1", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
 embassy-time = { version = "0.5", features = ["generic-queue-8"] }
+embedded-svc = "0.29"
 async-channel = "2.3"
 embassy-futures = "0.1"
 edge-executor = "0.4.1"

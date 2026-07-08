@@ -1,3 +1,7 @@
+use serde::{Serialize, Deserialize};
+
+
+
 /// Estados Globales de nivel superior.
 /// Determinan el comportamiento macro del sistema.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -128,6 +132,10 @@ pub enum Event {
     EventFromBypassToNormal,
     EventFromBypassToInitBalance,
 
+    EventFromNormalToCooling,
+    EventFromNormalToInitBalance,
+    EventFromNormalToInHandshake,
+
     EventFromInitBalanceToInHandshake,
     EventFromInitBalanceToAlert,
     EventFromInitBalanceToData,
@@ -144,6 +152,8 @@ pub enum Event {
     EventFromSafeToNormal,
     EventFromSafeToStore,
 }
+
+
 
 impl FsmState {
     /// Crea una nueva instancia de la FSM en el estado inicial.
@@ -230,23 +240,23 @@ impl FsmState {
 
     fn step_store(&self, event: Event) -> Transition {
         match (&self.store, event) {
-            (Some(SubStateStore::Store, Event::EventFromStoreToNormal)) => {
+            (Some(SubStateStore::Store), Event::EventFromStoreToNormal) => {
                 let next_fsm = self.clone();
                 state_store_event_to_normal(next_fsm)
             }
-            (Some(SubStateStore::Cooling, Event::EventFromStoreToBypass)) => {
+            (Some(SubStateStore::Cooling), Event::EventFromStoreToBypass) => {
                 let next_fsm = self.clone();
                 state_store_event_to_bypass(next_fsm)
             }
-            (Some(SubStateStore::UpdateScore, Event::EventFromStoreToSafe)) => {
+            (Some(SubStateStore::UpdateScore), Event::EventFromStoreToSafe) => {
                 let next_fsm = self.clone();
                 state_store_event_to_safe(next_fsm)
             }
-            (Some(SubStateStore::UpdateScore, Event::EventFromStoreToInitBalance)) => {
+            (Some(SubStateStore::UpdateScore), Event::EventFromStoreToInitBalance) => {
                 let next_fsm = self.clone();
                 state_store_event_to_init_balance(next_fsm)
             }
-            (Some(SubStateStore::UpdateScore, Event::EventFromStoreToInHandshake)) => {
+            (Some(SubStateStore::UpdateScore), Event::EventFromStoreToInHandshake) => {
                 let next_fsm = self.clone();
                 state_store_event_to_handshake(next_fsm)
             }
@@ -288,67 +298,67 @@ impl FsmState {
 
     fn step_balance(&self, event: Event) -> Transition {
         match (&self.balance, event) {
-            (Some(SubStateBalance::InitBalanceMode, Event::EventFromInitBalanceToInHandshake)) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToInHandshake) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_in_handshake(next_fsm)
             }
-            (Some(SubStateBalance::InitBalanceMode, Event::EventFromInitBalanceToAlert)) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToAlert) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_alert(next_fsm)
             }
-            (Some(SubStateBalance::InitBalanceMode, Event::EventFromInitBalanceToData)) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToData) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_data(next_fsm)
             }
-            (Some(SubStateBalance::InitBalanceMode, Event::EventFromInitBalanceToMonitor)) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToMonitor) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_monitor(next_fsm)
             }
-            (Some(SubStateBalance::InHandshake, Event::EventFromInHandshakeToSafe)) => {
+            (Some(SubStateBalance::InHandshake), Event::EventFromInHandshakeToSafe) => {
                 let next_fsm = self.clone();
                 state_in_handshake_event_to_safe(next_fsm)
             }
-            (Some(SubStateBalance::InHandshake, Event::EventFromInHandshakeToAlert)) => {
+            (Some(SubStateBalance::InHandshake), Event::EventFromInHandshakeToAlert) => {
                 let next_fsm = self.clone();
                 state_in_handshake_event_to_alert(next_fsm)
             }
-            (Some(SubStateBalance::InHandshake, Event::EventNewerEpoch)) => {
+            (Some(SubStateBalance::InHandshake), Event::EventNewerEpoch) => {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::Alert, Event::EventFromAlertToData)) => {
+            (Some(SubStateBalance::Alert), Event::EventFromAlertToData) => {
                 let next_fsm = self.clone();
                 state_alert_event_to_data(next_fsm)
             }
-            (Some(SubStateBalance::Alert, Event::EventNewerEpoch)) => {
+            (Some(SubStateBalance::Alert), Event::EventNewerEpoch) => {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::Data, Event::EventFromDataToMonitor)) => {
+            (Some(SubStateBalance::Data), Event::EventFromDataToMonitor) => {
                 let next_fsm = self.clone();
                 state_data_event_to_monitor(next_fsm)
             }
-            (Some(SubStateBalance::Data, Event::EventNewerEpoch)) => {
+            (Some(SubStateBalance::Data), Event::EventNewerEpoch) => {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::Monitor, Event::EventFromMonitorToOutHandshake)) => {
+            (Some(SubStateBalance::Monitor), Event::EventFromMonitorToOutHandshake) => {
                 let next_fsm = self.clone();
                 state_monitor_event_to_out_handshake(next_fsm)
             }
-            (Some(SubStateBalance::Monitor, Event::EventNewerEpoch)) => {
+            (Some(SubStateBalance::Monitor), Event::EventNewerEpoch) => {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::OutHandshake, Event::EventFromOutHandshakeToSafe)) => {
+            (Some(SubStateBalance::OutHandshake), Event::EventFromOutHandshakeToSafe) => {
                 let next_fsm = self.clone();
                 state_out_handshake_event_to_safe(next_fsm)
             }
-            (Some(SubStateBalance::OutHandshake, Event::EventFromOutHandshakeToNormal)) => {
+            (Some(SubStateBalance::OutHandshake), Event::EventFromOutHandshakeToNormal) => {
                 let next_fsm = self.clone();
                 state_out_handshake_event_to_normal(next_fsm)
             }
-            (Some(SubStateBalance::OutHandshake, Event::EventNewerEpoch)) => {
+            (Some(SubStateBalance::OutHandshake), Event::EventNewerEpoch) => {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
@@ -413,7 +423,7 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
                     actions.push(Action::ActionLinkageProtocol);
                 }
                 SubStateInit::InitSystem => {
-                    actions.push();
+                    //actions.push();
                 }
                 SubStateInit::NotifyFirmwareUpdated => {
                     actions.push(Action::ActionRestart);
@@ -422,6 +432,7 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
         }
     }
 
+    /*  
     if old.store != new.store {
         if let Some(state) = &new.store {
             match state {
@@ -458,7 +469,7 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
                 }
             }
         }
-    }
+    }*/
 
     actions
 }
@@ -529,7 +540,7 @@ fn state_linkage_event_linkage_ok(mut next_fsm: FsmState) -> Transition {
 fn state_init_system_event_to_store(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::StoreMessage;
     next_fsm.init = None;
-    next_fsm.store = SubStateStore::Store;
+    next_fsm.store = Some(SubStateStore::Store);
 
     let valid = TransitionValid {
         change_state: next_fsm,
@@ -546,19 +557,19 @@ fn state_init_system_event_to_normal(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    Transition::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_init_system_to_balance(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Balance;
     next_fsm.init = None;
-    next_fsm.balance = SubStateBalance::InitBalanceMode;
+    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_init_system_to_safe(mut next_fsm: FsmState) -> Transition {
@@ -569,7 +580,7 @@ fn state_init_system_to_safe(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_store_event_to_normal(mut next_fsm: FsmState) -> Transition {
@@ -580,7 +591,7 @@ fn state_store_event_to_normal(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_store_event_to_bypass(mut next_fsm: FsmState) -> Transition {
@@ -591,7 +602,7 @@ fn state_store_event_to_bypass(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_store_event_to_safe(mut next_fsm: FsmState) -> Transition {
@@ -602,64 +613,64 @@ fn state_store_event_to_safe(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_store_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Balance;
     next_fsm.store = None;
-    next_fsm.balance = SubStateBalance::InitBalanceMode;
+    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_store_event_to_handshake(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Balance;
     next_fsm.store = None;
-    next_fsm.balance = SubStateBalance::InHandshake;
+    next_fsm.balance = Some(SubStateBalance::InHandshake);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_normal_event_to_cooling(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::StoreMessage;
-    next_fsm.store = SubStateStore::Cooling;
+    next_fsm.store = Some(SubStateStore::Cooling);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_normal_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Balance;
-    next_fsm.balance = SubStateStore::InitBalanceMode;
+    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_normal_event_to_handshake(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Balance;
-    next_fsm.store = SubStateStore::InHandshake;
+    next_fsm.balance = Some(SubStateBalance::InHandshake);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_bypass_event_to_normal(mut next_fsm: FsmState) -> Transition {
@@ -669,68 +680,58 @@ fn state_bypass_event_to_normal(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_bypass_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Balance;
-    next_fsm.store = SubStateStore::InitBalanceMode;
+    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_init_balance_event_to_in_handshake(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::InHandshake;
+    next_fsm.balance = Some(SubStateBalance::InHandshake);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
-}
-
-fn state_init_balance_event_to_in_handshake(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::InHandshake;
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: vec![],
-    };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_init_balance_event_to_alert(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::Alert;
+    next_fsm.balance = Some(SubStateBalance::Alert);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_init_balance_event_to_data(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::Data;
+    next_fsm.balance = Some(SubStateBalance::Data);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_init_balance_event_to_monitor(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::Monitor;
+    next_fsm.balance = Some(SubStateBalance::Monitor);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_in_handshake_event_to_safe(mut next_fsm: FsmState) -> Transition {
@@ -741,47 +742,47 @@ fn state_in_handshake_event_to_safe(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_in_handshake_event_to_alert(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::Alert;
+    next_fsm.balance = Some(SubStateBalance::Alert);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_alert_event_to_data(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::Data;
+    next_fsm.balance = Some(SubStateBalance::Data);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_data_event_to_monitor(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::Monitor;
+    next_fsm.balance = Some(SubStateBalance::Monitor);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_monitor_event_to_out_handshake(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::OutHandshake;
+    next_fsm.balance = Some(SubStateBalance::OutHandshake);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_out_handshake_event_to_safe(mut next_fsm: FsmState) -> Transition {
@@ -792,7 +793,7 @@ fn state_out_handshake_event_to_safe(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_out_handshake_event_to_normal(mut next_fsm: FsmState) -> Transition {
@@ -803,17 +804,17 @@ fn state_out_handshake_event_to_normal(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn newer_epoch(mut next_fsm: FsmState) -> Transition {
-    next_fsm.balance = SubStateBalance::InitBalanceMode;
+    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_safe_event_to_normal(mut next_fsm: FsmState) -> Transition {
@@ -823,16 +824,16 @@ fn state_safe_event_to_normal(mut next_fsm: FsmState) -> Transition {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
 
 fn state_safe_event_to_store(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Store;
-    next_fsm.store = SubStateStore::Store;
+    next_fsm.global = StateGlobal::StoreMessage;
+    next_fsm.store = Some(SubStateStore::Store);
 
     let valid = TransitionValid {
         change_state: next_fsm,
         actions: vec![],
     };
-    TransitionValid::valid(valid)
+    Transition::Valid(valid)
 }
