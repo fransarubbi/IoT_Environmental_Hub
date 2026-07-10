@@ -13,13 +13,15 @@
 
 use anyhow::{Result, anyhow};
 use async_channel::{Receiver, Sender};
-use embassy_futures::select::{Either5, select5};
+use embassy_futures::select::{Either6, select6};
 use log::error;
 use std::sync::{Arc, RwLock};
 
 use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
+use crate::app::heartbeat::domain::{HeartbeatCommand, HeartbeatResponse};
 use crate::app::message::domain::{MessageFromEdge, MessageServiceCommand, MessageServiceResponse};
 use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse, SystemSettings};
+use crate::app::timer::logic::{TimerCommand, TimerResponse};
 use crate::bsp::mqtt::MqttData;
 use crate::bsp::ota::{OtaCommand, OtaResponse};
 use crate::bsp::wifi::WifiCommand;
@@ -41,6 +43,12 @@ pub struct Core {
 
     core_from_ota_service: Receiver<OtaResponse>,
     core_to_ota_service: Sender<OtaCommand>,
+
+    core_from_timer_service: Receiver<TimerResponse>,
+    core_to_timer_service: Sender<TimerCommand>,
+
+    core_from_heartbeat_service: Receiver<HeartbeatResponse>,
+    core_to_heartbeat_service: Sender<HeartbeatCommand>,
 }
 
 /// Builder para construir la estructura `Core`.
@@ -66,6 +74,12 @@ pub struct CoreBuilder {
 
     core_from_ota_service: Option<Receiver<OtaResponse>>,
     core_to_ota_service: Option<Sender<OtaCommand>>,
+
+    core_from_timer_service: Option<Receiver<TimerResponse>>,
+    core_to_timer_service: Option<Sender<TimerCommand>>,
+
+    core_from_heartbeat_service: Option<Receiver<HeartbeatResponse>>,
+    core_to_heartbeat_service: Option<Sender<HeartbeatCommand>>,
 }
 
 impl CoreBuilder {
@@ -124,6 +138,24 @@ impl CoreBuilder {
         self
     }
 
+    pub fn core_from_timer_service(mut self, ch: Receiver<TimerResponse>) -> Self {
+        self.core_from_timer_service = Some(ch);
+        self
+    }
+    pub fn core_to_timer_service(mut self, ch: Sender<TimerCommand>) -> Self {
+        self.core_to_timer_service = Some(ch);
+        self
+    }
+
+    pub fn core_from_heartbeat_service(mut self, ch: Receiver<HeartbeatResponse>) -> Self {
+        self.core_from_heartbeat_service = Some(ch);
+        self
+    }
+    pub fn core_to_heartbeat_service(mut self, ch: Sender<HeartbeatCommand>) -> Self {
+        self.core_to_heartbeat_service = Some(ch);
+        self
+    }
+
     /// Construye la instancia de `Core`.
     ///
     /// # Errores
@@ -168,6 +200,20 @@ impl CoreBuilder {
             core_to_ota_service: self
                 .core_to_ota_service
                 .ok_or(anyhow!("falta: core_to_ota_service"))?,
+
+            core_from_timer_service: self
+                .core_from_timer_service
+                .ok_or(anyhow!("falta: core_from_timer_service"))?,
+            core_to_timer_service: self
+                .core_to_timer_service
+                .ok_or(anyhow!("falta: core_to_timer_service"))?,
+
+            core_from_heartbeat_service: self
+                .core_from_heartbeat_service
+                .ok_or(anyhow!("falta: core_from_heartbeat_service"))?,
+            core_to_heartbeat_service: self
+                .core_to_heartbeat_service
+                .ok_or(anyhow!("falta: core_to_heartbeat_service"))?,
         })
     }
 }
@@ -180,16 +226,17 @@ impl Core {
 
     pub async fn run(self, settings: Arc<RwLock<SystemSettings>>) {
         loop {
-            match select5(
+            match select6(
                 self.core_from_fsm_service.recv(),
                 self.core_from_msg_service.recv(),
                 self.core_from_config_service.recv(),
                 self.core_from_mqtt_service.recv(),
                 self.core_from_ota_service.recv(),
+                self.core_from_timer_service.recv(),
             )
             .await
             {
-                Either5::First(Ok(response)) => {
+                Either6::First(Ok(response)) => {
                     match response {
                         FsmServiceResponse::LinkageProtocol => {
                             // enviar mensaje
@@ -211,11 +258,11 @@ impl Core {
                         }
                     }
                 }
-                Either5::First(Err(e)) => {
+                Either6::First(Err(e)) => {
                     error!("el canal core_from_fsm_service se ha cerrado. {e}");
                 }
 
-                Either5::Second(Ok(response)) => match response {
+                Either6::Second(Ok(response)) => match response {
                     MessageServiceResponse::Serialized(msg) => {
                         if let Err(e) = self
                             .core_to_mqtt_service
@@ -291,17 +338,21 @@ impl Core {
                         }
                     },
                 },
-                Either5::Second(Err(e)) => {
+                Either6::Second(Err(e)) => {
                     error!("el canal core_from_msg_service se ha cerrado. {e}");
                 }
 
-                Either5::Third(Ok(response)) => {}
-                Either5::Third(Err(e)) => {}
+                Either6::Third(Ok(response)) => {}
+                Either6::Third(Err(e)) => {
+                    error!("el canal core_from_config_service se ha cerrado. {e}");
+                }
 
-                Either5::Fourth(Ok(response)) => {}
-                Either5::Fourth(Err(e)) => {}
+                Either6::Fourth(Ok(response)) => {}
+                Either6::Fourth(Err(e)) => {
+                    error!("el canal core_from_mqtt_service se ha cerrado. {e}");
+                }
 
-                Either5::Fifth(Ok(response)) => match response {
+                Either6::Fifth(Ok(response)) => match response {
                     OtaResponse::NoUpdateAvailable => {
                         if let Err(e) = self
                             .core_to_fsm_service
@@ -319,7 +370,23 @@ impl Core {
                         }
                     }
                 },
-                Either5::Fifth(Err(e)) => {}
+                Either6::Fifth(Err(e)) => {
+                    error!("el canal core_from_ota_service se ha cerrado. {e}");
+                }
+
+                Either6::Sixth(Ok(response)) => match response {
+                    TimerResponse::InitSystemReady => {}
+                    TimerResponse::InitBalanceReady => {}
+                    TimerResponse::HandshakeReady => {}
+                    TimerResponse::HeartbeatBalanceReady => {}
+                    TimerResponse::HeartbeatNormalReady => {}
+                    TimerResponse::HeartbeatSafeReady => {}
+                    TimerResponse::CoolingReady => {}
+                    TimerResponse::BypassReady => {}
+                },
+                Either6::Sixth(Err(e)) => {
+                    error!("el canal core_from_timer_service se ha cerrado. {e}");
+                }
             }
         }
     }

@@ -1,6 +1,6 @@
 //! # Módulo de Canales de Comunicación (Wiring)
 //!
-//! Este módulo centraliza la creación y gestión de todos los canales 
+//! Este módulo centraliza la creación y gestión de todos los canales
 //! utilizados para la comunicación interna del sistema.
 //!
 //! Esta estructura actúa como una "placa base" (motherboard) virtual que crea
@@ -15,17 +15,16 @@
 //! Los canales se agrupan en pares bidireccionales por cada subsistema (excepto monitor,
 //! que es unidireccional por naturaleza).
 
-
-use log::info;
-use async_channel::{Sender, Receiver, bounded};
 use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
+use crate::app::heartbeat::domain::{HeartbeatCommand, HeartbeatResponse};
 use crate::app::message::domain::{MessageServiceCommand, MessageServiceResponse};
 use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse};
+use crate::app::timer::logic::{TimerCommand, TimerResponse};
 use crate::bsp::mqtt::MqttData;
 use crate::bsp::ota::{OtaCommand, OtaResponse};
 use crate::bsp::wifi::WifiCommand;
-
-
+use async_channel::{Receiver, Sender, bounded};
+use log::info;
 
 /// Contenedor maestro de todos los canales MPSC del sistema.
 ///
@@ -36,7 +35,6 @@ use crate::bsp::wifi::WifiCommand;
 /// toma sus respectivos `*_to_core` y `*_from_core`).
 #[derive(Clone)]
 pub struct Channels {
-
     pub fsm_service_to_core: Sender<FsmServiceResponse>,
     pub core_from_fsm_service: Receiver<FsmServiceResponse>,
     pub core_to_fsm_service: Sender<FsmServiceCommand>,
@@ -64,11 +62,19 @@ pub struct Channels {
     pub core_from_ota_service: Receiver<OtaResponse>,
     pub core_to_ota_service: Sender<OtaCommand>,
     pub ota_service_from_core: Receiver<OtaCommand>,
+
+    pub timer_service_to_core: Sender<TimerResponse>,
+    pub core_from_timer_service: Receiver<TimerResponse>,
+    pub core_to_timer_service: Sender<TimerCommand>,
+    pub timer_service_from_core: Receiver<TimerCommand>,
+
+    pub heartbeat_service_to_core: Sender<HeartbeatResponse>,
+    pub core_from_heartbeat_service: Receiver<HeartbeatResponse>,
+    pub core_to_heartbeat_service: Sender<HeartbeatCommand>,
+    pub heartbeat_service_from_core: Receiver<HeartbeatCommand>,
 }
 
-
 impl Channels {
-
     /// Inicializa y enlaza todos los canales requeridos por el sistema.
     ///
     /// Esta función agrupa la creación repetitiva de canales, asegurando que todos
@@ -84,7 +90,6 @@ impl Channels {
     /// # Retorno
     /// Retorna una instancia completa de `Channels` con todos los extremos conectados.
     pub fn new(buffer_size: usize) -> Self {
-
         info!("creando canales del sistema");
 
         // FSM
@@ -109,6 +114,14 @@ impl Channels {
         // OTA
         let (ota_s2c_tx, ota_s2c_rx) = bounded(buffer_size);
         let (ota_c2s_tx, ota_c2s_rx) = bounded(buffer_size);
+
+        // Timer
+        let (timer_s2c_tx, timer_s2c_rx) = bounded(buffer_size);
+        let (timer_c2s_tx, timer_c2s_rx) = bounded(buffer_size);
+
+        // Heartbeat
+        let (heartbeat_s2c_tx, heartbeat_s2c_rx) = bounded(buffer_size);
+        let (heartbeat_c2s_tx, heartbeat_c2s_rx) = bounded(buffer_size);
 
         Self {
             // FSM
@@ -141,6 +154,16 @@ impl Channels {
             core_from_ota_service: ota_s2c_rx,
             core_to_ota_service: ota_c2s_tx,
             ota_service_from_core: ota_c2s_rx,
+
+            timer_service_to_core: timer_s2c_tx,
+            core_from_timer_service: timer_s2c_rx,
+            core_to_timer_service: timer_c2s_tx,
+            timer_service_from_core: timer_c2s_rx,
+
+            heartbeat_service_to_core: heartbeat_s2c_tx,
+            core_from_heartbeat_service: heartbeat_s2c_rx,
+            core_to_heartbeat_service: heartbeat_c2s_tx,
+            heartbeat_service_from_core: heartbeat_c2s_rx,
         }
     }
 }

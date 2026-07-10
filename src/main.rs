@@ -22,9 +22,11 @@ use std::thread::Builder;
 use crate::app::channels::domain::Channels;
 use crate::app::core::domain::*;
 use crate::app::fsm::logic::FsmService;
+use crate::app::heartbeat::domain::HeartbeatService;
 use crate::app::message::domain::MessageService;
 use crate::app::system_settings::domain::SystemSettings;
 use crate::app::system_settings::logic::ConfigManager;
+use crate::app::timer::logic::TimerService;
 use crate::bsp::cli::Cli;
 use crate::bsp::mqtt::EspIdfMqttManager;
 use crate::bsp::ota::EspIdfOtaManager;
@@ -103,6 +105,27 @@ fn core1_executor_task(
         .spawn(
             EspIdfOtaManager::new(channels.ota_service_to_core, channels.ota_service_from_core)
                 .run(),
+        )
+        .detach();
+
+    executor
+        .spawn(
+            TimerService::new(
+                channels.timer_service_to_core,
+                channels.timer_service_from_core,
+            )
+            .run(&executor, 10),
+        )
+        .detach();
+
+    executor
+        .spawn(
+            HeartbeatService::new(
+                channels.heartbeat_service_to_core,
+                channels.heartbeat_service_from_core,
+                Arc::clone(&settings),
+            )
+            .run(&executor),
         )
         .detach();
 
