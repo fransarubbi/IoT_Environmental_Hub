@@ -1,6 +1,4 @@
-use serde::{Serialize, Deserialize};
-
-
+use serde::{Deserialize, Serialize};
 
 /// Estados Globales de nivel superior.
 /// Determinan el comportamiento macro del sistema.
@@ -18,9 +16,7 @@ pub enum StateGlobal {
 /// Sub-estados del estado Init (`StateGlobal::Init`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SubStateInit {
-    InitCLI,
     CheckFirmware,
-    InitMqtt,
     Linkage,
     InitSystem,
     NotifyFirmwareUpdated,
@@ -98,9 +94,7 @@ impl TransitionInvalid {
 /// pero no **ejecuta** la acción (principio de separación de responsabilidades).
 #[derive(Debug, PartialEq, Clone)]
 pub enum Action {
-    ActionInitCli,
-    ActionInitWifi,
-    ActionInitMqtt,
+    ActionCheckFirmware,
     ActionLinkageProtocol,
     ActionNotifyFirmware,
     ActionRestart,
@@ -112,11 +106,8 @@ pub enum Action {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     EventStart,
-    EventOkCli,
     EventNotUpdate,
-    EventUpdateError,
     EventUpdateSuccessful,
-    EventOkMqtt,
     EventLinkageOk,
     EventFromInitToStore,
     EventFromInitToNormal,
@@ -153,8 +144,6 @@ pub enum Event {
     EventFromSafeToStore,
 }
 
-
-
 impl FsmState {
     /// Crea una nueva instancia de la FSM en el estado inicial.
     pub fn new() -> Self {
@@ -184,7 +173,7 @@ impl FsmState {
             (StateGlobal::Start, Event::EventStart) => {
                 let mut next_fsm = self.clone();
                 next_fsm.global = StateGlobal::Init;
-                next_fsm.init = Some(SubStateInit::InitCLI);
+                next_fsm.init = Some(SubStateInit::CheckFirmware);
 
                 let valid = TransitionValid {
                     change_state: next_fsm,
@@ -198,21 +187,13 @@ impl FsmState {
 
     fn step_init(&self, event: Event) -> Transition {
         match (&self.init, event) {
-            (Some(SubStateInit::InitCLI), Event::EventOkCli) => {
+            (Some(SubStateInit::CheckFirmware), Event::EventNotUpdate) => {
                 let next_fsm = self.clone();
-                state_init_cli_event_ok_cli(next_fsm)
-            }
-            (Some(SubStateInit::CheckFirmware), Event::EventNotUpdate | Event::EventUpdateError) => {
-                let next_fsm = self.clone();
-                state_check_firmware_event_not_update_update_error(next_fsm)
+                state_check_firmware_event_not_update(next_fsm)
             }
             (Some(SubStateInit::CheckFirmware), Event::EventUpdateSuccessful) => {
                 let next_fsm = self.clone();
                 state_check_firmware_event_update_successful(next_fsm)
-            }
-            (Some(SubStateInit::InitMqtt), Event::EventOkMqtt) => {
-                let next_fsm = self.clone();
-                state_init_mqtt_event_ok_mqtt(next_fsm)
             }
             (Some(SubStateInit::Linkage), Event::EventLinkageOk) => {
                 let next_fsm = self.clone();
@@ -384,7 +365,7 @@ impl FsmState {
     ///
     /// 1. Calcula el siguiente estado llamando a `step_inner`.
     /// 2. Si la transición es válida, calcula las acciones de entrada (`compute_on_entry`)
-    ///    comparando el estado actual (`self`) con el nuevo (`change_state`) 
+    ///    comparando el estado actual (`self`) con el nuevo (`change_state`)
     /// 3. Retorna la transición completa con todas las acciones acumuladas.
     pub fn step(&self, event: Event) -> Transition {
         let transition = self.step_inner(event);
@@ -410,14 +391,8 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
     if old.init != new.init {
         if let Some(state) = &new.init {
             match state {
-                SubStateInit::InitCLI => {
-                    actions.push(Action::ActionInitCli);
-                }
                 SubStateInit::CheckFirmware => {
-                    actions.push(Action::ActionInitWifi);
-                }
-                SubStateInit::InitMqtt => {
-                    actions.push(Action::ActionInitMqtt);
+                    actions.push(Action::ActionCheckFirmware);
                 }
                 SubStateInit::Linkage => {
                     actions.push(Action::ActionLinkageProtocol);
@@ -432,7 +407,7 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
         }
     }
 
-    /*  
+    /*
     if old.store != new.store {
         if let Some(state) = &new.store {
             match state {
@@ -474,8 +449,6 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
     actions
 }
 
-
-
 // --- Funciones auxiliares de transición ---
 // Cada una define un cambio atómico de estado.
 
@@ -487,18 +460,8 @@ fn invalid() -> Transition {
     Transition::Invalid(invalid)
 }
 
-fn state_init_cli_event_ok_cli(mut next_fsm: FsmState) -> Transition {
-    next_fsm.init = Some(SubStateInit::CheckFirmware);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: vec![],
-    };
-    Transition::Valid(valid)
-}
-
-fn state_check_firmware_event_not_update_update_error(mut next_fsm: FsmState) -> Transition {
-    next_fsm.init = Some(SubStateInit::InitMqtt);
+fn state_check_firmware_event_not_update(mut next_fsm: FsmState) -> Transition {
+    next_fsm.init = Some(SubStateInit::Linkage);
 
     let valid = TransitionValid {
         change_state: next_fsm,
@@ -509,16 +472,6 @@ fn state_check_firmware_event_not_update_update_error(mut next_fsm: FsmState) ->
 
 fn state_check_firmware_event_update_successful(mut next_fsm: FsmState) -> Transition {
     next_fsm.init = Some(SubStateInit::NotifyFirmwareUpdated);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: vec![],
-    };
-    Transition::Valid(valid)
-}
-
-fn state_init_mqtt_event_ok_mqtt(mut next_fsm: FsmState) -> Transition {
-    next_fsm.init = Some(SubStateInit::Linkage);
 
     let valid = TransitionValid {
         change_state: next_fsm,

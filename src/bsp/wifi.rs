@@ -1,23 +1,39 @@
 //! Módulo WiFi.
 //! Abstrae la conexión a la red detrás de un trait.
 
+use async_channel::Receiver;
 use esp_idf_hal::modem::Modem;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi};
 use log::{error, info, warn};
-use std::time::Duration;
-use crate::svc::wifi::{Wifi, WifiStats};
+use crate::svc::wifi::{WifiStats};
 use esp_idf_svc::sys::{esp_wifi_set_max_tx_power, esp_wifi_sta_get_ap_info, wifi_ap_record_t};
 
 
-
 const WIFI_MAX_RETRY: u8 = 5;
+
+
+pub enum WifiCommand {
+    Update {
+        ssid: String,
+        password: String,
+    }
+}
+
+pub fn get_unix_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
 
 pub struct EspIdfWifiManager<'a> {
     // Usamos BlockingWifi que envuelve al cliente WiFi de esp-idf-svc y maneja
     // la máquina de eventos y esperas
     wifi: BlockingWifi<EspWifi<'a>>,
+    receiver: Receiver<WifiCommand>,
 }
 
 impl<'a> EspIdfWifiManager<'a> {
@@ -29,7 +45,9 @@ impl<'a> EspIdfWifiManager<'a> {
         nvs: EspDefaultNvsPartition,
         ssid: &str,
         password: &str,
+        receiver: Receiver<WifiCommand>
     ) -> Result<Self, String> {
+
         // Inicializar el driver WiFi
         let esp_wifi = EspWifi::new(modem, sys_loop.clone(), Some(nvs))
             .map_err(|e| format!("error creando EspWifi: {}", e))?;
@@ -66,27 +84,57 @@ impl<'a> EspIdfWifiManager<'a> {
 
         info!("WiFi inicializado y configurado correctamente.");
 
-        Ok(Self { wifi })
+        Ok(Self { wifi, receiver })
     }
-}
 
-/// Implementamos el trait para nuestra estructura específica de ESP-IDF
-impl<'a> Wifi for EspIdfWifiManager<'a> {
-    fn connect(&mut self) -> Result<(), String> {
+    pub async fn run(mut self) {
+        
+        if let Err(e) = self.connect().await {
+            error!("Fallo en la conexión inicial: {}", e);
+        }
+
+        loop {
+            // Esperamos comandos (ej. si cambian la config de red)
+            if let Ok(cmd) = self.receiver.recv().await {
+                match cmd {
+                    WifiCommand::Update { ssid, password } => {
+                        info!("Recibidas nuevas credenciales. Reconectando...");
+                        
+                        // Desconectamos la red actual
+                        let _ = self.disconnect();
+
+                        // Creamos la nueva configuración
+                        let wifi_configuration = Configuration::Client(ClientConfiguration {
+                            ssid: ssid.as_str().try_into().unwrap(),
+                            password: password.as_str().try_into().unwrap(),
+                            auth_method: if password.is_empty() { AuthMethod::None } else { AuthMethod::WPA2Personal },
+                            ..Default::default()
+                        });
+
+                        // Aplicamos y volvemos a conectar
+                        if let Err(e) = self.wifi.set_configuration(&wifi_configuration) {
+                            error!("No se pudo setear nueva config WiFi: {}", e);
+                            continue;
+                        }
+
+                        if let Err(e) = self.connect().await {
+                            error!("Fallo al reconectar a nueva red: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    
+    async fn connect(&mut self) -> Result<(), String> {
         let mut retry_count = 0;
 
-        // Reemplaza la lógica de s_retry_num y el wifi_event_handler en C
         loop {
-            info!(
-                "intentando conectar al AP... (Intento {}/{})",
-                retry_count + 1,
-                WIFI_MAX_RETRY
-            );
+            info!("intentando conectar al AP... (Intento {}/{})", retry_count + 1, WIFI_MAX_RETRY);
 
-            // Intenta conectar. Si falla, manejamos el error
             match self.wifi.connect() {
                 Ok(_) => {
-                    // Si se conecta, ahora debemos esperar a que el DHCP nos asigne una IP
                     match self.wifi.wait_netif_up() {
                         Ok(_) => {
                             info!("conexión WiFi exitosa. IP obtenida.");
@@ -95,22 +143,16 @@ impl<'a> Wifi for EspIdfWifiManager<'a> {
                         Err(e) => warn!("fallo obteniendo IP tras conectar: {}", e),
                     }
                 }
-                Err(e) => {
-                    warn!("fallo al conectar al AP: {}", e);
-                }
+                Err(e) => warn!("fallo al conectar al AP: {}", e),
             }
 
             retry_count += 1;
             if retry_count >= WIFI_MAX_RETRY {
-                error!(
-                    "fallo definitivo al conectar WiFi tras {} intentos",
-                    WIFI_MAX_RETRY
-                );
                 return Err("timeout/Fallo de conexión WiFi".to_string());
             }
 
-            // Esperar un poco antes de reintentar
-            std::thread::sleep(Duration::from_secs(5));
+            // ESPERA ASÍNCRONA: Permite que MQTT siga trabajando mientras reintentamos
+            embassy_time::Timer::after(embassy_time::Duration::from_secs(5)).await;
         }
     }
 

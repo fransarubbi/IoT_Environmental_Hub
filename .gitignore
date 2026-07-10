@@ -17,3 +17,4 @@ Thumbs.db
 /.embuild
 /target
 /Cargo.lock
+/certs

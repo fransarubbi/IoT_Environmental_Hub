@@ -21,6 +21,9 @@ use async_channel::{Sender, Receiver, bounded};
 use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
 use crate::app::message::domain::{MessageServiceCommand, MessageServiceResponse};
 use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse};
+use crate::bsp::mqtt::MqttData;
+use crate::bsp::ota::{OtaCommand, OtaResponse};
+use crate::bsp::wifi::WifiCommand;
 
 
 
@@ -31,6 +34,7 @@ use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse};
 /// esta estructura se consume, y cada campo es movido (moved) a su respectiva
 /// tarea (ej. el `Core` toma todos los campos `core_*`, mientras que cada servicio
 /// toma sus respectivos `*_to_core` y `*_from_core`).
+#[derive(Clone)]
 pub struct Channels {
 
     pub fsm_service_to_core: Sender<FsmServiceResponse>,
@@ -47,6 +51,19 @@ pub struct Channels {
     pub config_manager_from_core: Receiver<ConfigCommand>,
     pub config_manager_to_core: Sender<ConfigResponse>,
     pub core_from_config_manager: Receiver<ConfigResponse>,
+
+    pub core_to_wifi_service: Sender<WifiCommand>,
+    pub wifi_service_from_core: Receiver<WifiCommand>,
+
+    pub mqtt_service_to_core: Sender<MqttData>,
+    pub core_from_mqtt_service: Receiver<MqttData>,
+    pub core_to_mqtt_service: Sender<MqttData>,
+    pub mqtt_service_from_core: Receiver<MqttData>,
+
+    pub ota_service_to_core: Sender<OtaResponse>,
+    pub core_from_ota_service: Receiver<OtaResponse>,
+    pub core_to_ota_service: Sender<OtaCommand>,
+    pub ota_service_from_core: Receiver<OtaCommand>,
 }
 
 
@@ -82,6 +99,17 @@ impl Channels {
         let (config_c2s_tx, config_c2s_rx) = bounded(buffer_size);
         let (config_s2c_tx, config_s2c_rx) = bounded(buffer_size);
 
+        // Wifi
+        let (wifi_c2s_tx, wifi_c2s_rx) = bounded(buffer_size);
+
+        // MQTT
+        let (mqtt_s2c_tx, mqtt_s2c_rx) = bounded(buffer_size);
+        let (mqtt_c2s_tx, mqtt_c2s_rx) = bounded(buffer_size);
+
+        // OTA
+        let (ota_s2c_tx, ota_s2c_rx) = bounded(buffer_size);
+        let (ota_c2s_tx, ota_c2s_rx) = bounded(buffer_size);
+
         Self {
             // FSM
             fsm_service_to_core: fsm_s2c_tx,
@@ -99,7 +127,20 @@ impl Channels {
             core_to_config_manager: config_c2s_tx,
             config_manager_from_core: config_c2s_rx,
             config_manager_to_core: config_s2c_tx,
-            core_from_config_manager: config_s2c_rx
+            core_from_config_manager: config_s2c_rx,
+
+            core_to_wifi_service: wifi_c2s_tx,
+            wifi_service_from_core: wifi_c2s_rx,
+
+            mqtt_service_to_core: mqtt_s2c_tx,
+            core_from_mqtt_service: mqtt_s2c_rx,
+            core_to_mqtt_service: mqtt_c2s_tx,
+            mqtt_service_from_core: mqtt_c2s_rx,
+
+            ota_service_to_core: ota_s2c_tx,
+            core_from_ota_service: ota_s2c_rx,
+            core_to_ota_service: ota_c2s_tx,
+            ota_service_from_core: ota_c2s_rx,
         }
     }
 }

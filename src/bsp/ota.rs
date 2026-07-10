@@ -1,29 +1,80 @@
 //! Módulo OTA (Over-The-Air).
 //! Gestiona la comprobación de versiones y descarga de nuevo firmware.
 
-use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
-use embedded_svc::http::client::Client as HttpClient; // <-- Importación corregida
-use esp_idf_svc::ota::EspOta;
-use log::{info, warn};
-use std::cmp::Ordering;
-use esp_idf_svc::sys::esp_crt_bundle_attach;
 use crate::svc::ota::*;
-
+use async_channel::{Receiver, Sender};
+use embedded_svc::http::client::Client as HttpClient; // <-- Importación corregida
+use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
+use esp_idf_svc::ota::EspOta;
+use esp_idf_svc::sys::esp_crt_bundle_attach;
+use log::{error, info, warn};
+use std::cmp::Ordering;
 
 const URL_VERSION: &str =
     "https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/master/version.txt";
 const URL_BIN_TEMPLATE: &str =
     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v{}/firmware.bin";
 
-pub struct EspIdfOtaManager;
+const CURRENT_FIRMWARE_VERSION: &str = "0.10.0";
+
+pub enum OtaResponse {
+    NoUpdateAvailable,
+    UpdatedSuccesful(String),
+}
+
+pub enum OtaCommand {
+    CheckFirmware,
+}
+
+pub struct EspIdfOtaManager {
+    sender: Sender<OtaResponse>,
+    receiver: Receiver<OtaCommand>,
+}
 
 impl EspIdfOtaManager {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(sender: Sender<OtaResponse>, receiver: Receiver<OtaCommand>) -> Self {
+        Self { sender, receiver }
     }
 
-    /// Helper privado para configurar el cliente HTTPS
-    fn create_https_client() -> Result<HttpClient<EspHttpConnection>, String> {
+    pub async fn run(self) {
+        loop {
+            if let Ok(cmd) = self.receiver.recv().await {
+                match cmd {
+                    OtaCommand::CheckFirmware => {
+                        match self.check_update(CURRENT_FIRMWARE_VERSION) {
+                            Ok(update) => {
+                                let version = update.clone();
+                                if update.is_some() {
+                                    match self.perform_update(&update.unwrap()) {
+                                        Ok(_) => {
+                                            if let Err(e) =
+                                                self.sender.try_send(OtaResponse::UpdatedSuccesful(
+                                                    version.unwrap().to_string(),
+                                                ))
+                                            {
+                                                error!("no se pudo enviar UpdatedSuccesful. {e}");
+                                            }
+                                        }
+                                        Err(e) => error!("{e}"),
+                                    }
+                                } else {
+                                    if let Err(e) =
+                                        self.sender.try_send(OtaResponse::NoUpdateAvailable)
+                                    {
+                                        error!("no se pudo enviar NoUpdateAvailable. {e}");
+                                    }
+                                }
+                            }
+                            Err(e) => error!("{e}"),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Helper privado para configurar el cliente HTTP
+    fn create_http_client() -> Result<HttpClient<EspHttpConnection>, String> {
         let config = HttpConfig {
             crt_bundle_attach: Some(esp_crt_bundle_attach),
             timeout: Some(std::time::Duration::from_secs(10)),
@@ -41,7 +92,7 @@ impl Ota for EspIdfOtaManager {
     fn check_update(&self, current_version: &str) -> Result<Option<String>, String> {
         info!("chequeando versión del repo...");
 
-        let mut client = Self::create_https_client()?;
+        let mut client = Self::create_http_client()?;
 
         // Hacer la petición GET
         let request = client
@@ -85,7 +136,7 @@ impl Ota for EspIdfOtaManager {
         let ota_url = URL_BIN_TEMPLATE.replace("{}", target_version);
         info!("iniciando descarga de firmware desde {}", ota_url);
 
-        let mut client = Self::create_https_client()?;
+        let mut client = Self::create_http_client()?;
 
         // Iniciar la petición del binario
         let request = client

@@ -1,26 +1,23 @@
-use esp_idf_hal::reset::restart;
-use log::{info, error};
-use async_channel::{Sender, Receiver, bounded};
-use edge_executor::LocalExecutor;
-use embassy_futures::select::{select, Either};
 use crate::app::fsm::domain::{Action, Event, FsmState, Transition};
-
+use async_channel::{Receiver, Sender, bounded};
+use edge_executor::LocalExecutor;
+use embassy_futures::select::{Either, select};
+use esp_idf_hal::reset::restart;
+use log::{error, info};
 
 pub enum FsmServiceResponse {
-    InitCli,
-    InitWifi,
-    NotifyFirmware,
-    InitMqtt,
+    CheckFirmware,
+    NotifyFirmware(String),
     LinkageProtocol,
 }
 
 pub enum FsmServiceCommand {
-    CliIsReady,
-    NotUpdateFirmware,  // Incluye error tambien
-    UpdateFirmware,
-    MqttIsOk,
+    NotUpdateFirmware, // Incluye error tambien
+    UpdateFirmware(String),
     LinkageOk,
-
+    Handshake(String),
+    Safe((String, u32, u32)),
+    Normal,
 }
 
 pub struct FsmService {
@@ -29,29 +26,24 @@ pub struct FsmService {
 }
 
 impl FsmService {
-    pub fn new(
-        sender: Sender<FsmServiceResponse>,
-        receiver: Receiver<FsmServiceCommand>,
-    ) -> Self {
-        Self {
-            sender,
-            receiver
-        }
+    pub fn new(sender: Sender<FsmServiceResponse>, receiver: Receiver<FsmServiceCommand>) -> Self {
+        Self { sender, receiver }
     }
 
     pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
-
         let (tx_actions, rx_actions) = bounded::<Vec<Action>>(10);
         let (tx_event, rx_event) = bounded::<Event>(10);
         let (tx_response, rx_response) = bounded::<FsmServiceResponse>(10);
         let (tx_command, rx_command) = bounded::<FsmServiceCommand>(10);
 
-        executor.spawn(handler_events_and_actions(
-            tx_event, 
-            tx_response, 
-            rx_actions, 
-            rx_command
-        )).detach();
+        executor
+            .spawn(handler_events_and_actions(
+                tx_event,
+                tx_response,
+                rx_actions,
+                rx_command,
+            ))
+            .detach();
         executor.spawn(run_fsm(tx_actions, rx_event)).detach();
 
         loop {
@@ -70,7 +62,9 @@ impl FsmService {
                 // Caso 2: Recibimos una respuesta interna del handler_events_and_actions()
                 Either::Second(Ok(msg)) => {
                     if let Err(e) = self.sender.try_send(msg) {
-                        error!("no se pudo enviar mensaje MessageServiceResponse, mensaje descartado. {e}");
+                        error!(
+                            "no se pudo enviar mensaje MessageServiceResponse, mensaje descartado. {e}"
+                        );
                     }
                 }
                 Either::Second(Err(_)) => {
@@ -82,46 +76,45 @@ impl FsmService {
     }
 }
 
-
-
 async fn handler_events_and_actions(
     tx_events: Sender<Event>,
     tx_response: Sender<FsmServiceResponse>,
     rx_action: Receiver<Vec<Action>>,
-    rx_extern_events: Receiver<FsmServiceCommand>
+    rx_extern_events: Receiver<FsmServiceCommand>,
 ) {
+    let mut firmware_version = String::new();
     loop {
         match select(rx_action.recv(), rx_extern_events.recv()).await {
             // Caso 1: acciones de la FSM
             Either::First(Ok(vec_action)) => {
                 for action in vec_action {
                     match action {
-                        Action::ActionInitCli => {
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::InitCli) {
-                                error!("no se pudo enviar InitCli desde el handler. {e}");
-                            }
-                        }
-                        Action::ActionInitWifi => {
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::InitWifi) {
-                                error!("no se pudo enviar InitWifi desde el handler. {e}");
+                        Action::ActionCheckFirmware => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::CheckFirmware)
+                            {
+                                error!("no se pudo enviar InitMqtt desde el handler. {e}");
                             }
                         }
                         Action::ActionNotifyFirmware => {
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::NotifyFirmware) {
-                                error!("no se pudo enviar NotifyFirmware desde el handler. {e}");
+                            if !firmware_version.is_empty() {
+                                if let Err(e) = tx_response.try_send(
+                                    FsmServiceResponse::NotifyFirmware(firmware_version.clone()),
+                                ) {
+                                    error!(
+                                        "no se pudo enviar NotifyFirmware desde el handler. {e}"
+                                    );
+                                }
                             }
                         }
                         Action::ActionRestart => {
                             info!("reiniciando sistema...");
                             restart();
                         }
-                        Action::ActionInitMqtt => {
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::InitMqtt) {
-                                error!("no se pudo enviar InitMqtt desde el handler. {e}");
-                            }
-                        }
+
                         Action::ActionLinkageProtocol => {
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::LinkageProtocol) {
+                            if let Err(e) =
+                                tx_response.try_send(FsmServiceResponse::LinkageProtocol)
+                            {
                                 error!("no se pudo enviar LinkageProtocol desde el handler. {e}");
                             }
                         }
@@ -134,35 +127,27 @@ async fn handler_events_and_actions(
             }
 
             // Caso 2: eventos externos
-            Either::Second(Ok(event)) => {
-                match event {
-                    FsmServiceCommand::CliIsReady => {
-                        if let Err(e) = tx_events.try_send(Event::EventOkCli) {
-                            error!("no se pudo enviar evento EventOkCli desde handler. {e}");
-                        }
-                    }
-                    FsmServiceCommand::NotUpdateFirmware => {
-                        if let Err(e) = tx_events.try_send(Event::EventNotUpdate) {
-                            error!("no se pudo enviar evento EventNotUpdate desde handler. {e}");
-                        }
-                    }
-                    FsmServiceCommand::UpdateFirmware => {
-                        if let Err(e) = tx_events.try_send(Event::EventUpdateSuccessful) {
-                            error!("no se pudo enviar evento EventUpdateSuccessful desde handler. {e}");
-                        }
-                    }
-                    FsmServiceCommand::MqttIsOk => {
-                        if let Err(e) = tx_events.try_send(Event::EventOkMqtt) {
-                            error!("no se pudo enviar evento EventOkMqtt desde handler. {e}");
-                        }
-                    }
-                    FsmServiceCommand::LinkageOk => {
-                        if let Err(e) = tx_events.try_send(Event::EventLinkageOk) {
-                            error!("no se pudo enviar evento EventLinkageOk desde handler. {e}");
-                        }
+            Either::Second(Ok(event)) => match event {
+                FsmServiceCommand::NotUpdateFirmware => {
+                    if let Err(e) = tx_events.try_send(Event::EventNotUpdate) {
+                        error!("no se pudo enviar evento EventNotUpdate desde handler. {e}");
                     }
                 }
-            }
+                FsmServiceCommand::UpdateFirmware(version) => {
+                    firmware_version = version;
+                    if let Err(e) = tx_events.try_send(Event::EventUpdateSuccessful) {
+                        error!("no se pudo enviar evento EventUpdateSuccessful desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::LinkageOk => {
+                    if let Err(e) = tx_events.try_send(Event::EventLinkageOk) {
+                        error!("no se pudo enviar evento EventLinkageOk desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::Handshake(_) => {}
+                FsmServiceCommand::Safe(_) => {}
+                FsmServiceCommand::Normal => {}
+            },
             Either::Second(Err(_)) => {
                 error!("el canal rx_command se ha cerrado.");
                 break;
@@ -171,18 +156,13 @@ async fn handler_events_and_actions(
     }
 }
 
-
-
 /// Tarea asíncrona que ejecuta la lógica pura de la Máquina de Estados.
 ///
 /// Mantiene el estado persistente (`FsmState`) y avanza tras recibir eventos.
 ///
 /// * `tx_actions`: Canal para emitir los efectos secundarios que deben ejecutarse.
 /// * `rx_event`: Canal de entrada de eventos (triggers).
-async fn run_fsm(
-    tx_actions: Sender<Vec<Action>>,
-    rx_event: Receiver<Event>
-) {
+async fn run_fsm(tx_actions: Sender<Vec<Action>>, rx_event: Receiver<Event>) {
     info!("iniciando tarea fsm");
     let mut state = FsmState::new();
 
@@ -207,10 +187,6 @@ async fn run_fsm(
         }
     }
 }
-
-
-
-
 
 /*
 /// Tarea Worker asíncrona para el modo Bypass.

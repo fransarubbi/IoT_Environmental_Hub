@@ -1,13 +1,12 @@
-use serde::{Deserialize, Serialize};
-use async_channel::{bounded, Sender, Receiver};
-use edge_executor::LocalExecutor;
-use log::{error};
-use embassy_futures::select::{select, Either};
-use std::sync::{Arc, RwLock};
+use crate::app::message::logic::{generator, parser};
 use crate::app::system_settings::domain::SystemSettings;
 use crate::bsp::mqtt::IncomingMessage;
-use crate::app::message::logic::{parser, generator};
-
+use async_channel::{Receiver, Sender, bounded};
+use edge_executor::LocalExecutor;
+use embassy_futures::select::{Either, select};
+use log::error;
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, RwLock};
 
 pub enum MessageServiceResponse {
     Serialized(SerializedMessage),
@@ -16,56 +15,77 @@ pub enum MessageServiceResponse {
 
 pub enum MessageServiceCommand {
     ParseMessage(IncomingMessage),
-    GenerateMessage(MessageToEdge),
+
+    GenerateReport(Measurement),
+    GenerateMonitor(Monitor),
+    GenerateAlertAir(AlertAir),
+    GenerateAlertTem(AlertTh),
+    GenerateFirmwareOk(String), // version
+    GenerateSettings(u64),      // message_id
+    GenerateSettingsAck(u64),   // message_id
+    GenerateEmptyQueue(EmptyQueue),
+    GenerateEmptyQueueSafe(EmptyQueueSafeMode),
+    GeneratePing,
+    GenerateLinkageRequest,
+    GenerateHandshake((u32, String)), // balance_epoch
 }
 
 pub struct MessageService {
     sender: Sender<MessageServiceResponse>,
-    receiver:Receiver<MessageServiceCommand>,
-    settings: Arc<RwLock<SystemSettings>>
+    receiver: Receiver<MessageServiceCommand>,
+    settings: Arc<RwLock<SystemSettings>>,
 }
 
 impl MessageService {
     pub fn new(
         sender: Sender<MessageServiceResponse>,
         receiver: Receiver<MessageServiceCommand>,
-        settings: Arc<RwLock<SystemSettings>>
+        settings: Arc<RwLock<SystemSettings>>,
     ) -> Self {
         Self {
             sender,
             receiver,
-            settings
+            settings,
         }
     }
 
     pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
-
         let (to_parser, from_service_parser) = bounded::<IncomingMessage>(10);
-        let (to_generator, from_service_generator) = bounded::<MessageToEdge>(10);
+        let (to_generator, from_service_generator) = bounded::<MessageServiceCommand>(10);
         let (tx, rx) = bounded::<MessageServiceResponse>(10);
 
         let settings_for_generator = Arc::clone(&self.settings);
 
-        executor.spawn(parser(from_service_parser, tx.clone())).detach();
-        executor.spawn(generator(from_service_generator, tx.clone(), settings_for_generator)).detach();
+        executor
+            .spawn(parser(from_service_parser, tx.clone()))
+            .detach();
+        executor
+            .spawn(generator(
+                from_service_generator,
+                tx.clone(),
+                settings_for_generator,
+            ))
+            .detach();
 
         loop {
             match select(self.receiver.recv(), rx.recv()).await {
                 // Caso 1: Recibimos un comando del exterior (receiver)
-                Either::First(Ok(cmd)) => {
-                    match cmd {
-                        MessageServiceCommand::ParseMessage(msg) => {
-                            if let Err(e) = to_parser.try_send(msg) {
-                                error!("no se pudo enviar mensaje para parsear, mensaje descartado. {e}");
-                            }
-                        },
-                        MessageServiceCommand::GenerateMessage(msg) => {
-                            if let Err(e) = to_generator.try_send(msg) {
-                                error!("no se pudo enviar mensaje para generar, mensaje descartado. {e}");
-                            }
-                        },
+                Either::First(Ok(cmd)) => match cmd {
+                    MessageServiceCommand::ParseMessage(msg) => {
+                        if let Err(e) = to_parser.try_send(msg) {
+                            error!(
+                                "no se pudo enviar mensaje para parsear, mensaje descartado. {e}"
+                            );
+                        }
                     }
-                }
+                    _ => {
+                        if let Err(e) = to_generator.try_send(cmd) {
+                            error!(
+                                "no se pudo enviar mensaje para generar, mensaje descartado. {e}"
+                            );
+                        }
+                    }
+                },
                 Either::First(Err(_)) => {
                     error!("el canal receiver se ha cerrado.");
                     break;
@@ -74,7 +94,9 @@ impl MessageService {
                 // Caso 2: Recibimos una respuesta interna de los submódulos (rx)
                 Either::Second(Ok(msg)) => {
                     if let Err(e) = self.sender.try_send(msg) {
-                        error!("no se pudo enviar mensaje MessageServiceResponse, mensaje descartado. {e}");
+                        error!(
+                            "no se pudo enviar mensaje MessageServiceResponse, mensaje descartado. {e}"
+                        );
                     }
                 }
                 Either::Second(Err(_)) => {
@@ -86,9 +108,6 @@ impl MessageService {
     }
 }
 
-
-
-
 /// Metadatos estándar para todos los mensajes del sistema.
 ///
 /// Proporciona contexto de trazabilidad, origen y destino para cada paquete de datos.
@@ -99,7 +118,7 @@ pub struct Metadata {
     #[serde(rename = "d")]
     pub destination_id: String,
     #[serde(rename = "t")]
-    pub timestamp: i64,
+    pub timestamp: u64,
 }
 
 /// Mediciones de sensores ambientales y operativos.
@@ -385,7 +404,6 @@ pub enum MessageToEdge {
     Ping(Ping),
     LinkageRequest(LinkageRequest),
 }
-
 
 /// Representación final de un mensaje listo para ser enviado por MQTT.
 /// Contiene el payload binario (serializado) y los parámetros de transporte.

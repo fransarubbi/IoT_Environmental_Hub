@@ -1,7 +1,8 @@
 /// Contrato que cualquier implementador de WiFi debe cumplir
+#[allow(async_fn_in_trait)]
 pub trait Wifi {
     /// Inicia la conexión y espera hasta obtener una IP
-    fn connect(&mut self) -> Result<(), String>;
+    async fn connect(&mut self);
     /// Se desconecta de la red actual
     fn disconnect(&mut self) -> Result<(), String>;
     /// Retorna estadísticas en tiempo real (RSSI, SSID actual, IP)

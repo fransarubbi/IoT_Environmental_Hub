@@ -1,17 +1,11 @@
 //! Módulo UART CLI (Command Line Interface)
 //! Encargado de la configuración inicial del dispositivo por puerto serie.
 
-use crate::app::system_settings::SystemSettings;
-use crate::hal::UartIo;
-use esp_idf_hal::delay::TickType;
-use esp_idf_hal::gpio::{AnyIOPin, InputPin, OutputPin};
-use esp_idf_hal::peripheral::Peripheral;
-use esp_idf_hal::uart::{UartConfig, UartDriver};
-use log::{error, info, warn};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, RwLock};
+use embassy_time::{Duration, Instant};
+use crate::hal::uart::Uart;
+use crate::app::system_settings::domain::{SystemSettings, EnergyMode};
 
-// Tamaño máximo del buffer de lectura
-const MAX_BUFFER_SIZE: usize = 256;
 
 /// Tamaño máximo del buffer de línea, igual a `SETTINGS_BUFFER_SIZE`.
 const BUFFER_SIZE: usize = 256;
@@ -73,15 +67,19 @@ mod flag {
     pub const ALL_OK: u16 = 0x7fff;
 }
 
-pub struct SettingsCli<U: UartIo, S: SystemSettings> {
+pub struct Cli<U: Uart> {
     uart: U,
-    store: S,
+    store: Arc<RwLock<SystemSettings>>,
     buffer: Vec<u8>,
     flags: u16,
 }
 
-impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
-    pub fn new(uart: U, store: S) -> Self {
+impl<U: Uart> Cli<U> {
+
+    pub fn new(
+        uart: U, 
+        store: Arc<RwLock<SystemSettings>>
+    ) -> Self {
         Self {
             uart,
             store,
@@ -98,17 +96,20 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
     ///
     /// `loaded_existing` indica si ya había una configuración guardada (lo decide quien
     /// maneje la persistencia, fuera de este módulo).
-    pub fn run(&mut self, loaded_existing: bool) {
+    /// Devuelve `true` si se debe guardar la configuración en NVS.
+    pub fn run(&mut self, loaded_existing: bool) -> bool {
         if !loaded_existing {
-            self.setting_mode_start(false);
+            self.setting_mode_start(false)
         } else if self.setting_mode_change() {
-            self.setting_mode_start(true);
+            self.setting_mode_start(true)
+        } else {
+            false // No se hicieron cambios, no hay que guardar
         }
     }
 
     /// Modo de configuración interactivo. Vuelve cuando el usuario sale con `EXIT`
     /// (una vez que se cumplen las condiciones necesarias, ver [`Self::handle_exit`]).
-    fn setting_mode_start(&mut self, flag_process: bool) {
+    fn setting_mode_start(&mut self, flag_process: bool) -> bool {
         self.uart.flush_input();
         self.show_menu();
         self.send("config>  ");
@@ -126,8 +127,10 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                 let line = String::from_utf8_lossy(&self.buffer).into_owned();
                 self.buffer.clear();
 
-                if self.process_command(&line, flag_process) {
-                    return;
+                // process_command ahora devuelve un Option<bool>
+                // Some(true) = Salir y Guardar | Some(false) = Salir sin guardar | None = Continuar en el menú
+                if let Some(save_required) = self.process_command(&line, flag_process) {
+                    return save_required;
                 }
 
                 self.send("\r\n");
@@ -135,7 +138,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                 self.send(" >  ");
             } else if self.buffer.len() < BUFFER_SIZE - 1 {
                 self.buffer.push(c);
-                self.uart.send(&[c]); // eco del caracter recibido
+                self.uart.send(&[c]);
             }
         }
     }
@@ -180,14 +183,13 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
         }
     }
 
-    /// Procesa una línea de comando. Devuelve `true` únicamente cuando corresponde
-    /// salir del modo configuración (comando `EXIT` aceptado).
-    fn process_command(&mut self, line: &str, flag_process: bool) -> bool {
+    /// Devuelve Some(true) si hay que salir y guardar, Some(false) para salir sin guardar, None para seguir en el bucle
+    fn process_command(&mut self, line: &str, flag_process: bool) -> Option<bool> {
         let mut parts = line.splitn(2, char::is_whitespace);
         let cmd_raw = parts.next().unwrap_or("");
         if cmd_raw.is_empty() {
             self.send("Error, comando inválido. Use HELP para ver los comandos disponibles.\r\n");
-            return false;
+            return None;
         }
         let param = parts.next().unwrap_or("").trim_start();
         let has_param = !param.is_empty();
@@ -196,103 +198,93 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
         match cmd.as_str() {
             cmd::HELP => {
                 self.show_help();
-                return false;
+                return None;
             }
             cmd::SHOW => {
-                let snapshot = self.store.snapshot();
-                self.show_config(&snapshot);
-                return false;
+                let s = Arc::clone(&self.store);
+                self.show_config(&s.read().unwrap());
+                return None;
             }
             cmd::WIFI_SSID => {
-                if let Some(v) =
-                    self.require_param(has_param, param, "Error, falta parametro <SSID>\r\n")
-                {
-                    self.store.set_wifi_ssid(v);
+                if let Some(v) = self.require_param(has_param, param, "Error, falta parametro <SSID>\r\n") {
+                    // Bloqueamos mutablemente para escribir
+                    self.store.write().unwrap().set_wifi_ssid(v.to_string());
                     self.flags |= flag::WIFI_SSID_OK;
                     self.send("Info: SSID configurado correctamente\r\n");
                 }
-                return false;
             }
             cmd::WIFI_PASS => {
-                if let Some(v) =
-                    self.require_param(has_param, param, "Error: falta parametro <password>\r\n")
-                {
-                    self.store.set_wifi_pass(v);
+                if let Some(v) = self.require_param(has_param, param, "Error: falta parametro <password>\r\n") {
+                    self.store.write().unwrap().set_wifi_password(v.to_string());
                     self.flags |= flag::WIFI_PASS_OK;
                     self.send("Info: password WiFi configurado correctamente\r\n");
                 }
-                return false;
             }
             cmd::MQTT_URI => {
-                if let Some(v) =
-                    self.require_param(has_param, param, "Error: falta parametro <uri>\r\n")
-                {
+                if let Some(v) = self.require_param(has_param, param, "Error: falta parametro <uri>\r\n") {
                     if !v.starts_with(MQTTS_PREFIX) {
-                        self.send(
-                            "Error: MQTT uri erroneo. Falta mqtts:// como primer parametro\r\n",
-                        );
+                        self.send("Error: MQTT uri erroneo. Falta mqtts:// como primer parametro\r\n");
                     } else {
-                        self.store.set_mqtt_uri(v);
+                        self.store.write().unwrap().set_mqtt_uri(v.to_string());
                         self.flags |= flag::MQTT_URI_OK;
                         self.send("Info: MQTT uri configurado correctamente\r\n");
                     }
                 }
-                return false;
             }
             cmd::NETWORK => {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <id_network>\r\n")
                 {
-                    self.store.set_network(v);
+                    self.store.write().unwrap().set_id_network(v.to_string());
                     self.flags |= flag::NETWORK_OK;
                     self.send("Info: red configurada correctamente\r\n");
                 }
-                return false;
+                return None;
             }
             cmd::EDGE => {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <id_edge>\r\n")
                 {
-                    self.store.set_edge(v);
+                    self.store.write().unwrap().set_id_edge(v.to_string());
                     self.flags |= flag::EDGE_OK;
                     self.send("Info: edge configurado correctamente\r\n");
                 }
-                return false;
+                return None;
             }
             cmd::URL_HTTPS => {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <url>\r\n")
                 {
-                    self.store.set_url_https(v);
+                    self.store.write().unwrap().set_url_bypass(v.to_string());
                     self.flags |= flag::URL_HTTPS_OK;
                     self.send("Info: bypass url configurado correctamente\r\n");
                 }
-                return false;
+                return None;
             }
             cmd::DEVICE_NAME => {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <name>\r\n")
                 {
-                    self.store.set_device_name(v);
+                    self.store.write().unwrap().set_device_name(v.to_string());
                     self.flags |= flag::DEVICE_NAME_OK;
                     self.send("Info: nombre del dispositivo configurado correctamente\r\n");
                 }
-                return false;
+                return None;
             }
             cmd::SAMPLE => {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <rate>\r\n")
                 {
-                    match v.parse::<u32>() {
-                        Ok(val) if val > 0 && val <= u16::MAX as u32 => {
-                            self.store.set_sample_rate(val);
+                    match v.parse::<u16>() {
+                        Ok(val) if val > 0 && val <= u16::MAX => {
+                            self.store.write().unwrap().set_sample_rate(val);
                             self.flags |= flag::SAMPLE_OK;
                             self.send("Info: muestreo configurado correctamente\r\n");
                         }
                         _ => self.send("Error: ingrese un numero de muestreo valido\r\n"),
                     }
                 }
-                return false;
+                return None;
             }
             cmd::ENERGY_MODE => {
                 if let Some(v) =
@@ -300,7 +292,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                 {
                     match v.parse::<u32>().ok().and_then(EnergyMode::from_u32) {
                         Some(mode) => {
-                            self.store.set_energy_mode(mode);
+                            self.store.write().unwrap().set_energy_mode(mode);
                             self.flags |= flag::ENERGY_OK;
                             self.send(&format!(
                                 "Info: modo de energia configurado correctamente. {}\r\n",
@@ -310,30 +302,30 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                         None => self.send("Error: ingrese un modo de energia valido\r\n"),
                     }
                 }
-                return false;
+                return None;
             }
             cmd::DELETE_LINKAGE => {
-                self.store.delete_linkage_flag();
+                self.store.write().unwrap().set_linkage_flag(false);
                 self.send("Info: linkage flag reseteado correctamente\r\n");
-                return false;
+                return None;
             }
             cmd::HEARTBEAT_BALANCE => {
                 self.handle_heartbeat(has_param, param, flag::TBM_OK, "balance", |s, us| {
-                    s.store.set_heartbeat_balance(us)
+                    s.store.write().unwrap().set_heartbeat_balance_mode(us)
                 });
-                return false;
+                return None;
             }
             cmd::HEARTBEAT_NORMAL => {
                 self.handle_heartbeat(has_param, param, flag::TN_OK, "normal", |s, us| {
-                    s.store.set_heartbeat_normal(us)
+                    s.store.write().unwrap().set_heartbeat_normal_mode(us)
                 });
-                return false;
+                return None;
             }
             cmd::HEARTBEAT_SAFE => {
                 self.handle_heartbeat(has_param, param, flag::TSM_OK, "safe", |s, us| {
-                    s.store.set_heartbeat_safe(us)
+                    s.store.write().unwrap().set_heartbeat_safe_mode(us)
                 });
-                return false;
+                return None;
             }
             cmd::MQ135_R0 => {
                 if let Some(v) =
@@ -341,7 +333,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                 {
                     match v.parse::<f32>() {
                         Ok(val) if val > 0.0 => {
-                            self.store.set_mq135_r0(val);
+                            self.store.write().unwrap().set_air_r0(val);
                             self.flags |= flag::MQ135_R0_OK;
                             self.send(
                                 "Info: resistencia R0 del MQ135 configurada correctamente\r\n",
@@ -352,7 +344,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                             .send("Error: ingrese un formato de resistencia valido (ej: 70)\r\n"),
                     }
                 }
-                return false;
+                return None;
             }
             cmd::EMA_ALPHA_MQ135 => {
                 if let Some(v) =
@@ -360,7 +352,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                 {
                     match v.parse::<f32>() {
                         Ok(val) if val > 0.0 && val < 1.0 => {
-                            self.store.set_mq135_alpha_ema(val);
+                            self.store.write().unwrap().set_air_alpha_ema(val);
                             self.flags |= flag::MQ135_ALPHA_EMA_OK;
                             self.send(
                                 "Info: parámetro alpha del MQ135 configurado correctamente\r\n",
@@ -374,7 +366,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                         }
                     }
                 }
-                return false;
+                return None;
             }
             cmd::EMA_ALPHA_DHT11 => {
                 if let Some(v) =
@@ -382,7 +374,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                 {
                     match v.parse::<f32>() {
                         Ok(val) if val > 0.0 && val < 1.0 => {
-                            self.store.set_dht11_alpha_ema(val);
+                            self.store.write().unwrap().set_temp_alpha_ema(val);
                             self.flags |= flag::DHT11_ALPHA_EMA_OK;
                             self.send(
                                 "Info: parámetro alpha del DHT11 configurado correctamente\r\n",
@@ -396,7 +388,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
                         }
                     }
                 }
-                return false;
+                return None;
             }
             cmd::EXIT => return self.handle_exit(flag_process),
             _ => {}
@@ -406,29 +398,21 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
         if !flag_process {
             self.send("Error: comando desconocido. Use HELP para ver comandos disponibles\r\n");
         }
-        false
+        None
     }
 
     /// `EXIT`: en modo "cambio de config existente" siempre permite salir guardando.
     /// En modo "config nueva" solo permite salir si todos los campos obligatorios
     /// están completos.
-    fn handle_exit(&mut self, flag_process: bool) -> bool {
+    fn handle_exit(&mut self, flag_process: bool) -> Option<bool> {
         let configured = self.flags == flag::ALL_OK;
 
         if flag_process || configured {
-            match self.store.save_to_nvs() {
-                Ok(()) => {
-                    self.send("\nInfo: configuración guardada correctamente. Saliendo del modo configuración.\r\n");
-                    true
-                }
-                Err(()) => {
-                    self.send("Error: no se pudo guardar la configuracion.\r\n");
-                    false
-                }
-            }
+            self.send("\nInfo: Saliendo del modo configuración y guardando cambios en NVS...\r\n");
+            Some(true)
         } else {
             self.send("Info: para salir del modo configuración, deben estar todos los campos configurados.\r\n");
-            false
+            None
         }
     }
 
@@ -531,7 +515,7 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
         self.send(&text);
     }
 
-    fn show_config(&mut self, s: &SettingsSnapshot) {
+    fn show_config(&mut self, s: &SystemSettings) {
         let b = color::B_WHT;
         self.send(&format!(
             "\r\n{b}┌─────────────────────┬────────────────────────────────┐\r\n"
@@ -545,18 +529,18 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
             "├─────────────────────┼────────────────────────────────┤\r\n"
         ));
 
-        self.print_row(color::C_CYN, "WiFi SSID", &s.wifi_ssid);
-        self.print_row(color::C_CYN, "WiFi Password", &s.wifi_password);
-        self.print_row(color::C_CYN, "MQTT URI", &s.mqtt_uri);
+        self.print_row(color::C_CYN, "WiFi SSID", &s.wifi_ssid());
+        self.print_row(color::C_CYN, "WiFi Password", &s.wifi_password());
+        self.print_row(color::C_CYN, "MQTT URI", &s.mqtt_uri());
 
         self.send(&format!(
             "{b}├─────────────────────┼────────────────────────────────┤\r\n"
         ));
 
-        self.print_row(color::C_CYN, "Red ID", &s.network_id);
-        self.print_row(color::C_CYN, "Edge ID", &s.edge_id);
-        self.print_row(color::C_CYN, "Bypass URL", &s.bypass_url);
-        self.print_row(color::C_CYN, "Nombre Dispositivo", &s.device_name);
+        self.print_row(color::C_CYN, "Red ID", &s.id_network());
+        self.print_row(color::C_CYN, "Edge ID", &s.id_edge());
+        self.print_row(color::C_CYN, "Bypass URL", &s.url_bypass());
+        self.print_row(color::C_CYN, "Nombre Dispositivo", &s.device_name());
 
         self.send(&format!(
             "{b}├─────────────────────┼────────────────────────────────┤\r\n"
@@ -565,17 +549,17 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
         self.print_row(
             color::C_YEL,
             "Heartbeat Balance",
-            &format!("{} s", s.heartbeat_balance_secs),
+            &format!("{} s", s.heartbeat_balance_mode()),
         );
         self.print_row(
             color::C_YEL,
             "Heartbeat Normal",
-            &format!("{} s", s.heartbeat_normal_secs),
+            &format!("{} s", s.heartbeat_normal_mode()),
         );
         self.print_row(
             color::C_YEL,
             "Heartbeat Safe",
-            &format!("{} s", s.heartbeat_safe_secs),
+            &format!("{} s", s.heartbeat_safe_mode()),
         );
 
         self.send(&format!(
@@ -585,23 +569,23 @@ impl<U: UartIo, S: SystemSettings> SettingsCli<U, S> {
         self.print_row(
             color::C_GRN,
             "Sample Rate",
-            &format!("{} min", s.sample_rate_min),
+            &format!("{} min", s.sample_rate()),
         );
         self.print_row(
             color::C_GRN,
             "Modo de Energia",
-            s.energy_mode.display_label(),
+            s.energy_mode().as_str(),
         );
-        self.print_row(color::C_GRN, "MQ135 R0", &format!("{:.2} kOhm", s.mq135_r0));
+        self.print_row(color::C_GRN, "MQ135 R0", &format!("{:.2} kOhm", s.air_r0()));
         self.print_row(
             color::C_GRN,
             "MQ135 Alpha EMA",
-            &format!("{:.2}", s.mq135_alpha_ema),
+            &format!("{:.2}", s.air_alpha_ema()),
         );
         self.print_row(
             color::C_GRN,
             "DHT11 Alpha EMA",
-            &format!("{:.2}", s.dht11_alpha_ema),
+            &format!("{:.2}", s.temp_alpha_ema()),
         );
 
         let r = color::T_RST;

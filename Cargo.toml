@@ -35,7 +35,7 @@ embuild = "0.33"
 
 [profile.dev]
 debug = true       # Conserva los símbolos de depuración (no incrementan el tamaño real en la Flash física)
-opt-level = 0    # Optimización agresiva orientada a la reducción de tamaño para desarrollo rápido
+opt-level = 0    
 
 # OPCIÓN 1: Optimización de producción muy agresiva (Mayor velocidad y tamaño controlado)
 [profile.release]
@@ -45,7 +45,7 @@ codegen-units = 1         # Reduce las unidades de generación de código a 1 pa
 panic = "abort"           # Desactiva el unwinding del stack en pánicos. Reduce drásticamente el tamaño del firmware
 strip = true              # Remueve automáticamente todos los símbolos de debug y tablas de secciones del binario final
 
-# OPCIÓN 2: Optimización moderada (Déjala comentada para pruebas si la opción superior genera problemas con la asignación de memoria)
+# OPCIÓN 2: Optimización moderada
 # [profile.release]
 # opt-level = 2           # Optimización estándar orientada al rendimiento puro (puede aumentar el tamaño del binario final)
 # lto = "thin"            # LTO ligero: realiza optimizaciones intermedias sin consumir tanto tiempo en la compilación
