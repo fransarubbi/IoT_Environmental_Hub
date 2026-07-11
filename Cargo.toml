@@ -13,17 +13,20 @@ harness = false # Desactiva el arnés nativo de test para solucionar errores de 
 
 [dependencies]
 log = "0.4"
-esp-idf-hal = "0.46.2" 
+esp-idf-hal = "0.46.2"
 esp-idf-svc = { version = "0.52.1", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
 embassy-time = { version = "0.5", features = ["generic-queue-8"] }
 embedded-svc = "0.29"
 async-channel = "2.3"
 embassy-futures = "0.1"
 edge-executor = "0.4.1"
-serde = { version = "1.0", features = ["derive"] }
+serde-json-core = "0.6.0"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
 rmp-serde = "1.1"
 anyhow = "1.0"
 serde_json = "1.0"
+thiserror = "2.0.18"
+heapless = { version = "0.9.1", features = ["serde"] }
 
 [build-dependencies]
 embuild = "0.33"
@@ -35,7 +38,7 @@ embuild = "0.33"
 
 [profile.dev]
 debug = true       # Conserva los símbolos de depuración (no incrementan el tamaño real en la Flash física)
-opt-level = 0    
+opt-level = 0
 
 # OPCIÓN 1: Optimización de producción muy agresiva (Mayor velocidad y tamaño controlado)
 [profile.release]

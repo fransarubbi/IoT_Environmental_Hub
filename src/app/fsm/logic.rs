@@ -1,22 +1,23 @@
-use crate::app::fsm::domain::{Action, Event, FsmState, Transition};
+use crate::app::fsm::domain::{ACTION_VECTOR_CAPACITY, Action, Event, FsmState, Transition};
 use async_channel::{Receiver, Sender, bounded};
 use edge_executor::LocalExecutor;
 use embassy_futures::select::{Either, select};
 use esp_idf_hal::reset::restart;
+use heapless::{String, Vec};
 use log::{error, info};
 
 pub enum FsmServiceResponse {
     CheckFirmware,
-    NotifyFirmware(String),
+    NotifyFirmware(String<6>),
     LinkageProtocol,
 }
 
 pub enum FsmServiceCommand {
     NotUpdateFirmware, // Incluye error tambien
-    UpdateFirmware(String),
+    UpdateFirmware(String<6>),
     LinkageOk,
-    Handshake(String),
-    Safe((String, u32, u32)),
+    Handshake(String<15>),
+    Safe((String<15>, u32, u32)),
     Normal,
 }
 
@@ -31,7 +32,7 @@ impl FsmService {
     }
 
     pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
-        let (tx_actions, rx_actions) = bounded::<Vec<Action>>(10);
+        let (tx_actions, rx_actions) = bounded::<Vec<Action, ACTION_VECTOR_CAPACITY>>(10);
         let (tx_event, rx_event) = bounded::<Event>(10);
         let (tx_response, rx_response) = bounded::<FsmServiceResponse>(10);
         let (tx_command, rx_command) = bounded::<FsmServiceCommand>(10);
@@ -79,7 +80,7 @@ impl FsmService {
 async fn handler_events_and_actions(
     tx_events: Sender<Event>,
     tx_response: Sender<FsmServiceResponse>,
-    rx_action: Receiver<Vec<Action>>,
+    rx_action: Receiver<Vec<Action, ACTION_VECTOR_CAPACITY>>,
     rx_extern_events: Receiver<FsmServiceCommand>,
 ) {
     let mut firmware_version = String::new();
@@ -162,7 +163,10 @@ async fn handler_events_and_actions(
 ///
 /// * `tx_actions`: Canal para emitir los efectos secundarios que deben ejecutarse.
 /// * `rx_event`: Canal de entrada de eventos (triggers).
-async fn run_fsm(tx_actions: Sender<Vec<Action>>, rx_event: Receiver<Event>) {
+async fn run_fsm(
+    tx_actions: Sender<Vec<Action, ACTION_VECTOR_CAPACITY>>,
+    rx_event: Receiver<Event>,
+) {
     info!("iniciando tarea fsm");
     let mut state = FsmState::new();
 

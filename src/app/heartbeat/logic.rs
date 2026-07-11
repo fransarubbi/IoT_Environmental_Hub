@@ -1,10 +1,11 @@
 use crate::app::heartbeat::domain::{
-    Action, Event, FsmHeartbeat, HeartbeatCommand, HeartbeatResponse, State, StateForHeartbeat,
-    Status, Transition, WatchdogCommand,
+    ACTION_VECTOR_CAPACITY, Action, Event, FsmHeartbeat, HeartbeatCommand, HeartbeatResponse,
+    State, StateForHeartbeat, Status, Transition, WatchdogCommand,
 };
 use crate::app::system_settings::domain::SystemSettings;
 use async_channel::{Receiver, Sender};
 use embassy_futures::select::{Either, select};
+use heapless::Vec;
 use log::{error, warn};
 use std::sync::{Arc, RwLock};
 
@@ -13,7 +14,7 @@ pub async fn handler_heartbeat(
     tx_to_fsm: Sender<Event>,
     tx_to_timer: Sender<WatchdogCommand>,
     rx_service: Receiver<HeartbeatCommand>,
-    rx_fsm: Receiver<Vec<Action>>,
+    rx_fsm: Receiver<Vec<Action, ACTION_VECTOR_CAPACITY>>,
     settings: Arc<RwLock<SystemSettings>>,
 ) {
     let mut fsm_state = StateForHeartbeat::None;
@@ -101,7 +102,7 @@ pub async fn handler_heartbeat(
 }
 
 pub async fn run_fsm_heartbeat(
-    tx_actions: Sender<Vec<Action>>,
+    tx_actions: Sender<Vec<Action, ACTION_VECTOR_CAPACITY>>,
     rx_from_heartbeat: Receiver<Event>,
 ) {
     let mut state = FsmHeartbeat::new();

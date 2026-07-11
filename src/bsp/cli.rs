@@ -1,13 +1,26 @@
 //! Módulo UART CLI (Command Line Interface)
 //! Encargado de la configuración inicial del dispositivo por puerto serie.
 
-use std::sync::{Arc, RwLock};
-use embassy_time::{Duration, Instant};
+use crate::app::message::domain::{
+    DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, WIFI_SSID_STRING_LEN,
+};
+use crate::app::system_settings::domain::{EnergyMode, SystemSettings};
 use crate::hal::uart::Uart;
-use crate::app::system_settings::domain::{SystemSettings, EnergyMode};
+use embassy_time::{Duration, Instant};
+use heapless::{String, Vec};
+use std::sync::{Arc, RwLock};
 
+/// Macro para construir un heapless String desde un &str con un tamaño de buffer específico
+macro_rules! hl_str {
+    ($src:expr, $N:expr) => {{
+        let mut s = String::<$N>::new();
+        let src: &str = $src;
+        let _ = s.push_str(&src[..src.len().min($N)]);
+        s
+    }};
+}
 
-/// Tamaño máximo del buffer de línea, igual a `SETTINGS_BUFFER_SIZE`.
+/// Tamaño máximo del buffer de línea
 const BUFFER_SIZE: usize = 256;
 
 /// Tiempo de espera para confirmar cambio de configuración existente (`setting_mode_change`).
@@ -70,20 +83,16 @@ mod flag {
 pub struct Cli<U: Uart> {
     uart: U,
     store: Arc<RwLock<SystemSettings>>,
-    buffer: Vec<u8>,
+    buffer: Vec<u8, 256>,
     flags: u16,
 }
 
 impl<U: Uart> Cli<U> {
-
-    pub fn new(
-        uart: U, 
-        store: Arc<RwLock<SystemSettings>>
-    ) -> Self {
+    pub fn new(uart: U, store: Arc<RwLock<SystemSettings>>) -> Self {
         Self {
             uart,
             store,
-            buffer: Vec::with_capacity(BUFFER_SIZE),
+            buffer: Vec::new(),
             flags: 0,
         }
     }
@@ -124,12 +133,17 @@ impl<U: Uart> Cli<U> {
                     continue;
                 }
                 self.send("\r\n");
-                let line = String::from_utf8_lossy(&self.buffer).into_owned();
+                let line: String<BUFFER_SIZE> = {
+                    let raw = core::str::from_utf8(&self.buffer).unwrap_or("");
+                    let mut s = String::<BUFFER_SIZE>::new();
+                    let _ = s.push_str(raw);
+                    s
+                };
                 self.buffer.clear();
 
                 // process_command ahora devuelve un Option<bool>
                 // Some(true) = Salir y Guardar | Some(false) = Salir sin guardar | None = Continuar en el menú
-                if let Some(save_required) = self.process_command(&line, flag_process) {
+                if let Some(save_required) = self.process_command(line.as_str(), flag_process) {
                     return save_required;
                 }
 
@@ -137,7 +151,7 @@ impl<U: Uart> Cli<U> {
                 self.show_menu();
                 self.send(" >  ");
             } else if self.buffer.len() < BUFFER_SIZE - 1 {
-                self.buffer.push(c);
+                let _ = self.buffer.push(c);
                 self.uart.send(&[c]);
             }
         }
@@ -150,7 +164,7 @@ impl<U: Uart> Cli<U> {
         self.show_menu_change_settings();
 
         let start = Instant::now();
-        let mut buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE);
+        let mut buf: Vec<u8, BUFFER_SIZE> = Vec::new();
 
         loop {
             if start.elapsed() >= CHANGE_TIMEOUT {
@@ -162,22 +176,22 @@ impl<U: Uart> Cli<U> {
             };
 
             if c == b'\n' || c == b'\r' {
-                if buffer.is_empty() {
+                if buf.is_empty() {
                     continue;
                 }
                 self.send("\r\n");
 
-                match buffer[0].to_ascii_uppercase() {
+                match buf[0].to_ascii_uppercase() {
                     b'Y' => return true,
                     b'N' => return false,
                     _ => self.send("Error, comando invalido. Ingrese y o n\r\n"),
                 }
 
-                buffer.clear();
+                buf.clear();
                 self.send("\r\n");
                 self.show_menu_change_settings();
-            } else if buffer.len() < BUFFER_SIZE - 1 {
-                buffer.push(c);
+            } else if buf.len() < BUFFER_SIZE - 1 {
+                let _ = buf.push(c);
                 self.uart.send(&[c]);
             }
         }
@@ -206,26 +220,33 @@ impl<U: Uart> Cli<U> {
                 return None;
             }
             cmd::WIFI_SSID => {
-                if let Some(v) = self.require_param(has_param, param, "Error, falta parametro <SSID>\r\n") {
-                    // Bloqueamos mutablemente para escribir
-                    self.store.write().unwrap().set_wifi_ssid(v.to_string());
+                if let Some(v) =
+                    self.require_param(has_param, param, "Error, falta parametro <SSID>\r\n")
+                {
+                    self.store.write().unwrap().set_wifi_ssid(hl_str!(v, WIFI_SSID_STRING_LEN));
                     self.flags |= flag::WIFI_SSID_OK;
                     self.send("Info: SSID configurado correctamente\r\n");
                 }
             }
             cmd::WIFI_PASS => {
-                if let Some(v) = self.require_param(has_param, param, "Error: falta parametro <password>\r\n") {
-                    self.store.write().unwrap().set_wifi_password(v.to_string());
+                if let Some(v) =
+                    self.require_param(has_param, param, "Error: falta parametro <password>\r\n")
+                {
+                    self.store.write().unwrap().set_wifi_password(hl_str!(v, 30));
                     self.flags |= flag::WIFI_PASS_OK;
                     self.send("Info: password WiFi configurado correctamente\r\n");
                 }
             }
             cmd::MQTT_URI => {
-                if let Some(v) = self.require_param(has_param, param, "Error: falta parametro <uri>\r\n") {
+                if let Some(v) =
+                    self.require_param(has_param, param, "Error: falta parametro <uri>\r\n")
+                {
                     if !v.starts_with(MQTTS_PREFIX) {
-                        self.send("Error: MQTT uri erroneo. Falta mqtts:// como primer parametro\r\n");
+                        self.send(
+                            "Error: MQTT uri erroneo. Falta mqtts:// como primer parametro\r\n",
+                        );
                     } else {
-                        self.store.write().unwrap().set_mqtt_uri(v.to_string());
+                        self.store.write().unwrap().set_mqtt_uri(hl_str!(v, MQTT_URI_STRING_LEN));
                         self.flags |= flag::MQTT_URI_OK;
                         self.send("Info: MQTT uri configurado correctamente\r\n");
                     }
@@ -235,7 +256,7 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <id_network>\r\n")
                 {
-                    self.store.write().unwrap().set_id_network(v.to_string());
+                    self.store.write().unwrap().set_id_network(hl_str!(v, NETWORK_STRING_LEN));
                     self.flags |= flag::NETWORK_OK;
                     self.send("Info: red configurada correctamente\r\n");
                 }
@@ -245,7 +266,7 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <id_edge>\r\n")
                 {
-                    self.store.write().unwrap().set_id_edge(v.to_string());
+                    self.store.write().unwrap().set_id_edge(hl_str!(v, 18));
                     self.flags |= flag::EDGE_OK;
                     self.send("Info: edge configurado correctamente\r\n");
                 }
@@ -255,7 +276,7 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <url>\r\n")
                 {
-                    self.store.write().unwrap().set_url_bypass(v.to_string());
+                    self.store.write().unwrap().set_url_bypass(hl_str!(v, 60));
                     self.flags |= flag::URL_HTTPS_OK;
                     self.send("Info: bypass url configurado correctamente\r\n");
                 }
@@ -265,7 +286,7 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <name>\r\n")
                 {
-                    self.store.write().unwrap().set_device_name(v.to_string());
+                    self.store.write().unwrap().set_device_name(hl_str!(v, DEVICE_NAME_STRING_LEN));
                     self.flags |= flag::DEVICE_NAME_OK;
                     self.send("Info: nombre del dispositivo configurado correctamente\r\n");
                 }
@@ -571,11 +592,7 @@ impl<U: Uart> Cli<U> {
             "Sample Rate",
             &format!("{} min", s.sample_rate()),
         );
-        self.print_row(
-            color::C_GRN,
-            "Modo de Energia",
-            s.energy_mode().as_str(),
-        );
+        self.print_row(color::C_GRN, "Modo de Energia", s.energy_mode().as_str());
         self.print_row(color::C_GRN, "MQ135 R0", &format!("{:.2} kOhm", s.air_r0()));
         self.print_row(
             color::C_GRN,

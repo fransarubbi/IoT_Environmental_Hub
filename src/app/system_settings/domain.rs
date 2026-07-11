@@ -3,6 +3,10 @@
 //! Este módulo implementa el patrón de **Estado Compartido**.
 //! El `SystemSettings` actúa como el repositorio central de parámetros vitales.
 
+use crate::app::message::domain::{
+    DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, WIFI_SSID_STRING_LEN,
+};
+use heapless::String;
 use serde::{Deserialize, Serialize};
 
 /// Comandos para el gestor de configuración.
@@ -34,11 +38,9 @@ pub enum ConfigResponse {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SystemSettings {
     id: IdentificationData,
-    sample_rate: u16, // Segundos
     heartbeat: Heartbeat,
-    network: Network,
     wifi: Wifi,
-    mqtt_uri: String,
+    mqtt_uri: String<MQTT_URI_STRING_LEN>,
 
     // Publica
     topic_data: Topic,
@@ -69,7 +71,9 @@ pub struct SystemSettings {
     energy_mode: EnergyMode,
     filters: Filters,
 
+    network: Network,
     air_r0: f32,
+    sample_rate: u16, // Segundos
 }
 
 #[derive(Debug, Clone)]
@@ -77,8 +81,8 @@ pub struct MqttTopic {}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct IdentificationData {
-    pub mac_addr: String,
-    pub device_name: String,
+    pub mac_addr: String<18>,
+    pub device_name: String<DEVICE_NAME_STRING_LEN>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -90,23 +94,23 @@ struct Heartbeat {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Network {
-    pub id_network: String,
-    pub id_edge: String,
-    pub balance_epoch: u32,
-    pub url_bypass: String,
-    pub linkage_flag: bool,
+    pub id_network: String<NETWORK_STRING_LEN>,
+    pub id_edge: String<18>,
+    pub url_bypass: String<60>,
     pub message_id: u32,
+    pub balance_epoch: u32,
+    pub linkage_flag: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Wifi {
-    pub ssid: String,
-    pub password: String,
+    pub ssid: String<WIFI_SSID_STRING_LEN>,
+    pub password: String<30>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Topic {
-    pub topic: String,
+    pub topic: String<75>,
     pub qos: u8,
     pub retain: bool,
 }
@@ -153,14 +157,14 @@ impl SystemSettings {
     pub fn mac_addr(&self) -> &str {
         self.id.mac_addr.as_str()
     }
-    pub fn set_mac_addr(&mut self, mac: String) {
+    pub fn set_mac_addr(&mut self, mac: String<18>) {
         self.id.mac_addr = mac;
     }
 
     pub fn device_name(&self) -> &str {
         self.id.device_name.as_str()
     }
-    pub fn set_device_name(&mut self, name: String) {
+    pub fn set_device_name(&mut self, name: String<DEVICE_NAME_STRING_LEN>) {
         self.id.device_name = name;
     }
 
@@ -198,14 +202,14 @@ impl SystemSettings {
     pub fn id_network(&self) -> &str {
         self.network.id_network.as_str()
     }
-    pub fn set_id_network(&mut self, id: String) {
+    pub fn set_id_network(&mut self, id: String<NETWORK_STRING_LEN>) {
         self.network.id_network = id;
     }
 
     pub fn id_edge(&self) -> &str {
         self.network.id_edge.as_str()
     }
-    pub fn set_id_edge(&mut self, id: String) {
+    pub fn set_id_edge(&mut self, id: String<18>) {
         self.network.id_edge = id;
     }
 
@@ -219,7 +223,7 @@ impl SystemSettings {
     pub fn url_bypass(&self) -> &str {
         self.network.url_bypass.as_str()
     }
-    pub fn set_url_bypass(&mut self, url: String) {
+    pub fn set_url_bypass(&mut self, url: String<60>) {
         self.network.url_bypass = url;
     }
 
@@ -241,21 +245,21 @@ impl SystemSettings {
     pub fn wifi_ssid(&self) -> &str {
         self.wifi.ssid.as_str()
     }
-    pub fn set_wifi_ssid(&mut self, ssid: String) {
+    pub fn set_wifi_ssid(&mut self, ssid: String<WIFI_SSID_STRING_LEN>) {
         self.wifi.ssid = ssid;
     }
 
     pub fn wifi_password(&self) -> &str {
         self.wifi.password.as_str()
     }
-    pub fn set_wifi_password(&mut self, pass: String) {
+    pub fn set_wifi_password(&mut self, pass: String<30>) {
         self.wifi.password = pass;
     }
 
     pub fn mqtt_uri(&self) -> &str {
         self.mqtt_uri.as_str()
     }
-    pub fn set_mqtt_uri(&mut self, uri: String) {
+    pub fn set_mqtt_uri(&mut self, uri: String<MQTT_URI_STRING_LEN>) {
         self.mqtt_uri = uri;
     }
 

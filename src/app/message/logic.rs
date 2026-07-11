@@ -4,10 +4,22 @@ use crate::bsp::mqtt::IncomingMessage;
 use crate::bsp::wifi::get_unix_epoch;
 use anyhow::anyhow;
 use async_channel::{Receiver, Sender};
+use heapless::{String, Vec};
 use log::error;
-use rmp_serde::{from_slice, to_vec};
+use rmp_serde::{from_slice, to_vec_named as to_vec};
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
+
+/// Construye un heapless String<N> desde un &str, truncando si excede la capacidad.
+macro_rules! hl_str {
+    ($src:expr, $N:expr) => {{
+        let src: &str = $src;
+        let len = src.len().min($N);
+        let mut s = String::<$N>::new();
+        let _ = s.push_str(&src[..len]);
+        s
+    }};
+}
 
 macro_rules! send_serialized {
     ($tx:expr, $settings:expr, $msg:expr, $variant:expr) => {{
@@ -28,8 +40,8 @@ pub async fn parser(
     tx: Sender<MessageServiceResponse>,
 ) {
     while let Ok(msg) = from_service_parser.recv().await {
-        let topic = msg.topic;
-        let payload = msg.payload;
+        let topic = msg.topic.as_str();
+        let payload = &msg.payload[..];
 
         // Enrutar explícitamente según el sufijo del tópico
         let decoded: Option<MessageFromEdge> = if topic.ends_with("balance") {
@@ -107,9 +119,10 @@ pub async fn generator(
                 send_serialized!(tx, &settings, msg, MessageToEdge::AlertTem(msg.clone()));
             }
             MessageServiceCommand::GenerateFirmwareOk(str) => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
                 let metadata = Metadata {
-                    sender_user_id: settings.read().unwrap().mac_addr().to_string(),
-                    destination_id: "server0".to_string(),
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
                     timestamp: get_unix_epoch(),
                 };
                 let msg = FirmwareOk {
@@ -120,25 +133,32 @@ pub async fn generator(
                 send_serialized!(tx, &settings, msg, MessageToEdge::FirmwareOk(msg.clone()));
             }
             MessageServiceCommand::GenerateSettings(id) => {
-                let metadata = Metadata {
-                    sender_user_id: settings.read().unwrap().mac_addr().to_string(),
-                    destination_id: "server0".to_string(),
-                    timestamp: get_unix_epoch(),
-                };
+                let mac        = settings.read().unwrap().mac_addr().to_string();
+                let network    = settings.read().unwrap().id_network().to_string();
+                let ssid       = settings.read().unwrap().wifi_ssid().to_string();
+                let password   = settings.read().unwrap().wifi_password().to_string();
+                let mqtt_uri   = settings.read().unwrap().mqtt_uri().to_string();
+                let dev_name   = settings.read().unwrap().device_name().to_string();
+                let sample     = settings.read().unwrap().sample_rate();
                 let energy_mode = match settings.read().unwrap().energy_mode() {
                     EnergyMode::LOW => 0,
                     EnergyMode::NORMAL => 1,
                     EnergyMode::PERFORMANCE => 2,
                 };
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp: get_unix_epoch(),
+                };
                 let msg = Settings {
                     metadata,
                     message_id: id,
-                    network: settings.read().unwrap().id_network().to_string(),
-                    wifi_ssid: settings.read().unwrap().wifi_ssid().to_string(),
-                    wifi_password: settings.read().unwrap().wifi_password().to_string(),
-                    mqtt_uri: settings.read().unwrap().mqtt_uri().to_string(),
-                    device_name: settings.read().unwrap().device_name().to_string(),
-                    sample: settings.read().unwrap().sample_rate() as u32,
+                    network:       hl_str!(&network,  NETWORK_STRING_LEN),
+                    wifi_ssid:     hl_str!(&ssid,     WIFI_SSID_STRING_LEN),
+                    wifi_password: hl_str!(&password, WIFI_PASSWORD_STRING_LEN),
+                    mqtt_uri:      hl_str!(&mqtt_uri, MQTT_URI_STRING_LEN),
+                    device_name:   hl_str!(&dev_name, DEVICE_NAME_STRING_LEN),
+                    sample:        sample as u32,
                     energy_mode,
                 };
                 send_serialized!(
@@ -149,15 +169,17 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GenerateSettingsAck(message_id) => {
+                let mac     = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
-                    sender_user_id: settings.read().unwrap().mac_addr().to_string(),
-                    destination_id: "server0".to_string(),
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
                     timestamp: get_unix_epoch(),
                 };
                 let msg = SettingOk {
                     metadata,
                     message_id,
-                    network: settings.read().unwrap().id_network().to_string(),
+                    network: hl_str!(&network, NETWORK_STRING_LEN),
                     handshake: true,
                 };
                 send_serialized!(
@@ -179,28 +201,35 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GeneratePing => {
+                let mac     = settings.read().unwrap().mac_addr().to_string();
+                let edge    = settings.read().unwrap().id_edge().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
-                    sender_user_id: settings.read().unwrap().mac_addr().to_string(),
-                    destination_id: settings.read().unwrap().id_edge().to_string(),
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!(&edge, 18),
                     timestamp: get_unix_epoch(),
                 };
                 let msg = Ping {
                     metadata,
-                    network: settings.read().unwrap().id_network().to_string(),
+                    network: hl_str!(&network, NETWORK_STRING_LEN),
                     ping: true,
                 };
                 send_serialized!(tx, &settings, msg, MessageToEdge::Ping(msg.clone()));
             }
             MessageServiceCommand::GenerateLinkageRequest => {
+                let mac      = settings.read().unwrap().mac_addr().to_string();
+                let edge     = settings.read().unwrap().id_edge().to_string();
+                let dev_name = settings.read().unwrap().device_name().to_string();
+                let network  = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
-                    sender_user_id: settings.read().unwrap().mac_addr().to_string(),
-                    destination_id: settings.read().unwrap().id_edge().to_string(),
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!(&edge, 18),
                     timestamp: get_unix_epoch(),
                 };
                 let msg = LinkageRequest {
                     metadata,
-                    device_name: settings.read().unwrap().device_name().to_string(),
-                    network: settings.read().unwrap().id_network().to_string(),
+                    device_name: hl_str!(&dev_name, DEVICE_NAME_STRING_LEN),
+                    network:     hl_str!(&network,  NETWORK_STRING_LEN),
                     linkage_request: true,
                 };
                 send_serialized!(
@@ -211,9 +240,11 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GenerateHandshake((balance_epoch, flag)) => {
+                let mac  = settings.read().unwrap().mac_addr().to_string();
+                let edge = settings.read().unwrap().id_edge().to_string();
                 let metadata = Metadata {
-                    sender_user_id: settings.read().unwrap().mac_addr().to_string(),
-                    destination_id: settings.read().unwrap().id_edge().to_string(),
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!(&edge, 18),
                     timestamp: get_unix_epoch(),
                 };
                 let msg = Handshake {
@@ -236,7 +267,7 @@ pub async fn generator(
 fn resolve_topic(
     settings: &Arc<RwLock<SystemSettings>>,
     message: &MessageToEdge,
-) -> (String, u8, bool) {
+) -> (String<75>, u8, bool) {
     match message {
         MessageToEdge::Report(_) => (
             settings.read().unwrap().topic_data().topic.clone(),
@@ -319,12 +350,23 @@ fn resolve_topic(
 /// Serializa cualquier estructura de dominio (T) a un arreglo de bytes utilizando **MessagePack**
 /// y la empaqueta en un objeto [`SerializedMessage`] listo para ser procesado y publicado
 /// por el cliente MQTT.
-fn serialize<T>(topic: String, qos: u8, msg: T, retain: bool) -> anyhow::Result<SerializedMessage>
+fn serialize<T>(
+    topic: String<75>,
+    qos: u8,
+    msg: T,
+    retain: bool,
+) -> anyhow::Result<SerializedMessage>
 where
     T: Serialize,
 {
     match to_vec(&msg) {
-        Ok(payload) => Ok(SerializedMessage::new(topic, payload, qos, retain)),
+        Ok(std_payload) => {
+            let mut payload = Vec::<u8, MAX_MSGPACK_BUFFER_SIZE>::new();
+            payload
+                .extend_from_slice(&std_payload)
+                .map_err(|_| anyhow!("payload demasiado grande para el buffer heapless"))?;
+            Ok(SerializedMessage::new(topic, payload, qos, retain))
+        }
         Err(e) => Err(anyhow!("error serializando: {}", e)),
     }
 }

@@ -1,5 +1,6 @@
 pub mod channels;
 pub mod core;
+pub mod data;
 pub mod fsm;
 pub mod heartbeat;
 pub mod message;

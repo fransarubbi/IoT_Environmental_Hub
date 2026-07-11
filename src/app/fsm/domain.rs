@@ -1,4 +1,7 @@
+use heapless::{String, Vec};
 use serde::{Deserialize, Serialize};
+
+pub const ACTION_VECTOR_CAPACITY: usize = 3;
 
 /// Estados Globales de nivel superior.
 /// Determinan el comportamiento macro del sistema.
@@ -64,14 +67,14 @@ pub enum Transition {
 #[derive(Debug)]
 pub struct TransitionValid {
     change_state: FsmState,
-    actions: Vec<Action>,
+    actions: Vec<Action, ACTION_VECTOR_CAPACITY>,
 }
 
 impl TransitionValid {
     pub fn change_state(&self) -> FsmState {
         self.change_state.clone()
     }
-    pub fn actions(&self) -> Vec<Action> {
+    pub fn actions(&self) -> Vec<Action, ACTION_VECTOR_CAPACITY> {
         self.actions.clone()
     }
 }
@@ -79,7 +82,7 @@ impl TransitionValid {
 /// Datos resultantes de una transición fallida o no permitida.
 #[derive(Debug)]
 pub struct TransitionInvalid {
-    invalid: String,
+    invalid: String<20>,
 }
 
 impl TransitionInvalid {
@@ -177,7 +180,7 @@ impl FsmState {
 
                 let valid = TransitionValid {
                     change_state: next_fsm,
-                    actions: vec![],
+                    actions: Vec::new(),
                 };
                 Transition::Valid(valid)
             }
@@ -385,23 +388,29 @@ impl FsmState {
 ///
 /// Compara el estado anterior (`old`) con el nuevo (`new`) para identificar
 /// qué sub-estados han cambiado e inyectar las acciones correspondientes.
-fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
+fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR_CAPACITY> {
     let mut actions = Vec::new();
 
     if old.init != new.init {
         if let Some(state) = &new.init {
             match state {
                 SubStateInit::CheckFirmware => {
-                    actions.push(Action::ActionCheckFirmware);
+                    actions
+                        .push(Action::ActionCheckFirmware)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateInit::Linkage => {
-                    actions.push(Action::ActionLinkageProtocol);
+                    actions
+                        .push(Action::ActionLinkageProtocol)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateInit::InitSystem => {
                     //actions.push();
                 }
                 SubStateInit::NotifyFirmwareUpdated => {
-                    actions.push(Action::ActionRestart);
+                    actions
+                        .push(Action::ActionRestart)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
             }
         }
@@ -455,7 +464,7 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action> {
 /// Retorna una transición inválida genérica para Init.
 fn invalid() -> Transition {
     let invalid = TransitionInvalid {
-        invalid: "Transición inválida.".to_string(),
+        invalid: String::<20>::try_from("Transición inválida.").unwrap(),
     };
     Transition::Invalid(invalid)
 }
@@ -465,7 +474,7 @@ fn state_check_firmware_event_not_update(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -475,7 +484,7 @@ fn state_check_firmware_event_update_successful(mut next_fsm: FsmState) -> Trans
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -485,7 +494,7 @@ fn state_linkage_event_linkage_ok(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -497,7 +506,7 @@ fn state_init_system_event_to_store(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -508,7 +517,7 @@ fn state_init_system_event_to_normal(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -520,7 +529,7 @@ fn state_init_system_to_balance(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -531,7 +540,7 @@ fn state_init_system_to_safe(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -542,7 +551,7 @@ fn state_store_event_to_normal(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -553,7 +562,7 @@ fn state_store_event_to_bypass(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -564,7 +573,7 @@ fn state_store_event_to_safe(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -576,7 +585,7 @@ fn state_store_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -588,7 +597,7 @@ fn state_store_event_to_handshake(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -599,7 +608,7 @@ fn state_normal_event_to_cooling(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -610,7 +619,7 @@ fn state_normal_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -621,7 +630,7 @@ fn state_normal_event_to_handshake(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -631,7 +640,7 @@ fn state_bypass_event_to_normal(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -642,7 +651,7 @@ fn state_bypass_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -652,7 +661,7 @@ fn state_init_balance_event_to_in_handshake(mut next_fsm: FsmState) -> Transitio
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -662,7 +671,7 @@ fn state_init_balance_event_to_alert(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -672,7 +681,7 @@ fn state_init_balance_event_to_data(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -682,7 +691,7 @@ fn state_init_balance_event_to_monitor(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -693,7 +702,7 @@ fn state_in_handshake_event_to_safe(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -703,7 +712,7 @@ fn state_in_handshake_event_to_alert(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -713,7 +722,7 @@ fn state_alert_event_to_data(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -723,7 +732,7 @@ fn state_data_event_to_monitor(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -733,7 +742,7 @@ fn state_monitor_event_to_out_handshake(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -744,7 +753,7 @@ fn state_out_handshake_event_to_safe(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -755,7 +764,7 @@ fn state_out_handshake_event_to_normal(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -765,7 +774,7 @@ fn newer_epoch(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -775,7 +784,7 @@ fn state_safe_event_to_normal(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -786,7 +795,7 @@ fn state_safe_event_to_store(mut next_fsm: FsmState) -> Transition {
 
     let valid = TransitionValid {
         change_state: next_fsm,
-        actions: vec![],
+        actions: Vec::new(),
     };
     Transition::Valid(valid)
 }

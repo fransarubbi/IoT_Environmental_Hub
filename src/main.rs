@@ -51,6 +51,7 @@ fn core0_executor_task(
         nvs,
         &settings.read().unwrap().wifi_ssid(),
         &settings.read().unwrap().wifi_password(),
+        channels.wifi_service_to_core,
         channels.wifi_service_from_core,
     )
     .map_err(|e| anyhow::anyhow!("error al crear WiFi: {}", e))?;

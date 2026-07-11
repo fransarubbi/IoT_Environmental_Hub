@@ -4,9 +4,17 @@ use crate::bsp::mqtt::IncomingMessage;
 use async_channel::{Receiver, Sender, bounded};
 use edge_executor::LocalExecutor;
 use embassy_futures::select::{Either, select};
+use heapless::{String, Vec};
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
+
+pub const NETWORK_STRING_LEN: usize = 20;
+pub const WIFI_SSID_STRING_LEN: usize = 20;
+pub const WIFI_PASSWORD_STRING_LEN: usize = 20;
+pub const MQTT_URI_STRING_LEN: usize = 28;
+pub const DEVICE_NAME_STRING_LEN: usize = 10;
+pub const MAX_MSGPACK_BUFFER_SIZE: usize = 192;
 
 pub enum MessageServiceResponse {
     Serialized(SerializedMessage),
@@ -20,14 +28,14 @@ pub enum MessageServiceCommand {
     GenerateMonitor(Monitor),
     GenerateAlertAir(AlertAir),
     GenerateAlertTem(AlertTh),
-    GenerateFirmwareOk(String), // version
-    GenerateSettings(u64),      // message_id
-    GenerateSettingsAck(u64),   // message_id
+    GenerateFirmwareOk(String<6>), // version
+    GenerateSettings(u64),         // message_id
+    GenerateSettingsAck(u64),      // message_id
     GenerateEmptyQueue(EmptyQueue),
     GenerateEmptyQueueSafe(EmptyQueueSafeMode),
     GeneratePing,
     GenerateLinkageRequest,
-    GenerateHandshake((u32, String)), // balance_epoch
+    GenerateHandshake((u32, String<15>)), // balance_epoch
 }
 
 pub struct MessageService {
@@ -114,9 +122,9 @@ impl MessageService {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Metadata {
     #[serde(rename = "s")]
-    pub sender_user_id: String,
+    pub sender_user_id: String<18>,
     #[serde(rename = "d")]
-    pub destination_id: String,
+    pub destination_id: String<18>,
     #[serde(rename = "t")]
     pub timestamp: u64,
 }
@@ -129,7 +137,7 @@ pub struct Measurement {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "pc")]
     pub pulse_counter: i64,
     #[serde(rename = "pm")]
@@ -150,7 +158,7 @@ pub struct AlertAir {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "i")]
     pub initial_air_quality: f32,
     #[serde(rename = "a")]
@@ -163,7 +171,7 @@ pub struct AlertTh {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "i")]
     pub initial_temp: f32,
     #[serde(rename = "a")]
@@ -177,7 +185,7 @@ pub struct Monitor {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "hf")]
     pub heap_free: u32,
     #[serde(rename = "hm")]
@@ -187,7 +195,7 @@ pub struct Monitor {
     #[serde(rename = "ut")]
     pub uptime_sec: u64,
     #[serde(rename = "ws")]
-    pub wifi_ssid: String,
+    pub wifi_ssid: String<WIFI_SSID_STRING_LEN>,
     #[serde(rename = "wr")]
     pub wifi_rssi: i8,
 }
@@ -201,15 +209,15 @@ pub struct Settings {
     #[serde(rename = "mi")]
     pub message_id: u64,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "ws")]
-    pub wifi_ssid: String,
+    pub wifi_ssid: String<WIFI_SSID_STRING_LEN>,
     #[serde(rename = "wp")]
-    pub wifi_password: String,
+    pub wifi_password: String<WIFI_PASSWORD_STRING_LEN>,
     #[serde(rename = "mu")]
-    pub mqtt_uri: String,
+    pub mqtt_uri: String<MQTT_URI_STRING_LEN>,
     #[serde(rename = "dn")]
-    pub device_name: String,
+    pub device_name: String<DEVICE_NAME_STRING_LEN>,
     #[serde(rename = "s")]
     pub sample: u32,
     #[serde(rename = "e")]
@@ -222,7 +230,7 @@ pub struct Handshake {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "f")]
-    pub flag: String,
+    pub flag: String<15>,
     #[serde(rename = "b")]
     pub balance_epoch: u32,
 }
@@ -233,7 +241,7 @@ pub struct MessageStateBalanceMode {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "s")]
-    pub state: String,
+    pub state: String<15>,
     #[serde(rename = "b")]
     pub balance_epoch: u32,
     #[serde(rename = "d")]
@@ -246,7 +254,7 @@ pub struct MessageStateNormal {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "s")]
-    pub state: String,
+    pub state: String<10>,
 }
 
 /// Notificación de cambio a Modo Seguro.
@@ -255,7 +263,7 @@ pub struct MessageStateSafeMode {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "s")]
-    pub state: String,
+    pub state: String<15>,
     #[serde(rename = "f")]
     pub frequency: u32,
     #[serde(rename = "j")]
@@ -268,11 +276,11 @@ pub struct PhaseNotification {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "s")]
-    pub state: String,
+    pub state: String<15>,
     #[serde(rename = "e")]
     pub epoch: u32,
     #[serde(rename = "p")]
-    pub phase: String,
+    pub phase: String<10>,
     #[serde(rename = "f")]
     pub frequency: u32,
     #[serde(rename = "j")]
@@ -293,7 +301,7 @@ pub struct Ping {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "p")]
     pub ping: bool,
 }
@@ -306,7 +314,7 @@ pub struct SettingOk {
     #[serde(rename = "i")]
     pub message_id: u64,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "h")]
     pub handshake: bool,
 }
@@ -316,7 +324,7 @@ pub struct FirmwareOk {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "v")]
-    pub version: String,
+    pub version: String<6>,
     #[serde(rename = "o")]
     pub is_ok: bool,
 }
@@ -326,9 +334,9 @@ pub struct EmptyQueue {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "s")]
-    pub state: String,
+    pub state: String<15>,
     #[serde(rename = "p")]
-    pub phase: String,
+    pub phase: String<10>,
     #[serde(rename = "q")]
     pub queue_empty: bool,
 }
@@ -338,7 +346,7 @@ pub struct EmptyQueueSafeMode {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "s")]
-    pub state: String,
+    pub state: String<15>,
     #[serde(rename = "q")]
     pub queue_empty: bool,
 }
@@ -348,9 +356,9 @@ pub struct LinkageRequest {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "d")]
-    pub device_name: String,
+    pub device_name: String<DEVICE_NAME_STRING_LEN>,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "l")]
     pub linkage_request: bool,
 }
@@ -368,7 +376,7 @@ pub struct UpdateFirmware {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "n")]
-    pub network: String,
+    pub network: String<NETWORK_STRING_LEN>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -409,14 +417,19 @@ pub enum MessageToEdge {
 /// Contiene el payload binario (serializado) y los parámetros de transporte.
 #[derive(Serialize, Deserialize)]
 pub struct SerializedMessage {
-    topic: String,
-    payload: Vec<u8>,
+    topic: String<75>,
+    payload: Vec<u8, MAX_MSGPACK_BUFFER_SIZE>,
     qos: u8,
     retain: bool,
 }
 
 impl SerializedMessage {
-    pub fn new(topic: String, payload: Vec<u8>, qos: u8, retain: bool) -> Self {
+    pub fn new(
+        topic: String<75>,
+        payload: Vec<u8, MAX_MSGPACK_BUFFER_SIZE>,
+        qos: u8,
+        retain: bool,
+    ) -> Self {
         Self {
             topic,
             payload,

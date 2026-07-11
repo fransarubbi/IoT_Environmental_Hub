@@ -24,7 +24,7 @@ use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse, SystemS
 use crate::app::timer::logic::{TimerCommand, TimerResponse};
 use crate::bsp::mqtt::MqttData;
 use crate::bsp::ota::{OtaCommand, OtaResponse};
-use crate::bsp::wifi::WifiCommand;
+use crate::bsp::wifi::{WifiCommand, WifiResponse};
 
 pub struct Core {
     core_from_fsm_service: Receiver<FsmServiceResponse>,
@@ -39,6 +39,7 @@ pub struct Core {
     core_from_mqtt_service: Receiver<MqttData>,
     core_to_mqtt_service: Sender<MqttData>,
 
+    core_from_wifi_service: Receiver<WifiResponse>,
     core_to_wifi_service: Sender<WifiCommand>,
 
     core_from_ota_service: Receiver<OtaResponse>,
@@ -70,6 +71,7 @@ pub struct CoreBuilder {
     core_from_mqtt_service: Option<Receiver<MqttData>>,
     core_to_mqtt_service: Option<Sender<MqttData>>,
 
+    core_from_wifi_service: Option<Receiver<WifiResponse>>,
     core_to_wifi_service: Option<Sender<WifiCommand>>,
 
     core_from_ota_service: Option<Receiver<OtaResponse>>,
@@ -121,6 +123,11 @@ impl CoreBuilder {
 
     pub fn core_from_mqtt_service(mut self, ch: Receiver<MqttData>) -> Self {
         self.core_from_mqtt_service = Some(ch);
+        self
+    }
+
+    pub fn core_from_wifi_service(mut self, ch: Receiver<WifiResponse>) -> Self {
+        self.core_from_wifi_service = Some(ch);
         self
     }
 
@@ -190,9 +197,12 @@ impl CoreBuilder {
                 .core_from_mqtt_service
                 .ok_or(anyhow!("falta: core_from_config_service"))?,
 
+            core_from_wifi_service: self
+                .core_from_wifi_service
+                .ok_or(anyhow!("falta: core_from_wifi_service"))?,
             core_to_wifi_service: self
                 .core_to_wifi_service
-                .ok_or(anyhow!("falta: core_to_config_service"))?,
+                .ok_or(anyhow!("falta: core_to_wifi_service"))?,
 
             core_from_ota_service: self
                 .core_from_ota_service
@@ -277,7 +287,7 @@ impl Core {
                         MessageFromEdge::HandshakeToHub(msg) => {
                             let epoch = settings.read().unwrap().balance_epoch();
                             let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.balance_epoch >= epoch && msg.metadata.sender_user_id == edge {
+                            if msg.balance_epoch >= epoch && msg.metadata.sender_user_id == edge.as_str() {
                                 if let Err(e) = self
                                     .core_to_fsm_service
                                     .try_send(FsmServiceCommand::Handshake(msg.flag))
@@ -289,7 +299,7 @@ impl Core {
                         MessageFromEdge::Heartbeat(msg) => {}
                         MessageFromEdge::LinkageAck(msg) => {
                             let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.metadata.sender_user_id == edge && msg.linkage_ack {
+                            if msg.metadata.sender_user_id == edge.as_str() && msg.linkage_ack {
                                 if let Err(e) = self
                                     .core_to_fsm_service
                                     .try_send(FsmServiceCommand::LinkageOk)
@@ -302,7 +312,7 @@ impl Core {
                         MessageFromEdge::StateBalanceMode(msg) => {}
                         MessageFromEdge::StateNormal(msg) => {
                             let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.metadata.sender_user_id == edge {
+                            if msg.metadata.sender_user_id == edge.as_str() {
                                 if let Err(e) =
                                     self.core_to_fsm_service.try_send(FsmServiceCommand::Normal)
                                 {
@@ -312,7 +322,7 @@ impl Core {
                         }
                         MessageFromEdge::StateSafeMode(msg) => {
                             let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.metadata.sender_user_id == edge {
+                            if msg.metadata.sender_user_id == edge.as_str() {
                                 if let Err(e) = self.core_to_fsm_service.try_send(
                                     FsmServiceCommand::Safe((msg.state, msg.frequency, msg.jitter)),
                                 ) {
@@ -324,9 +334,9 @@ impl Core {
                             let edge = settings.read().unwrap().id_edge().to_string();
                             let network = settings.read().unwrap().id_network().to_string();
                             let mac = settings.read().unwrap().mac_addr().to_string();
-                            if msg.metadata.sender_user_id == edge && msg.network == network {
-                                if msg.metadata.destination_id == mac
-                                    || msg.metadata.destination_id == "all".to_string()
+                            if msg.metadata.sender_user_id == edge.as_str() && msg.network == network.as_str() {
+                                if msg.metadata.destination_id == mac.as_str()
+                                    || msg.metadata.destination_id == "all"
                                 {
                                     if let Err(e) =
                                         self.core_to_ota_service.try_send(OtaCommand::CheckFirmware)

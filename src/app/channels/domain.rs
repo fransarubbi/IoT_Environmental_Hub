@@ -22,7 +22,7 @@ use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse};
 use crate::app::timer::logic::{TimerCommand, TimerResponse};
 use crate::bsp::mqtt::MqttData;
 use crate::bsp::ota::{OtaCommand, OtaResponse};
-use crate::bsp::wifi::WifiCommand;
+use crate::bsp::wifi::{WifiCommand, WifiResponse};
 use async_channel::{Receiver, Sender, bounded};
 use log::info;
 
@@ -52,6 +52,8 @@ pub struct Channels {
 
     pub core_to_wifi_service: Sender<WifiCommand>,
     pub wifi_service_from_core: Receiver<WifiCommand>,
+    pub wifi_service_to_core: Sender<WifiResponse>,
+    pub core_from_wifi_service: Receiver<WifiResponse>,
 
     pub mqtt_service_to_core: Sender<MqttData>,
     pub core_from_mqtt_service: Receiver<MqttData>,
@@ -105,6 +107,7 @@ impl Channels {
         let (config_s2c_tx, config_s2c_rx) = bounded(buffer_size);
 
         // Wifi
+        let (wifi_s2c_tx, wifi_s2c_rx) = bounded(buffer_size);
         let (wifi_c2s_tx, wifi_c2s_rx) = bounded(buffer_size);
 
         // MQTT
@@ -142,6 +145,8 @@ impl Channels {
             config_manager_to_core: config_s2c_tx,
             core_from_config_manager: config_s2c_rx,
 
+            wifi_service_to_core: wifi_s2c_tx,
+            core_from_wifi_service: wifi_s2c_rx,
             core_to_wifi_service: wifi_c2s_tx,
             wifi_service_from_core: wifi_c2s_rx,
 

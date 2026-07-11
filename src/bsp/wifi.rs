@@ -1,24 +1,29 @@
 //! Módulo WiFi.
 //! Abstrae la conexión a la red detrás de un trait.
 
-use async_channel::Receiver;
+use crate::app::message::domain::WIFI_SSID_STRING_LEN;
+use crate::svc::wifi::WifiStats;
+use async_channel::{Receiver, Sender};
 use esp_idf_hal::modem::Modem;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi};
-use log::{error, info, warn};
-use crate::svc::wifi::{WifiStats};
 use esp_idf_svc::sys::{esp_wifi_set_max_tx_power, esp_wifi_sta_get_ap_info, wifi_ap_record_t};
-
+use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi};
+use heapless::String;
+use log::{error, info, warn};
 
 const WIFI_MAX_RETRY: u8 = 5;
 
+pub enum WifiResponse {
+    Stats(WifiStats),
+}
 
 pub enum WifiCommand {
     Update {
-        ssid: String,
-        password: String,
-    }
+        ssid: String<WIFI_SSID_STRING_LEN>,
+        password: String<30>,
+    },
+    GetStats,
 }
 
 pub fn get_unix_epoch() -> u64 {
@@ -28,11 +33,11 @@ pub fn get_unix_epoch() -> u64 {
         .as_secs()
 }
 
-
 pub struct EspIdfWifiManager<'a> {
     // Usamos BlockingWifi que envuelve al cliente WiFi de esp-idf-svc y maneja
     // la máquina de eventos y esperas
     wifi: BlockingWifi<EspWifi<'a>>,
+    sender: Sender<WifiResponse>,
     receiver: Receiver<WifiCommand>,
 }
 
@@ -45,16 +50,24 @@ impl<'a> EspIdfWifiManager<'a> {
         nvs: EspDefaultNvsPartition,
         ssid: &str,
         password: &str,
-        receiver: Receiver<WifiCommand>
-    ) -> Result<Self, String> {
-
+        sender: Sender<WifiResponse>,
+        receiver: Receiver<WifiCommand>,
+    ) -> Result<Self, String<100>> {
         // Inicializar el driver WiFi
         let esp_wifi = EspWifi::new(modem, sys_loop.clone(), Some(nvs))
-            .map_err(|e| format!("error creando EspWifi: {}", e))?;
+            .map_err(|e| {
+                let mut s = String::<100>::new();
+                let _ = core::fmt::write(&mut s, format_args!("error creando EspWifi: {}", e));
+                s
+            })?;
 
         // Envolverlo en BlockingWifi
         let mut wifi = BlockingWifi::wrap(esp_wifi, sys_loop)
-            .map_err(|e| format!("error creando BlockingWifi: {}", e))?;
+            .map_err(|e| {
+                let mut s = String::<100>::new();
+                let _ = core::fmt::write(&mut s, format_args!("error creando BlockingWifi: {}", e));
+                s
+            })?;
 
         // Configurar credenciales (Modo Station)
         let wifi_configuration = Configuration::Client(ClientConfiguration {
@@ -70,11 +83,19 @@ impl<'a> EspIdfWifiManager<'a> {
 
         // Aplicamos la configuración
         wifi.set_configuration(&wifi_configuration)
-            .map_err(|e| format!("error configurando WiFi: {}", e))?;
+            .map_err(|e| {
+                let mut s = String::<100>::new();
+                let _ = core::fmt::write(&mut s, format_args!("error configurando WiFi: {}", e));
+                s
+            })?;
 
         // Iniciamos el driver
         wifi.start()
-            .map_err(|e| format!("error iniciando WiFi: {}", e))?;
+            .map_err(|e| {
+                let mut s = String::<100>::new();
+                let _ = core::fmt::write(&mut s, format_args!("error iniciando WiFi: {}", e));
+                s
+            })?;
 
         // Equivale a: esp_wifi_set_max_tx_power(20)
         unsafe {
@@ -84,11 +105,14 @@ impl<'a> EspIdfWifiManager<'a> {
 
         info!("WiFi inicializado y configurado correctamente.");
 
-        Ok(Self { wifi, receiver })
+        Ok(Self {
+            wifi,
+            sender,
+            receiver,
+        })
     }
 
     pub async fn run(mut self) {
-        
         if let Err(e) = self.connect().await {
             error!("Fallo en la conexión inicial: {}", e);
         }
@@ -99,7 +123,7 @@ impl<'a> EspIdfWifiManager<'a> {
                 match cmd {
                     WifiCommand::Update { ssid, password } => {
                         info!("Recibidas nuevas credenciales. Reconectando...");
-                        
+
                         // Desconectamos la red actual
                         let _ = self.disconnect();
 
@@ -107,18 +131,28 @@ impl<'a> EspIdfWifiManager<'a> {
                         let wifi_configuration = Configuration::Client(ClientConfiguration {
                             ssid: ssid.as_str().try_into().unwrap(),
                             password: password.as_str().try_into().unwrap(),
-                            auth_method: if password.is_empty() { AuthMethod::None } else { AuthMethod::WPA2Personal },
+                            auth_method: if password.is_empty() {
+                                AuthMethod::None
+                            } else {
+                                AuthMethod::WPA2Personal
+                            },
                             ..Default::default()
                         });
 
                         // Aplicamos y volvemos a conectar
                         if let Err(e) = self.wifi.set_configuration(&wifi_configuration) {
-                            error!("No se pudo setear nueva config WiFi: {}", e);
+                            error!("No se pudo setear nueva config WiFi: {e}");
                             continue;
                         }
 
                         if let Err(e) = self.connect().await {
-                            error!("Fallo al reconectar a nueva red: {}", e);
+                            error!("Fallo al reconectar a nueva red: {e}");
+                        }
+                    }
+                    WifiCommand::GetStats => {
+                        let stats = self.get_stats();
+                        if let Err(e) = self.sender.try_send(WifiResponse::Stats(stats)) {
+                            error!("no se pudieron enviar las stats de WiFi. {e}");
                         }
                     }
                 }
@@ -126,29 +160,30 @@ impl<'a> EspIdfWifiManager<'a> {
         }
     }
 
-    
-    async fn connect(&mut self) -> Result<(), String> {
+    async fn connect(&mut self) -> Result<(), String<50>> {
         let mut retry_count = 0;
 
         loop {
-            info!("intentando conectar al AP... (Intento {}/{})", retry_count + 1, WIFI_MAX_RETRY);
+            info!(
+                "intentando conectar al AP... (Intento {}/{})",
+                retry_count + 1,
+                WIFI_MAX_RETRY
+            );
 
             match self.wifi.connect() {
-                Ok(_) => {
-                    match self.wifi.wait_netif_up() {
-                        Ok(_) => {
-                            info!("conexión WiFi exitosa. IP obtenida.");
-                            return Ok(());
-                        }
-                        Err(e) => warn!("fallo obteniendo IP tras conectar: {}", e),
+                Ok(_) => match self.wifi.wait_netif_up() {
+                    Ok(_) => {
+                        info!("conexión WiFi exitosa. IP obtenida.");
+                        return Ok(());
                     }
-                }
+                    Err(e) => warn!("fallo obteniendo IP tras conectar: {}", e),
+                },
                 Err(e) => warn!("fallo al conectar al AP: {}", e),
             }
 
             retry_count += 1;
             if retry_count >= WIFI_MAX_RETRY {
-                return Err("timeout/Fallo de conexión WiFi".to_string());
+                return Err(String::<50>::try_from("timeout/Fallo de conexión WiFi").unwrap_or_default());
             }
 
             // ESPERA ASÍNCRONA: Permite que MQTT siga trabajando mientras reintentamos
@@ -156,10 +191,12 @@ impl<'a> EspIdfWifiManager<'a> {
         }
     }
 
-    fn disconnect(&mut self) -> Result<(), String> {
-        self.wifi
-            .disconnect()
-            .map_err(|e| format!("error al desconectar: {}", e))
+    fn disconnect(&mut self) -> Result<(), String<50>> {
+        self.wifi.disconnect().map_err(|e| {
+            let mut s = String::<50>::new();
+            let _ = core::fmt::write(&mut s, format_args!("error al desconectar: {}", e));
+            s
+        })
     }
 
     fn get_stats(&self) -> WifiStats {
@@ -171,7 +208,8 @@ impl<'a> EspIdfWifiManager<'a> {
 
         // Obtenemos la IP de forma segura a través de esp-idf-svc
         if let Ok(ip_info) = self.wifi.wifi().sta_netif().get_ip_info() {
-            stats.ip = ip_info.ip.to_string();
+            let ip_str = ip_info.ip.to_string();
+            let _ = stats.ip.push_str(&ip_str);
         }
 
         // Para el RSSI y SSID actuales, accedemos al driver subyacente en C
@@ -180,10 +218,13 @@ impl<'a> EspIdfWifiManager<'a> {
 
         if err == esp_idf_svc::sys::ESP_OK {
             stats.rssi = ap_info.rssi;
-            // Convertimos el array de u8 de C a un String de Rust, ignorando nulos
-            stats.ssid = String::from_utf8_lossy(&ap_info.ssid)
-                .trim_end_matches(char::from(0))
-                .to_string();
+            // Convertimos el array de u8 de C al heapless String, ignorando nulos
+            let raw = &ap_info.ssid;
+            let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+            let trimmed = &raw[..end];
+            if let Ok(s) = core::str::from_utf8(trimmed) {
+                let _ = stats.ssid.push_str(s);
+            }
         }
 
         stats

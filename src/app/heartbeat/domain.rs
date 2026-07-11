@@ -4,8 +4,11 @@ use async_channel::{Receiver, Sender, bounded};
 use edge_executor::LocalExecutor;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer as EmbassyTimer};
+use heapless::{String, Vec};
 use log::{error, info};
 use std::sync::{Arc, RwLock};
+
+pub const ACTION_VECTOR_CAPACITY: usize = 3;
 
 pub enum HeartbeatResponse {
     Connected,
@@ -53,7 +56,7 @@ impl HeartbeatService {
         let (tx_to_fsm, rx_from_heartbeat) = bounded::<Event>(10);
         let (tx_to_timer, rx_watchdog_heartbeat) = bounded::<WatchdogCommand>(10);
         let (tx_msg, rx_from_server) = bounded::<HeartbeatCommand>(10);
-        let (tx_actions, rx_fsm) = bounded::<Vec<Action>>(10);
+        let (tx_actions, rx_fsm) = bounded::<Vec<Action, ACTION_VECTOR_CAPACITY>>(10);
 
         let heartbeat_tx_to_fsm = tx_to_fsm.clone();
         executor
@@ -167,21 +170,21 @@ pub enum Action {
 /// Contiene el nuevo estado de la FSM y las acciones a ejecutar.
 pub struct TransitionValid {
     change_state: FsmHeartbeat,
-    action: Vec<Action>,
+    action: Vec<Action, ACTION_VECTOR_CAPACITY>,
 }
 
 impl TransitionValid {
     pub fn get_change_state(&self) -> FsmHeartbeat {
         self.change_state.clone()
     }
-    pub fn get_actions(&self) -> Vec<Action> {
+    pub fn get_actions(&self) -> Vec<Action, ACTION_VECTOR_CAPACITY> {
         self.action.clone()
     }
 }
 
 /// Resultado de una transición inválida (error de lógica o evento inesperado).
 pub struct TransitionInvalid {
-    invalid: String,
+    invalid: String<20>,
 }
 
 impl TransitionInvalid {
@@ -270,12 +273,19 @@ fn state_starting_wait_event_heartbeat(mut next_fsm: FsmHeartbeat) -> Transition
     next_fsm.state = State::ItsAlive;
     next_fsm.old_status = Status::Connected;
     next_fsm.status = Status::Connected;
+
+    let mut vec = Vec::new();
+    vec.push(Action::SendStatusConditional(
+        old_status,
+        next_fsm.status.clone(),
+    ))
+    .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+    vec.push(Action::StopTimer)
+        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+
     let valid = TransitionValid {
         change_state: next_fsm.clone(),
-        action: vec![
-            Action::SendStatusConditional(old_status, next_fsm.status), // (Disconnected, Connected)
-            Action::StopTimer,
-        ],
+        action: vec,
     };
     Transition::Valid(valid)
 }
@@ -286,7 +296,7 @@ fn state_starting_wait_event_timeout(mut next_fsm: FsmHeartbeat) -> Transition {
     next_fsm.state = State::NotHeartbeatYet;
     let valid = TransitionValid {
         change_state: next_fsm,
-        action: vec![],
+        action: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -295,9 +305,14 @@ fn state_starting_wait_event_timeout(mut next_fsm: FsmHeartbeat) -> Transition {
 /// Reinicia el ciclo de espera tras recibir un latido válido.
 fn state_its_alive_event_heartbeat(mut next_fsm: FsmHeartbeat) -> Transition {
     next_fsm.state = State::StartingWait;
+
+    let mut vec = Vec::new();
+    vec.push(Action::StopTimer)
+        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+
     let valid = TransitionValid {
         change_state: next_fsm.clone(),
-        action: vec![Action::StopTimer],
+        action: vec,
     };
     Transition::Valid(valid)
 }
@@ -308,7 +323,7 @@ fn state_its_alive_event_timeout(mut next_fsm: FsmHeartbeat) -> Transition {
     next_fsm.state = State::NotHeartbeatYet;
     let valid = TransitionValid {
         change_state: next_fsm.clone(),
-        action: vec![],
+        action: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -317,9 +332,14 @@ fn state_its_alive_event_timeout(mut next_fsm: FsmHeartbeat) -> Transition {
 /// Recuperación exitosa antes de declarar muerte total.
 fn state_not_heartbeat_yet_event_heartbeat(mut next_fsm: FsmHeartbeat) -> Transition {
     next_fsm.state = State::StartingWait;
+
+    let mut vec = Vec::new();
+    vec.push(Action::StopTimer)
+        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+
     let valid = TransitionValid {
         change_state: next_fsm.clone(),
-        action: vec![Action::StopTimer],
+        action: vec,
     };
     Transition::Valid(valid)
 }
@@ -331,9 +351,17 @@ fn state_not_heartbeat_yet_event_timeout(mut next_fsm: FsmHeartbeat) -> Transiti
     next_fsm.state = State::DeadServer;
     next_fsm.old_status = Status::Disconnected;
     next_fsm.status = Status::Disconnected;
+
+    let mut vec = Vec::new();
+    vec.push(Action::SendStatusConditional(
+        old_status,
+        next_fsm.status.clone(),
+    ))
+    .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+
     let valid = TransitionValid {
         change_state: next_fsm.clone(),
-        action: vec![Action::SendStatusConditional(old_status, next_fsm.status)], // (Connected, Disconnected)
+        action: vec, // (Connected, Disconnected)
     };
     Transition::Valid(valid)
 }
@@ -344,7 +372,7 @@ fn state_dead_server_event_heartbeat(mut next_fsm: FsmHeartbeat) -> Transition {
     next_fsm.state = State::StartingWait;
     let valid = TransitionValid {
         change_state: next_fsm.clone(),
-        action: vec![],
+        action: Vec::new(),
     };
     Transition::Valid(valid)
 }
@@ -352,7 +380,7 @@ fn state_dead_server_event_heartbeat(mut next_fsm: FsmHeartbeat) -> Transition {
 /// Helper para generar una transición inválida genérica.
 fn invalid() -> Transition {
     let invalid = TransitionInvalid {
-        invalid: "Invalid state".to_string(),
+        invalid: String::<20>::try_from("Transición inválida.").unwrap(),
     };
     Transition::Invalid(invalid)
 }
