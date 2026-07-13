@@ -15,7 +15,9 @@
 //! Los canales se agrupan en pares bidireccionales por cada subsistema (excepto monitor,
 //! que es unidireccional por naturaleza).
 
+use crate::app::data::domain::{DataServiceCommand, DataServiceResponse};
 use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
+use crate::app::healthscore::domain::{HealthServiceCommand, HealthServiceResponse};
 use crate::app::heartbeat::domain::{HeartbeatCommand, HeartbeatResponse};
 use crate::app::message::domain::{MessageServiceCommand, MessageServiceResponse};
 use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse};
@@ -74,6 +76,16 @@ pub struct Channels {
     pub core_from_heartbeat_service: Receiver<HeartbeatResponse>,
     pub core_to_heartbeat_service: Sender<HeartbeatCommand>,
     pub heartbeat_service_from_core: Receiver<HeartbeatCommand>,
+
+    pub data_service_to_core: Sender<DataServiceResponse>,
+    pub core_from_data_service: Receiver<DataServiceResponse>,
+    pub core_to_data_service: Sender<DataServiceCommand>,
+    pub data_service_from_core: Receiver<DataServiceCommand>,
+
+    pub health_service_to_core: Sender<HealthServiceResponse>,
+    pub core_from_health_service: Receiver<HealthServiceResponse>,
+    pub core_to_health_service: Sender<HealthServiceCommand>,
+    pub health_service_from_core: Receiver<HealthServiceCommand>,
 }
 
 impl Channels {
@@ -126,20 +138,25 @@ impl Channels {
         let (heartbeat_s2c_tx, heartbeat_s2c_rx) = bounded(buffer_size);
         let (heartbeat_c2s_tx, heartbeat_c2s_rx) = bounded(buffer_size);
 
+        // Data
+        let (data_s2c_tx, data_s2c_rx) = bounded(buffer_size);
+        let (data_c2s_tx, data_c2s_rx) = bounded(buffer_size);
+
+        // Healthscore
+        let (health_s2c_tx, health_s2c_rx) = bounded(buffer_size);
+        let (health_c2s_tx, health_c2s_rx) = bounded(buffer_size);
+
         Self {
-            // FSM
             fsm_service_to_core: fsm_s2c_tx,
             core_from_fsm_service: fsm_s2c_rx,
             core_to_fsm_service: fsm_c2s_tx,
             fsm_service_from_core: fsm_c2s_rx,
 
-            // Message
             message_service_to_core: msg_s2c_tx,
             core_from_message_service: msg_s2c_rx,
             core_to_message_service: msg_c2s_tx,
             message_service_from_core: msg_c2s_rx,
 
-            // Settings
             core_to_config_manager: config_c2s_tx,
             config_manager_from_core: config_c2s_rx,
             config_manager_to_core: config_s2c_tx,
@@ -169,6 +186,16 @@ impl Channels {
             core_from_heartbeat_service: heartbeat_s2c_rx,
             core_to_heartbeat_service: heartbeat_c2s_tx,
             heartbeat_service_from_core: heartbeat_c2s_rx,
+
+            data_service_to_core: data_s2c_tx,
+            core_from_data_service: data_s2c_rx,
+            core_to_data_service: data_c2s_tx,
+            data_service_from_core: data_c2s_rx,
+
+            health_service_to_core: health_s2c_tx,
+            core_from_health_service: health_s2c_rx,
+            core_to_health_service: health_c2s_tx,
+            health_service_from_core: health_c2s_rx,
         }
     }
 }

@@ -1,9 +1,13 @@
 //! Módulo MQTT.
 //! Abstrae la implementación específica del hardware detrás de traits.
 
-use crate::app::message::domain::{MAX_MSGPACK_BUFFER_SIZE, SerializedMessage};
-use crate::app::system_settings::domain::SystemSettings;
+use crate::app::{
+    healthscore::domain::HealthServiceCommand,
+    message::domain::{MAX_MSGPACK_BUFFER_SIZE, SerializedMessage},
+    system_settings::domain::SystemSettings,
+};
 use crate::svc::mqtt::Mqtt;
+
 use async_channel::{Receiver, Sender};
 use esp_idf_svc::mqtt::client::{
     Details, EspMqttClient, EventPayload, MqttClientConfiguration, QoS,
@@ -11,9 +15,12 @@ use esp_idf_svc::mqtt::client::{
 use esp_idf_svc::tls::X509;
 use heapless::{String, Vec};
 use log::{debug, error, info, warn};
-use std::ffi::CString; // Necesario para compatibilidad con C
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+
+use std::{
+    ffi::CString, // Necesario para compatibilidad con C
+    sync::{Arc, Mutex, RwLock},
+    time::Duration,
+};
 
 pub enum MqttData {
     Connected,
@@ -21,6 +28,7 @@ pub enum MqttData {
     PubAck { msg_id: u16, return_code: u8 },
     InMessage(IncomingMessage),
     OutMessage(SerializedMessage),
+    Health(HealthServiceCommand),
 }
 
 /// Estructura que contiene el mensaje binario y el tópico donde se recibió.
@@ -40,6 +48,7 @@ pub struct EspIdfMqttManager {
     client: EspMqttClient<'static>, // El cliente nativo de esp-idf-svc
     settings: Arc<RwLock<SystemSettings>>,
     receiver: Receiver<MqttData>,
+    sender: Sender<MqttData>,
 }
 
 impl EspIdfMqttManager {
@@ -89,13 +98,14 @@ impl EspIdfMqttManager {
             buffer: Vec::new(),
         }));
 
-        // 3. Manejamos el Result mapeando el error de EspError a String
+        let sender_to_closure = sender.clone();
+
         let client = EspMqttClient::new_cb(&uri, &config, move |event| {
             // 4. Hacemos match directamente sobre EventPayload
             match event.payload() {
                 EventPayload::Connected(_) => {
                     info!("conectado al broker MQTT");
-                    match sender.try_send(MqttData::Connected) {
+                    match sender_to_closure.try_send(MqttData::Connected) {
                         Ok(_) => {}
                         Err(e) => error!("no se pudo enviar MqttData por el canal. {e}"),
                     }
@@ -103,20 +113,32 @@ impl EspIdfMqttManager {
 
                 EventPayload::Disconnected => {
                     warn!("desconectado del broker");
-                    match sender.try_send(MqttData::Disconnected) {
-                        Ok(_) => {}
-                        Err(e) => error!("no se pudo enviar MqttData por el canal. {e}"),
+                    if let Err(e) = sender_to_closure
+                        .try_send(MqttData::Health(HealthServiceCommand::Disconnect))
+                    {
+                        error!("no se pudo enviar evento Disconnect. {e}");
+                    }
+                    if let Err(e) = sender_to_closure.try_send(MqttData::Disconnected) {
+                        error!("no se pudo enviar MqttData por el canal. {e}");
                     }
                 }
 
                 EventPayload::Published(msg_id) => {
                     debug!("puback recibido para msg_id: {msg_id}");
-                    match sender.try_send(MqttData::PubAck {
+                    if let Err(e) = sender_to_closure.try_send(MqttData::PubAck {
                         msg_id: msg_id as u16,
                         return_code: 0,
                     }) {
-                        Ok(_) => {}
-                        Err(e) => error!("no se pudo enviar MqttData por el canal.{e}"),
+                        error!("no se pudo enviar MqttData por el canal.{e}");
+                    }
+                    if let Err(e) =
+                        sender_to_closure.try_send(MqttData::Health(HealthServiceCommand::PubAck {
+                            msg_id: msg_id as i32,
+                            return_code: 0,
+                            is_mqtt5: false,
+                        }))
+                    {
+                        error!("{e}");
                     }
                 }
 
@@ -141,7 +163,7 @@ impl EspIdfMqttManager {
                                 topic: topic_hl,
                                 payload: payload_hl,
                             };
-                            if let Err(e) = sender.try_send(MqttData::InMessage(msg)) {
+                            if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(msg)) {
                                 error!("cola llena, mensaje descartado. {e}");
                             }
                         }
@@ -174,7 +196,8 @@ impl EspIdfMqttManager {
                                     payload: std::mem::take(&mut state.buffer),
                                 };
 
-                                if let Err(e) = sender.try_send(MqttData::InMessage(msg)) {
+                                if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(msg))
+                                {
                                     error!("Cola llena, mensaje fragmentado descartado. {e}");
                                 }
                             }
@@ -183,6 +206,11 @@ impl EspIdfMqttManager {
                 }
                 EventPayload::Error(e) => {
                     error!("error en cliente MQTT: {:?}", e);
+                    if let Err(e) = sender_to_closure
+                        .try_send(MqttData::Health(HealthServiceCommand::ErrorSend))
+                    {
+                        error!("{e}");
+                    }
                 }
                 _ => {}
             }
@@ -198,21 +226,43 @@ impl EspIdfMqttManager {
             client,
             settings,
             receiver,
+            sender,
         })
     }
 
     pub async fn run(mut self) {
         while let Ok(cmd) = self.receiver.recv().await {
             match cmd {
-                // Si otro servicio manda un mensaje, lo publicamos a través del cliente C
                 MqttData::OutMessage(msg) => {
-                    if let Err(e) = self.publish(
+                    let qos = msg.get_qos();
+                    match self.publish(
                         &msg.get_topic(),
                         &msg.get_payload(),
-                        match_qos(msg.get_qos()),
+                        match_qos(qos),
                         msg.get_retain(),
                     ) {
-                        error!("Fallo al publicar mensaje en {}: {}", msg.get_topic(), e);
+                        Ok(msg_id) => {
+                            // Si QoS > 0, esperamos un ACK, así que iniciamos el timer en el HealthScore
+                            if qos > 0 && msg_id > 0 {
+                                if let Err(e) = self.sender.try_send(MqttData::Health(
+                                    HealthServiceCommand::MsgSent {
+                                        msg_id: msg_id as i32,
+                                    },
+                                )) {
+                                    error!("{e}");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Fallo al publicar mensaje en {}: {}", msg.get_topic(), e);
+                            // Si falla el envío, penalizamos para el healthscore
+                            if let Err(e) = self
+                                .sender
+                                .try_send(MqttData::Health(HealthServiceCommand::ErrorSend))
+                            {
+                                error!("{e}");
+                            }
+                        }
                     }
                 }
                 _ => {}

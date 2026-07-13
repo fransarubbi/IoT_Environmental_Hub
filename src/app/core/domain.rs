@@ -17,7 +17,9 @@ use embassy_futures::select::{Either6, select6};
 use log::error;
 use std::sync::{Arc, RwLock};
 
+use crate::app::data::domain::{DataServiceCommand, DataServiceResponse};
 use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
+use crate::app::healthscore::domain::{HealthServiceCommand, HealthServiceResponse};
 use crate::app::heartbeat::domain::{HeartbeatCommand, HeartbeatResponse};
 use crate::app::message::domain::{MessageFromEdge, MessageServiceCommand, MessageServiceResponse};
 use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse, SystemSettings};
@@ -50,6 +52,12 @@ pub struct Core {
 
     core_from_heartbeat_service: Receiver<HeartbeatResponse>,
     core_to_heartbeat_service: Sender<HeartbeatCommand>,
+
+    core_from_data_service: Receiver<DataServiceResponse>,
+    core_to_data_service: Sender<DataServiceCommand>,
+
+    core_from_health_service: Receiver<HealthServiceResponse>,
+    core_to_health_service: Sender<HealthServiceCommand>,
 }
 
 /// Builder para construir la estructura `Core`.
@@ -82,6 +90,12 @@ pub struct CoreBuilder {
 
     core_from_heartbeat_service: Option<Receiver<HeartbeatResponse>>,
     core_to_heartbeat_service: Option<Sender<HeartbeatCommand>>,
+
+    core_from_data_service: Option<Receiver<DataServiceResponse>>,
+    core_to_data_service: Option<Sender<DataServiceCommand>>,
+
+    core_from_health_service: Option<Receiver<HealthServiceResponse>>,
+    core_to_health_service: Option<Sender<HealthServiceCommand>>,
 }
 
 impl CoreBuilder {
@@ -163,6 +177,24 @@ impl CoreBuilder {
         self
     }
 
+    pub fn core_from_data_service(mut self, ch: Receiver<DataServiceResponse>) -> Self {
+        self.core_from_data_service = Some(ch);
+        self
+    }
+    pub fn core_to_data_service(mut self, ch: Sender<DataServiceCommand>) -> Self {
+        self.core_to_data_service = Some(ch);
+        self
+    }
+
+    pub fn core_from_health_service(mut self, ch: Receiver<HealthServiceResponse>) -> Self {
+        self.core_from_health_service = Some(ch);
+        self
+    }
+    pub fn core_to_health_service(mut self, ch: Sender<HealthServiceCommand>) -> Self {
+        self.core_to_health_service = Some(ch);
+        self
+    }
+
     /// Construye la instancia de `Core`.
     ///
     /// # Errores
@@ -224,6 +256,20 @@ impl CoreBuilder {
             core_to_heartbeat_service: self
                 .core_to_heartbeat_service
                 .ok_or(anyhow!("falta: core_to_heartbeat_service"))?,
+
+            core_from_data_service: self
+                .core_from_data_service
+                .ok_or(anyhow!("falta: core_from_data_service"))?,
+            core_to_data_service: self
+                .core_to_data_service
+                .ok_or(anyhow!("falta: core_to_data_service"))?,
+
+            core_from_health_service: self
+                .core_from_health_service
+                .ok_or(anyhow!("falta: core_from_health_service"))?,
+            core_to_health_service: self
+                .core_to_health_service
+                .ok_or(anyhow!("falta: core_to_health_service"))?,
         })
     }
 }
@@ -287,7 +333,9 @@ impl Core {
                         MessageFromEdge::HandshakeToHub(msg) => {
                             let epoch = settings.read().unwrap().balance_epoch();
                             let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.balance_epoch >= epoch && msg.metadata.sender_user_id == edge.as_str() {
+                            if msg.balance_epoch >= epoch
+                                && msg.metadata.sender_user_id == edge.as_str()
+                            {
                                 if let Err(e) = self
                                     .core_to_fsm_service
                                     .try_send(FsmServiceCommand::Handshake(msg.flag))
@@ -334,7 +382,9 @@ impl Core {
                             let edge = settings.read().unwrap().id_edge().to_string();
                             let network = settings.read().unwrap().id_network().to_string();
                             let mac = settings.read().unwrap().mac_addr().to_string();
-                            if msg.metadata.sender_user_id == edge.as_str() && msg.network == network.as_str() {
+                            if msg.metadata.sender_user_id == edge.as_str()
+                                && msg.network == network.as_str()
+                            {
                                 if msg.metadata.destination_id == mac.as_str()
                                     || msg.metadata.destination_id == "all"
                                 {
