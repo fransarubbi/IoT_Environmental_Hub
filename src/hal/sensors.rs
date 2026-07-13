@@ -35,7 +35,7 @@ pub trait Sensor: Send + Sync {
 pub struct SensorData {
     pub sensor_id: &'static str,
     pub sensor_type: SensorType,
-    pub values: Vec<SensorValue, 50>,
+    pub values: Vec<SensorValue, 2>,
 }
 
 #[derive(Debug, Clone)]

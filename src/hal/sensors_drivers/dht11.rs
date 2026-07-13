@@ -22,10 +22,10 @@ impl<'a> Dht11RmtDriver<'a> {
     where
         T: InputPin + OutputPin + 'a,
     {
-        // Guardamos el número de pin ANTES de mover `pin` dentro del canal
-        // RMT (su ownership queda consumida por `RxChannelDriver::new`),
-        // porque lo necesitamos para bit-banguear la señal de start "a
-        // mano" con las funciones crudas `gpio_*` más abajo.
+        // Guardamos el número de pin antes de mover `pin` dentro del canal
+        // RMT (su ownership queda consumido por `RxChannelDriver::new`),
+        // porque lo necesitamos para bit-banguear la señal de start a
+        // mano con las funciones `gpio_*` más abajo.
         let pin_num = pin.pin();
 
         // Config a nivel de CANAL: se pasa una única vez, al crearlo.
@@ -150,7 +150,7 @@ impl<'a> Sensor for Dht11RmtDriver<'a> {
         let humidity = hum_i as f32 + (hum_d as f32 * 0.1);
 
         let ts = get_unix_epoch();
-        let mut values = heapless::Vec::<SensorValue, 50>::new();
+        let mut values = heapless::Vec::<SensorValue, 2>::new();
         let _ = values.push(SensorValue {
             name: "temperatura",
             value: temperature,

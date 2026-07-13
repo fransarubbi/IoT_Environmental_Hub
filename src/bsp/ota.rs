@@ -47,11 +47,9 @@ impl EspIdfOtaManager {
                                 if update.is_some() {
                                     match self.perform_update(&update.unwrap()) {
                                         Ok(_) => {
-                                            if let Err(e) =
-                                                self.sender.try_send(OtaResponse::UpdatedSuccesful(
-                                                    version.unwrap(),
-                                                ))
-                                            {
+                                            if let Err(e) = self.sender.try_send(
+                                                OtaResponse::UpdatedSuccesful(version.unwrap()),
+                                            ) {
                                                 error!("no se pudo enviar UpdatedSuccesful. {e}");
                                             }
                                         }
@@ -83,7 +81,10 @@ impl EspIdfOtaManager {
 
         let connection = EspHttpConnection::new(&config).map_err(|e| {
             let mut s = String::<100>::new();
-            let _ = core::fmt::write(&mut s, format_args!("fallo al crear HTTP Connection: {}", e));
+            let _ = core::fmt::write(
+                &mut s,
+                format_args!("fallo al crear HTTP Connection: {}", e),
+            );
             s
         })?;
 
@@ -102,7 +103,7 @@ impl Ota for EspIdfOtaManager {
         })?;
 
         // Hacer la petición GET
-        let request = client.get(URL_VERSION).map_err(|e| {
+        let request = client.get(URL_VERSION).map_err(|_| {
             let mut s = String::<20>::new();
             let _ = core::fmt::write(&mut s, format_args!("GET err"));
             s
@@ -120,13 +121,11 @@ impl Ota for EspIdfOtaManager {
 
         // Leer la respuesta
         let mut version_buf = [0u8; 32];
-        let bytes_read = response
-            .read(&mut version_buf)
-            .map_err(|_| {
-                let mut s = String::<20>::new();
-                let _ = s.push_str("read err");
-                s
-            })?;
+        let bytes_read = response.read(&mut version_buf).map_err(|_| {
+            let mut s = String::<20>::new();
+            let _ = s.push_str("read err");
+            s
+        })?;
 
         // Convertir los bytes a un heapless String y limpiarlo
         let raw = core::str::from_utf8(&version_buf[..bytes_read]).unwrap_or("");

@@ -44,6 +44,20 @@ pub enum SubStateBalance {
     OutHandshake,
 }
 
+#[derive(PartialEq, Eq)]
+pub enum StateForDataService {
+    Store,
+    Alert { frequency: u32, jitter: u32 },
+    Data { frequency: u32, jitter: u32 },
+    Monitor { frequency: u32, jitter: u32 },
+    Normal,
+    Bypass,
+    Safe { frequency: u32, jitter: u32 },
+    Cooling,
+    UpdateScore,
+    None,
+}
+
 /// Representación compuesta del estado completo de la FSM.
 ///
 /// Utiliza `Option` para modelar la jerarquía. Si un estado padre no está activo,

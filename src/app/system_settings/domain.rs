@@ -141,9 +141,9 @@ impl EnergyMode {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::LOW => "LOW (Ahorro)",
-            Self::NORMAL => "NORMAL (Medio)",
-            Self::PERFORMANCE => "PERFORMANCE (Máximo)",
+            Self::LOW => "LOW",
+            Self::NORMAL => "NORMAL",
+            Self::PERFORMANCE => "PERFORMANCE",
         }
     }
 

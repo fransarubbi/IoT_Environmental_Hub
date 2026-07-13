@@ -255,7 +255,7 @@ impl FsmHeartbeat {
             Transition::Valid(mut valid) => {
                 let entry_action = compute_on_entry(self, &valid.change_state);
                 if entry_action != Action::Nothing {
-                    valid.action.push(entry_action);
+                    valid.action.push(entry_action).unwrap();
                 }
                 Transition::Valid(valid)
             }
