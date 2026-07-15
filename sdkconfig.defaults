@@ -931,7 +931,7 @@ CONFIG_ESP_PHY_CALIBRATION_MODE=0
 #
 # Power Management
 #
-# CONFIG_PM_ENABLE is not set
+CONFIG_PM_ENABLE=y
 CONFIG_PM_SLP_IRAM_OPT=y
 # end of Power Management
 

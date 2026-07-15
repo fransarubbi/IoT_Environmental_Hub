@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 
 pub const NETWORK_STRING_LEN: usize = 20;
 pub const WIFI_SSID_STRING_LEN: usize = 20;
-pub const WIFI_PASSWORD_STRING_LEN: usize = 20;
+pub const WIFI_PASSWORD_STRING_LEN: usize = 30;
 pub const MQTT_URI_STRING_LEN: usize = 28;
 pub const DEVICE_NAME_STRING_LEN: usize = 10;
 pub const MAX_MSGPACK_BUFFER_SIZE: usize = 192;
@@ -24,14 +24,35 @@ pub enum MessageServiceResponse {
 pub enum MessageServiceCommand {
     ParseMessage(IncomingMessage),
 
-    GenerateReport(Measurement),
-    GenerateMonitor(Monitor),
-    GenerateAlertAir(AlertAir),
-    GenerateAlertTem(AlertTh),
+    Report {
+        pulse_counter: f32,
+        pulse_max_duration: f32,
+        mq135_aqi: f32,
+        dht11_temp: f32,
+        dht11_hum: f32,
+    },
+    Monitor {
+        timestamp: u64,
+        uptime_sec: u64,
+        heap_free: u32,
+        heap_min_free: u32,
+        heap_largest_block: u32,
+    },
+    AlertAir {
+        initial_air_quality: f32,
+        actual_air_quality: f32,
+    },
+    AlertTemp {
+        initial_temp: f32,
+        actual_temp: f32,
+    },
     GenerateFirmwareOk(String<6>), // version
-    GenerateSettings(u64),         // message_id
-    GenerateSettingsAck(u64),      // message_id
-    GenerateEmptyQueue(EmptyQueue),
+    GenerateSettings(u32),         // message_id
+    GenerateSettingsAck(u32),      // message_id
+    EmptyQueuePhase {
+        state: String<15>,
+        phase: String<10>,
+    },
     GenerateEmptyQueueSafe(EmptyQueueSafeMode),
     GeneratePing,
     GenerateLinkageRequest,
@@ -139,9 +160,9 @@ pub struct Measurement {
     #[serde(rename = "n")]
     pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "pc")]
-    pub pulse_counter: i64,
+    pub pulse_counter: f32,
     #[serde(rename = "pm")]
-    pub pulse_max_duration: i64,
+    pub pulse_max_duration: f32,
     #[serde(rename = "t")]
     pub temperature: f32,
     #[serde(rename = "h")]
@@ -194,10 +215,6 @@ pub struct Monitor {
     pub heap_largest_block: u32,
     #[serde(rename = "ut")]
     pub uptime_sec: u64,
-    #[serde(rename = "ws")]
-    pub wifi_ssid: String<WIFI_SSID_STRING_LEN>,
-    #[serde(rename = "wr")]
-    pub wifi_rssi: i8,
 }
 
 /// Configuración del dispositivo.
@@ -207,7 +224,7 @@ pub struct Settings {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "mi")]
-    pub message_id: u64,
+    pub message_id: u32,
     #[serde(rename = "n")]
     pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "ws")]
@@ -219,7 +236,7 @@ pub struct Settings {
     #[serde(rename = "dn")]
     pub device_name: String<DEVICE_NAME_STRING_LEN>,
     #[serde(rename = "s")]
-    pub sample: u32,
+    pub sample: u16,
     #[serde(rename = "e")]
     pub energy_mode: u32,
 }
@@ -312,7 +329,7 @@ pub struct SettingOk {
     #[serde(rename = "m")]
     pub metadata: Metadata,
     #[serde(rename = "i")]
-    pub message_id: u64,
+    pub message_id: u32,
     #[serde(rename = "n")]
     pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "h")]

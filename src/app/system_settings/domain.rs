@@ -4,7 +4,8 @@
 //! El `SystemSettings` actúa como el repositorio central de parámetros vitales.
 
 use crate::app::message::domain::{
-    DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, WIFI_SSID_STRING_LEN,
+    DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, SettingOk, Settings,
+    WIFI_SSID_STRING_LEN,
 };
 use heapless::String;
 use serde::{Deserialize, Serialize};
@@ -12,15 +13,15 @@ use serde::{Deserialize, Serialize};
 /// Comandos para el gestor de configuración.
 pub enum ConfigCommand {
     /// Reemplaza toda la configuración
-    UpdateConfig(SystemSettings),
+    UpdateConfig(Settings),
     /// Actualiza solo un campo específico
     UpdateField(ConfigField),
+    /// Recibe el ACK para no enviar mas el mensaje
+    SettingsAck(SettingOk),
     /// Obliga a leer nuevamente desde NVS
     Reload,
     /// Obliga a guardar la configuración actual en NVS
     Save,
-    /// Pregunta si existia o no config en NVS
-    ThereIsSettingsInNVS,
 }
 
 /// Campos que se pueden actualizar individualmente.
@@ -31,8 +32,8 @@ pub enum ConfigField {
 }
 
 pub enum ConfigResponse {
-    ExistsInNVS,
-    NotExistsInNVS,
+    GenerateSettings(u32),
+    GenerateSettingsAck(u32),
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::thread::Builder;
 
 use esp_idf_hal::{
-    cpu::Core::{Core0, Core1}, // <-- Import explícito de los Cores
+    cpu::Core::{Core0, Core1},
     peripherals::Peripherals,
     task::thread::ThreadSpawnConfiguration,
 };
@@ -37,7 +37,7 @@ fn main() -> anyhow::Result<()> {
     info!("Iniciando IoT Environmental Hub...");
 
     let peripherals =
-        Peripherals::take().map_err(|e| anyhow::anyhow!("Fallo periféricos: {:?}", e))?;
+        Peripherals::take().map_err(|e| anyhow::anyhow!("fallo periféricos: {:?}", e))?;
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
     let modem = peripherals.modem;
@@ -72,8 +72,21 @@ fn main() -> anyhow::Result<()> {
         .core_to_fsm_service(channels.core_to_fsm_service.clone())
         .core_from_msg_service(channels.core_from_message_service.clone())
         .core_to_msg_service(channels.core_to_message_service.clone())
-        .core_to_config_service(channels.core_to_config_manager.clone())
         .core_from_config_service(channels.core_from_config_manager.clone())
+        .core_to_config_service(channels.core_to_config_manager.clone())
+        .core_from_mqtt_service(channels.core_from_mqtt_service.clone())
+        .core_to_mqtt_service(channels.core_to_mqtt_service.clone())
+        .core_to_wifi_service(channels.core_to_wifi_service.clone())
+        .core_from_ota_service(channels.core_from_ota_service.clone())
+        .core_to_ota_service(channels.core_to_ota_service.clone())
+        .core_from_timer_service(channels.core_from_timer_service.clone())
+        .core_to_timer_service(channels.core_to_timer_service.clone())
+        .core_from_heartbeat_service(channels.core_from_heartbeat_service.clone())
+        .core_to_heartbeat_service(channels.core_to_heartbeat_service.clone())
+        .core_from_data_service(channels.core_from_data_service.clone())
+        .core_to_data_service(channels.core_to_data_service.clone())
+        .core_from_health_service(channels.core_from_health_service.clone())
+        .core_to_health_service(channels.core_to_health_service.clone())
         .build()?;
 
     let (mut config_manager, settings) = ConfigManager::new(

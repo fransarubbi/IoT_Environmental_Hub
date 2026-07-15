@@ -188,7 +188,7 @@ impl HealthScoreService {
                     }
                 }
                 Either::First(Err(e)) => {
-                    error!("Fallo en canal de HealthScore: {e}");
+                    error!("fallo en canal de HealthScore: {e}");
                     break;
                 }
 

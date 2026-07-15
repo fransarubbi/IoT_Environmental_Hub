@@ -115,6 +115,20 @@ pub enum Action {
     ActionLinkageProtocol,
     ActionNotifyFirmware,
     ActionRestart,
+    ActionInitSystem,
+    ActionSyncStore,
+    ActionSyncCooling,
+    ActionSyncUpdateScore,
+    ActionSyncNormal,
+    ActionSyncBypass,
+    ActionSyncSafe,
+
+    ActionSyncAlert,
+    ActionSyncData,
+    ActionSyncMonitor,
+    ActionSyncInHandshake,
+    ActionSyncOutHandshake,
+    ActionSyncInitBalance,
 }
 
 /// Eventos que alimentan la FSM.
@@ -419,7 +433,9 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateInit::InitSystem => {
-                    //actions.push();
+                    actions
+                        .push(Action::ActionInitSystem)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateInit::NotifyFirmwareUpdated => {
                     actions
@@ -430,44 +446,82 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
         }
     }
 
-    /*
     if old.store != new.store {
         if let Some(state) = &new.store {
             match state {
                 SubStateStore::Store => {
-                    actions.push(Action::a);
+                    actions
+                        .push(Action::ActionSyncStore)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateStore::Cooling => {
-                    actions.push(Action::a);
+                    actions
+                        .push(Action::ActionSyncCooling)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateStore::UpdateScore => {
-                    actions.push(Action::a);
+                    actions
+                        .push(Action::ActionSyncUpdateScore)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
             }
         }
     }
 
     if old.global != new.global && new.global == StateGlobal::Normal {
-        actions.push(Action::onEntryNormal);
+        actions
+            .push(Action::ActionSyncNormal)
+            .expect("ACTION_VECTOR_CAPACITY demasiado chico");
     }
 
     if old.global != new.global && new.global == StateGlobal::Safe {
-        actions.push(Action::onEntrySafe);
+        actions
+            .push(Action::ActionSyncSafe)
+            .expect("ACTION_VECTOR_CAPACITY demasiado chico");
     }
 
     if old.global != new.global && new.global == StateGlobal::Bypass {
-        actions.push(Action::onEntryBypass);
+        actions
+            .push(Action::ActionSyncBypass)
+            .expect("ACTION_VECTOR_CAPACITY demasiado chico");
     }
 
     if old.balance != new.balance {
         if let Some(state) = &new.balance {
             match state {
-                SubStateBalance::a => {
-                    actions.push(Action::a);
+                SubStateBalance::Alert => {
+                    actions
+                        .push(Action::ActionSyncAlert)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+                }
+                SubStateBalance::Data => {
+                    actions
+                        .push(Action::ActionSyncData)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+                }
+                SubStateBalance::Monitor => {
+                    actions
+                        .push(Action::ActionSyncMonitor)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+                }
+                SubStateBalance::InHandshake => {
+                    actions
+                        .push(Action::ActionSyncInHandshake)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+                }
+                SubStateBalance::OutHandshake => {
+                    actions
+                        .push(Action::ActionSyncOutHandshake)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+                }
+                SubStateBalance::InitBalanceMode => {
+                    actions
+                        .push(Action::ActionSyncInitBalance)
+                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
             }
         }
-    }*/
+    }
 
     actions
 }

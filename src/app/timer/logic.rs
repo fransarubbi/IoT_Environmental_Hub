@@ -11,9 +11,6 @@ pub struct TimerService {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TimerResponse {
-    HeartbeatNormalReady,
-    HeartbeatBalanceReady,
-    HeartbeatSafeReady,
     InitSystemReady,
     CoolingReady,
     BypassReady,
@@ -23,18 +20,12 @@ pub enum TimerResponse {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TimerCommand {
-    HeartbeatNormalStart,
-    HeartbeatBalanceStart,
-    HeartbeatSafeStart,
     InitSystemStart,
     CoolingStart,
     BypassStart,
     InitBalanceStart,
     HandshakeStart,
 
-    HeartbeatNormalStop,
-    HeartbeatBalanceStop,
-    HeartbeatSafeStop,
     InitSystemStop,
     CoolingStop,
     BypassStop,
@@ -114,48 +105,6 @@ impl InternalWorkers {
             }
         }
     }
-
-    /// Worker para el Timer Periódico
-    async fn run_periodic(rx_cmd: Receiver<PeriodicCommand>, tx_external: Sender<TimerResponse>) {
-        loop {
-            // --- ESTADO IDLE ---
-            let (mut interval, mut current_event) = match rx_cmd.recv().await {
-                Ok(PeriodicCommand::Start {
-                    interval_secs,
-                    event,
-                }) => (interval_secs, event),
-                Ok(PeriodicCommand::Stop) => continue,
-                Err(_) => break,
-            };
-
-            // --- ESTADO RUNNING ---
-            loop {
-                let timer_fut = EmbassyTimer::after(Duration::from_secs(interval));
-                let cmd_fut = rx_cmd.recv();
-
-                match select(timer_fut, cmd_fut).await {
-                    Either::First(_) => {
-                        let _ = tx_external.send(current_event.clone()).await;
-                    }
-                    Either::Second(Ok(cmd)) => match cmd {
-                        PeriodicCommand::Stop => {
-                            info!("timer periódico detenido.");
-                            break; // Volver a IDLE
-                        }
-                        PeriodicCommand::Start {
-                            interval_secs,
-                            event,
-                        } => {
-                            info!("timer periódico actualizado sin detener el hilo.");
-                            interval = interval_secs;
-                            current_event = event;
-                        }
-                    },
-                    Either::Second(Err(_)) => return,
-                }
-            }
-        }
-    }
 }
 
 impl TimerService {
@@ -167,7 +116,6 @@ impl TimerService {
         // Canales de control interno hacia los workers
         let (tx_os1, rx_os1) = bounded(buffer_size);
         let (tx_os2, rx_os2) = bounded(buffer_size);
-        let (tx_per, rx_per) = bounded(buffer_size);
 
         // Canal por donde los One-Shot avisan que terminaron para que el Director libere el espacio
         let (tx_internal_resp, rx_internal_resp) = bounded::<(u8, TimerResponse)>(buffer_size);
@@ -183,9 +131,6 @@ impl TimerService {
         executor
             .spawn(InternalWorkers::run_one_shot(2, rx_os2, tx_internal_resp))
             .detach();
-        executor
-            .spawn(InternalWorkers::run_periodic(rx_per, self.sender.clone()))
-            .detach();
 
         // Control de estado de los slots
         let mut os1_state = OsState::Idle;
@@ -196,30 +141,6 @@ impl TimerService {
         loop {
             match select(self.receiver.recv(), rx_internal_resp.recv()).await {
                 Either::First(Ok(cmd)) => match cmd {
-                    TimerCommand::HeartbeatNormalStart => {
-                        let _ = tx_per.try_send(PeriodicCommand::Start {
-                            interval_secs: 10,
-                            event: TimerResponse::HeartbeatNormalReady,
-                        });
-                    }
-                    TimerCommand::HeartbeatBalanceStart => {
-                        let _ = tx_per.try_send(PeriodicCommand::Start {
-                            interval_secs: 10,
-                            event: TimerResponse::HeartbeatBalanceReady,
-                        });
-                    }
-                    TimerCommand::HeartbeatSafeStart => {
-                        let _ = tx_per.try_send(PeriodicCommand::Start {
-                            interval_secs: 10,
-                            event: TimerResponse::HeartbeatSafeReady,
-                        });
-                    }
-                    TimerCommand::HeartbeatNormalStop
-                    | TimerCommand::HeartbeatBalanceStop
-                    | TimerCommand::HeartbeatSafeStop => {
-                        let _ = tx_per.try_send(PeriodicCommand::Stop);
-                    }
-
                     // --- COMANDOS ONE-SHOT (START) ---
                     TimerCommand::InitSystemStart => Self::dispatch_start(
                         60,

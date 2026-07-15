@@ -10,6 +10,19 @@ pub enum FsmServiceResponse {
     CheckFirmware,
     NotifyFirmware(String<6>),
     LinkageProtocol,
+    InitSystem,
+    EntryStore,
+    EntryCooling,
+    EntryUpdate,
+    EntryNormal,
+    EntrySafe,
+    EntryBypass,
+    EntryAlert,
+    EntryData,
+    EntryMonitor,
+    EntryInHandshake,
+    EntryOutHandshake,
+    EntryInitBalance,
 }
 
 pub enum FsmServiceCommand {
@@ -19,6 +32,19 @@ pub enum FsmServiceCommand {
     Handshake(String<15>),
     Safe((String<15>, u32, u32)),
     Normal,
+
+    HealthyConnection,
+    DegradedConnection,
+    CriticalConnection,
+    UnavailableConnection,
+
+    Phase((u32, String<10>, u32, u32)),
+    Balance((String<15>, u32, u32)),
+
+    AnAlertWasGenerated,
+
+    EdgeConnected,
+    EdgeDisconnected,
 }
 
 pub struct FsmService {
@@ -111,12 +137,83 @@ async fn handler_events_and_actions(
                             info!("reiniciando sistema...");
                             restart();
                         }
-
+                        Action::ActionInitSystem => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::InitSystem) {
+                                error!("no se pudo enviar InitSystem desde el handler. {e}");
+                            }
+                        }
                         Action::ActionLinkageProtocol => {
                             if let Err(e) =
                                 tx_response.try_send(FsmServiceResponse::LinkageProtocol)
                             {
                                 error!("no se pudo enviar LinkageProtocol desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncStore => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryStore) {
+                                error!("no se pudo enviar EntryStore desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncCooling => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryCooling) {
+                                error!("no se pudo enviar EntryCooling desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncUpdateScore => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryUpdate) {
+                                error!("no se pudo enviar EntryUpdate desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncNormal => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryNormal) {
+                                error!("no se pudo enviar EntryNormal desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncSafe => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntrySafe) {
+                                error!("no se pudo enviar EntrySafe desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncBypass => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryBypass) {
+                                error!("no se pudo enviar EntryBypass desde el handler. {e}");
+                            }
+                        }
+
+                        Action::ActionSyncAlert => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryAlert) {
+                                error!("no se pudo enviar EntryAlert desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncData => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryData) {
+                                error!("no se pudo enviar EntryData desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncMonitor => {
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryMonitor) {
+                                error!("no se pudo enviar EntryMonitor desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncInHandshake => {
+                            if let Err(e) =
+                                tx_response.try_send(FsmServiceResponse::EntryInHandshake)
+                            {
+                                error!("no se pudo enviar EntryInHandshake desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncOutHandshake => {
+                            if let Err(e) =
+                                tx_response.try_send(FsmServiceResponse::EntryOutHandshake)
+                            {
+                                error!("no se pudo enviar EntryOutHandshake desde el handler. {e}");
+                            }
+                        }
+                        Action::ActionSyncInitBalance => {
+                            if let Err(e) =
+                                tx_response.try_send(FsmServiceResponse::EntryInitBalance)
+                            {
+                                error!("no se pudo enviar EntryInitBalance desde el handler. {e}");
                             }
                         }
                     }

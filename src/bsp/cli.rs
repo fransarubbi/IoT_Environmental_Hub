@@ -1,10 +1,16 @@
 //! Módulo UART CLI (Command Line Interface)
 //! Encargado de la configuración inicial del dispositivo por puerto serie.
 
-use crate::app::message::domain::{
-    DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, WIFI_SSID_STRING_LEN,
+use crate::app::{
+    message::domain::{
+        DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, WIFI_SSID_STRING_LEN,
+    },
+    system_settings::{
+        domain::{EnergyMode, SystemSettings},
+        logic::set_cpu_frequency,
+    },
 };
-use crate::app::system_settings::domain::{EnergyMode, SystemSettings};
+
 use crate::hal::uart::Uart;
 use embassy_time::{Duration, Instant};
 use heapless::{String, Vec};
@@ -223,7 +229,10 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error, falta parametro <SSID>\r\n")
                 {
-                    self.store.write().unwrap().set_wifi_ssid(hl_str!(v, WIFI_SSID_STRING_LEN));
+                    self.store
+                        .write()
+                        .unwrap()
+                        .set_wifi_ssid(hl_str!(v, WIFI_SSID_STRING_LEN));
                     self.flags |= flag::WIFI_SSID_OK;
                     self.send("Info: SSID configurado correctamente\r\n");
                 }
@@ -232,7 +241,10 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <password>\r\n")
                 {
-                    self.store.write().unwrap().set_wifi_password(hl_str!(v, 30));
+                    self.store
+                        .write()
+                        .unwrap()
+                        .set_wifi_password(hl_str!(v, 30));
                     self.flags |= flag::WIFI_PASS_OK;
                     self.send("Info: password WiFi configurado correctamente\r\n");
                 }
@@ -246,7 +258,10 @@ impl<U: Uart> Cli<U> {
                             "Error: MQTT uri erroneo. Falta mqtts:// como primer parametro\r\n",
                         );
                     } else {
-                        self.store.write().unwrap().set_mqtt_uri(hl_str!(v, MQTT_URI_STRING_LEN));
+                        self.store
+                            .write()
+                            .unwrap()
+                            .set_mqtt_uri(hl_str!(v, MQTT_URI_STRING_LEN));
                         self.flags |= flag::MQTT_URI_OK;
                         self.send("Info: MQTT uri configurado correctamente\r\n");
                     }
@@ -256,7 +271,10 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <id_network>\r\n")
                 {
-                    self.store.write().unwrap().set_id_network(hl_str!(v, NETWORK_STRING_LEN));
+                    self.store
+                        .write()
+                        .unwrap()
+                        .set_id_network(hl_str!(v, NETWORK_STRING_LEN));
                     self.flags |= flag::NETWORK_OK;
                     self.send("Info: red configurada correctamente\r\n");
                 }
@@ -286,7 +304,10 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <name>\r\n")
                 {
-                    self.store.write().unwrap().set_device_name(hl_str!(v, DEVICE_NAME_STRING_LEN));
+                    self.store
+                        .write()
+                        .unwrap()
+                        .set_device_name(hl_str!(v, DEVICE_NAME_STRING_LEN));
                     self.flags |= flag::DEVICE_NAME_OK;
                     self.send("Info: nombre del dispositivo configurado correctamente\r\n");
                 }
@@ -319,6 +340,7 @@ impl<U: Uart> Cli<U> {
                                 "Info: modo de energia configurado correctamente. {}\r\n",
                                 mode.label()
                             ));
+                            set_cpu_frequency(mode);
                         }
                         None => self.send("Error: ingrese un modo de energia valido\r\n"),
                     }

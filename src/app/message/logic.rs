@@ -106,16 +106,93 @@ pub async fn generator(
 ) {
     while let Ok(cmd) = from_service_generator.recv().await {
         match cmd {
-            MessageServiceCommand::GenerateReport(msg) => {
+            MessageServiceCommand::Report {
+                pulse_counter,
+                pulse_max_duration,
+                mq135_aqi,
+                dht11_temp,
+                dht11_hum,
+            } => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let sample = settings.read().unwrap().sample_rate();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = Measurement {
+                    metadata,
+                    network: hl_str!(&network, 20),
+                    pulse_counter,
+                    pulse_max_duration,
+                    temperature: dht11_temp,
+                    humidity: dht11_hum,
+                    air_quality: mq135_aqi,
+                    sample,
+                };
                 send_serialized!(tx, &settings, msg, MessageToEdge::Report(msg.clone()));
             }
-            MessageServiceCommand::GenerateMonitor(msg) => {
+            MessageServiceCommand::Monitor {
+                timestamp,
+                uptime_sec,
+                heap_free,
+                heap_min_free,
+                heap_largest_block,
+            } => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp,
+                };
+                let msg = Monitor {
+                    metadata,
+                    network: hl_str!(&network, 20),
+                    heap_free,
+                    heap_min_free,
+                    heap_largest_block,
+                    uptime_sec,
+                };
                 send_serialized!(tx, &settings, msg, MessageToEdge::Monitor(msg.clone()));
             }
-            MessageServiceCommand::GenerateAlertAir(msg) => {
+            MessageServiceCommand::AlertAir {
+                initial_air_quality,
+                actual_air_quality,
+            } => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = AlertAir {
+                    metadata,
+                    network: hl_str!(&network, 20),
+                    initial_air_quality,
+                    actual_air_quality,
+                };
                 send_serialized!(tx, &settings, msg, MessageToEdge::AlertAir(msg.clone()));
             }
-            MessageServiceCommand::GenerateAlertTem(msg) => {
+            MessageServiceCommand::AlertTemp {
+                initial_temp,
+                actual_temp,
+            } => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = AlertTh {
+                    metadata,
+                    network: hl_str!(&network, 20),
+                    initial_temp,
+                    actual_temp,
+                };
                 send_serialized!(tx, &settings, msg, MessageToEdge::AlertTem(msg.clone()));
             }
             MessageServiceCommand::GenerateFirmwareOk(str) => {
@@ -133,13 +210,13 @@ pub async fn generator(
                 send_serialized!(tx, &settings, msg, MessageToEdge::FirmwareOk(msg.clone()));
             }
             MessageServiceCommand::GenerateSettings(id) => {
-                let mac        = settings.read().unwrap().mac_addr().to_string();
-                let network    = settings.read().unwrap().id_network().to_string();
-                let ssid       = settings.read().unwrap().wifi_ssid().to_string();
-                let password   = settings.read().unwrap().wifi_password().to_string();
-                let mqtt_uri   = settings.read().unwrap().mqtt_uri().to_string();
-                let dev_name   = settings.read().unwrap().device_name().to_string();
-                let sample     = settings.read().unwrap().sample_rate();
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let ssid = settings.read().unwrap().wifi_ssid().to_string();
+                let password = settings.read().unwrap().wifi_password().to_string();
+                let mqtt_uri = settings.read().unwrap().mqtt_uri().to_string();
+                let dev_name = settings.read().unwrap().device_name().to_string();
+                let sample = settings.read().unwrap().sample_rate();
                 let energy_mode = match settings.read().unwrap().energy_mode() {
                     EnergyMode::LOW => 0,
                     EnergyMode::NORMAL => 1,
@@ -153,12 +230,12 @@ pub async fn generator(
                 let msg = Settings {
                     metadata,
                     message_id: id,
-                    network:       hl_str!(&network,  NETWORK_STRING_LEN),
-                    wifi_ssid:     hl_str!(&ssid,     WIFI_SSID_STRING_LEN),
+                    network: hl_str!(&network, NETWORK_STRING_LEN),
+                    wifi_ssid: hl_str!(&ssid, WIFI_SSID_STRING_LEN),
                     wifi_password: hl_str!(&password, WIFI_PASSWORD_STRING_LEN),
-                    mqtt_uri:      hl_str!(&mqtt_uri, MQTT_URI_STRING_LEN),
-                    device_name:   hl_str!(&dev_name, DEVICE_NAME_STRING_LEN),
-                    sample:        sample as u32,
+                    mqtt_uri: hl_str!(&mqtt_uri, MQTT_URI_STRING_LEN),
+                    device_name: hl_str!(&dev_name, DEVICE_NAME_STRING_LEN),
+                    sample: sample,
                     energy_mode,
                 };
                 send_serialized!(
@@ -169,7 +246,7 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GenerateSettingsAck(message_id) => {
-                let mac     = settings.read().unwrap().mac_addr().to_string();
+                let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
                     sender_user_id: hl_str!(&mac, 18),
@@ -189,7 +266,20 @@ pub async fn generator(
                     MessageToEdge::FromHubSettingsAck(msg.clone())
                 );
             }
-            MessageServiceCommand::GenerateEmptyQueue(msg) => {
+            MessageServiceCommand::EmptyQueuePhase { state, phase } => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let edge = settings.read().unwrap().id_edge().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!(&edge, 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = EmptyQueue {
+                    metadata,
+                    state,
+                    phase,
+                    queue_empty: true,
+                };
                 send_serialized!(tx, &settings, msg, MessageToEdge::EmptyQueue(msg.clone()));
             }
             MessageServiceCommand::GenerateEmptyQueueSafe(msg) => {
@@ -201,8 +291,8 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GeneratePing => {
-                let mac     = settings.read().unwrap().mac_addr().to_string();
-                let edge    = settings.read().unwrap().id_edge().to_string();
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let edge = settings.read().unwrap().id_edge().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
                     sender_user_id: hl_str!(&mac, 18),
@@ -217,10 +307,10 @@ pub async fn generator(
                 send_serialized!(tx, &settings, msg, MessageToEdge::Ping(msg.clone()));
             }
             MessageServiceCommand::GenerateLinkageRequest => {
-                let mac      = settings.read().unwrap().mac_addr().to_string();
-                let edge     = settings.read().unwrap().id_edge().to_string();
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let edge = settings.read().unwrap().id_edge().to_string();
                 let dev_name = settings.read().unwrap().device_name().to_string();
-                let network  = settings.read().unwrap().id_network().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
                     sender_user_id: hl_str!(&mac, 18),
                     destination_id: hl_str!(&edge, 18),
@@ -229,7 +319,7 @@ pub async fn generator(
                 let msg = LinkageRequest {
                     metadata,
                     device_name: hl_str!(&dev_name, DEVICE_NAME_STRING_LEN),
-                    network:     hl_str!(&network,  NETWORK_STRING_LEN),
+                    network: hl_str!(&network, NETWORK_STRING_LEN),
                     linkage_request: true,
                 };
                 send_serialized!(
@@ -240,7 +330,7 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GenerateHandshake((balance_epoch, flag)) => {
-                let mac  = settings.read().unwrap().mac_addr().to_string();
+                let mac = settings.read().unwrap().mac_addr().to_string();
                 let edge = settings.read().unwrap().id_edge().to_string();
                 let metadata = Metadata {
                     sender_user_id: hl_str!(&mac, 18),

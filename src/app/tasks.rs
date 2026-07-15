@@ -19,6 +19,7 @@ use esp_idf_hal::{
     modem::Modem,
 };
 
+use crate::app::healthscore::domain::HealthScoreService;
 use crate::hal::sensors::Sensor;
 use crate::hal::sensors_drivers::{dht11::Dht11RmtDriver, ky037::Ky037, mq135::Mq135};
 
@@ -50,7 +51,6 @@ pub(crate) fn core0_executor_task(
         nvs,
         &settings.read().unwrap().wifi_ssid(),
         &settings.read().unwrap().wifi_password(),
-        channels.wifi_service_to_core,
         channels.wifi_service_from_core,
     )
     .map_err(|e| anyhow::anyhow!("error al crear WiFi: {}", e))?;
@@ -87,45 +87,32 @@ pub(crate) fn core1_executor_task(
     gpio34: esp_idf_hal::gpio::Gpio34,
     adc1_periph: esp_idf_hal::adc::ADC1,
 ) {
-    // 1. INICIALIZACIÓN DE HARDWARE
-
     // Gpio4 implementa Input + Output nativamente, lo pasamos directo.
-    let mut dht11 =
-        Dht11RmtDriver::new(gpio4, "dht11_ambiente").expect("Fallo inicializando DHT11");
+    let mut dht11 = Dht11RmtDriver::new(gpio4, "dht11").expect("fallo inicializando DHT11");
     dht11.init().unwrap();
 
-    // Requerido en 0.46.2: Definir el estado de la resistencia (Pull::Floating)
-    let ky_pin = PinDriver::input(gpio5, Pull::Floating).expect("Fallo pin KY037");
-    let mut ky037 = Ky037::new("ky037_ruido", ky_pin).expect("Fallo inicializando KY037");
+    let ky_pin = PinDriver::input(gpio5, Pull::Floating).expect("fallo pin KY037");
+    let mut ky037 = Ky037::new("ky037", ky_pin).expect("fallo inicializando KY037");
     ky037.init().unwrap();
 
-    // Requerido en 0.46.2: AdcDriver::new no recibe Config en oneshot
-    let adc1 = AdcDriver::new(adc1_periph).expect("Fallo inicializando ADC1");
+    let adc1 = AdcDriver::new(adc1_periph).expect("fallo inicializando ADC1");
     let mq135_channel = AdcChannelDriver::new(
         &adc1,
         gpio34,
         &AdcChannelConfig {
-            attenuation: attenuation::DB_12, // En 0.46 DB_11 es el equivalente general de alta atenuación (12dB nominal)
+            attenuation: attenuation::DB_12,
             calibration: esp_idf_hal::adc::oneshot::config::Calibration::Line,
             ..Default::default()
         },
     )
-    .expect("Fallo canal MQ135");
+    .expect("fallo canal MQ135");
 
-    let mut mq135 = Mq135::new("mq135_aire", mq135_channel, 12.5, 0.2);
+    let mut mq135 = Mq135::new("mq135", mq135_channel, 12.5, 0.2);
     mq135.init().unwrap();
 
-    // 2. CREACIÓN DEL EXECUTOR Y SERVICIOS
     let executor: LocalExecutor = Default::default();
 
-    let data_service = DataService::new(
-        channels.data_service_to_core.clone(),
-        channels.data_service_from_core.clone(),
-        Arc::clone(&settings),
-    );
-
-    // 3. SPAWN DE TAREAS
-    executor.spawn(config_manager.run()).detach();
+    executor.spawn(config_manager.run(&executor)).detach();
     executor.spawn(core.run(Arc::clone(&settings))).detach();
 
     executor
@@ -163,6 +150,28 @@ pub(crate) fn core1_executor_task(
             .run(&executor),
         )
         .detach();
+
+    executor
+        .spawn(
+            HealthScoreService::new(
+                channels.health_service_to_core,
+                channels.health_service_from_core,
+            )
+            .run(&executor),
+        )
+        .detach();
+
+    executor
+        .spawn(
+            DataService::new(
+                channels.data_service_to_core.clone(),
+                channels.data_service_from_core.clone(),
+                Arc::clone(&settings),
+            )
+            .run(&executor, dht11, mq135, ky037),
+        )
+        .detach();
+
     executor
         .spawn(
             FsmService::new(channels.fsm_service_to_core, channels.fsm_service_from_core)
@@ -170,10 +179,5 @@ pub(crate) fn core1_executor_task(
         )
         .detach();
 
-    executor
-        .spawn(data_service.run(&executor, dht11, mq135, ky037))
-        .detach();
-
-    // 4. BUCLE INFINITO
     esp_idf_hal::task::block_on(executor.run(std::future::pending::<()>()));
 }

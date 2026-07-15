@@ -13,20 +13,24 @@
 
 use anyhow::{Result, anyhow};
 use async_channel::{Receiver, Sender};
-use embassy_futures::select::{Either6, select6};
+use futures::{FutureExt, select};
 use log::error;
 use std::sync::{Arc, RwLock};
 
-use crate::app::data::domain::{DataServiceCommand, DataServiceResponse};
-use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
-use crate::app::healthscore::domain::{HealthServiceCommand, HealthServiceResponse};
-use crate::app::heartbeat::domain::{HeartbeatCommand, HeartbeatResponse};
-use crate::app::message::domain::{MessageFromEdge, MessageServiceCommand, MessageServiceResponse};
-use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse, SystemSettings};
-use crate::app::timer::logic::{TimerCommand, TimerResponse};
+use crate::app::{
+    data::domain::{DataServiceCommand, DataServiceResponse},
+    fsm::domain::StateForDataService,
+    fsm::logic::{FsmServiceCommand, FsmServiceResponse},
+    healthscore::domain::{HealthServiceCommand, HealthServiceResponse, HealthState},
+    heartbeat::domain::{HeartbeatCommand, HeartbeatResponse},
+    message::domain::{MessageFromEdge, MessageServiceCommand, MessageServiceResponse},
+    system_settings::domain::{ConfigCommand, ConfigResponse, SystemSettings},
+    timer::logic::{TimerCommand, TimerResponse},
+};
+
 use crate::bsp::mqtt::MqttData;
 use crate::bsp::ota::{OtaCommand, OtaResponse};
-use crate::bsp::wifi::{WifiCommand, WifiResponse};
+use crate::bsp::wifi::WifiCommand;
 
 pub struct Core {
     core_from_fsm_service: Receiver<FsmServiceResponse>,
@@ -41,7 +45,6 @@ pub struct Core {
     core_from_mqtt_service: Receiver<MqttData>,
     core_to_mqtt_service: Sender<MqttData>,
 
-    core_from_wifi_service: Receiver<WifiResponse>,
     core_to_wifi_service: Sender<WifiCommand>,
 
     core_from_ota_service: Receiver<OtaResponse>,
@@ -79,7 +82,6 @@ pub struct CoreBuilder {
     core_from_mqtt_service: Option<Receiver<MqttData>>,
     core_to_mqtt_service: Option<Sender<MqttData>>,
 
-    core_from_wifi_service: Option<Receiver<WifiResponse>>,
     core_to_wifi_service: Option<Sender<WifiCommand>>,
 
     core_from_ota_service: Option<Receiver<OtaResponse>>,
@@ -137,11 +139,6 @@ impl CoreBuilder {
 
     pub fn core_from_mqtt_service(mut self, ch: Receiver<MqttData>) -> Self {
         self.core_from_mqtt_service = Some(ch);
-        self
-    }
-
-    pub fn core_from_wifi_service(mut self, ch: Receiver<WifiResponse>) -> Self {
-        self.core_from_wifi_service = Some(ch);
         self
     }
 
@@ -229,9 +226,6 @@ impl CoreBuilder {
                 .core_from_mqtt_service
                 .ok_or(anyhow!("falta: core_from_config_service"))?,
 
-            core_from_wifi_service: self
-                .core_from_wifi_service
-                .ok_or(anyhow!("falta: core_from_wifi_service"))?,
             core_to_wifi_service: self
                 .core_to_wifi_service
                 .ok_or(anyhow!("falta: core_to_wifi_service"))?,
@@ -282,171 +276,391 @@ impl Core {
 
     pub async fn run(self, settings: Arc<RwLock<SystemSettings>>) {
         loop {
-            match select6(
-                self.core_from_fsm_service.recv(),
-                self.core_from_msg_service.recv(),
-                self.core_from_config_service.recv(),
-                self.core_from_mqtt_service.recv(),
-                self.core_from_ota_service.recv(),
-                self.core_from_timer_service.recv(),
-            )
-            .await
-            {
-                Either6::First(Ok(response)) => {
-                    match response {
-                        FsmServiceResponse::LinkageProtocol => {
-                            // enviar mensaje
-                        }
-                        FsmServiceResponse::NotifyFirmware(version) => {
-                            if let Err(e) = self
-                                .core_to_msg_service
-                                .try_send(MessageServiceCommand::GenerateFirmwareOk(version))
-                            {
-                                error!("no se pudo enviar GenerateFirmwareOk en core. {e}");
+            select! {
+                res = self.core_from_fsm_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            FsmServiceResponse::LinkageProtocol => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateLinkageRequest) {
+                                    error!("no se pudo enviar GenerateLinkageRequest desde core. {e}");
+                                }
                             }
-                        }
-                        FsmServiceResponse::CheckFirmware => {
-                            if let Err(e) =
-                                self.core_to_ota_service.try_send(OtaCommand::CheckFirmware)
-                            {
-                                error!("no se pudo enviar CheckFirmware en core. {e}");
+                            FsmServiceResponse::NotifyFirmware(version) => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateFirmwareOk(version)) {
+                                    error!("no se pudo enviar GenerateFirmwareOk desde core. {e}");
+                                }
                             }
-                        }
-                    }
-                }
-                Either6::First(Err(e)) => {
-                    error!("el canal core_from_fsm_service se ha cerrado. {e}");
-                }
+                            FsmServiceResponse::CheckFirmware => {
+                                if let Err(e) = self.core_to_ota_service.try_send(OtaCommand::CheckFirmware) {
+                                        error!("no se pudo enviar CheckFirmware desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::InitSystem => {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStart) {
+                                        error!("no se pudo enviar InitSystemStart desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntryStore => {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
+                                        error!("no se pudo enviar InitSystemStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
+                                        error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                        error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateForDataService::Store)) {
+                                        error!("no se pudo enviar Store desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntryCooling => {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStart) {
+                                        error!("no se pudo enviar CoolingStart desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntryUpdate => {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStop) {
+                                        error!("no se pudo enviar CoolingStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GeneratePing) {
+                                        error!("no se pudo enviar GeneratePing desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntryNormal => {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::BypassStop) {
+                                        error!("no se pudo enviar BypassStop desde core. {e}");
+                                }
 
-                Either6::Second(Ok(response)) => match response {
-                    MessageServiceResponse::Serialized(msg) => {
-                        if let Err(e) = self
-                            .core_to_mqtt_service
-                            .try_send(MqttData::OutMessage(msg))
-                        {
-                            error!("no se pudo enviar OutMessage en core. {e}");
-                        }
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                        error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateForDataService::Normal)) {
+                                        error!("no se pudo enviar Normal desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntrySafe => {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                        error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
+                                        error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
+                                        error!("no se pudo enviar InitSystemStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateForDataService::Safe { frequency: (), jitter: () })) {
+                                        error!("no se pudo enviar Normal desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntryBypass => {
+
+                            }
+                            FsmServiceResponse::EntryAlert => {
+
+                            }
+                            FsmServiceResponse::EntryData => {
+
+                            }
+                            FsmServiceResponse::EntryMonitor => {
+
+                            }
+                            FsmServiceResponse::EntryInHandshake => {
+
+                            }
+                            FsmServiceResponse::EntryOutHandshake => {
+
+                            }
+                            FsmServiceResponse::EntryInitBalance => {
+
+                            }
+                        },
+                        Err(e) => error!("el canal core_from_fsm_service se ha cerrado. {e}"),
                     }
-                    MessageServiceResponse::Message(msg) => match msg {
-                        MessageFromEdge::FromServerSettings(msg) => {}
-                        MessageFromEdge::FromServerSettingsAck(msg) => {}
-                        MessageFromEdge::HandshakeToHub(msg) => {
-                            let epoch = settings.read().unwrap().balance_epoch();
-                            let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.balance_epoch >= epoch
-                                && msg.metadata.sender_user_id == edge.as_str()
-                            {
+                },
+
+                res = self.core_from_msg_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            MessageServiceResponse::Serialized(msg) => {
+                                if let Err(e) = self
+                                    .core_to_mqtt_service
+                                    .try_send(MqttData::OutMessage(msg))
+                                {
+                                    error!("no se pudo enviar OutMessage en core. {e}");
+                                }
+                            }
+                            MessageServiceResponse::Message(msg) => match msg {
+                                MessageFromEdge::FromServerSettings(msg) => {
+                                    if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::UpdateConfig(msg)) {
+                                        error!("no se pudo enviar UpdateConfig desde core. {e}");
+                                    }
+                                }
+                                MessageFromEdge::FromServerSettingsAck(msg) => {
+                                    if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::SettingsAck(msg)) {
+                                        error!("no se pudo enviar SettingsAck desde core. {e}");
+                                    }
+                                }
+                                MessageFromEdge::HandshakeToHub(msg) => {
+                                    let epoch = settings.read().unwrap().balance_epoch();
+                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                    if msg.balance_epoch >= epoch
+                                        && msg.metadata.sender_user_id == edge.as_str()
+                                    {
+                                        if let Err(e) = self
+                                            .core_to_fsm_service
+                                            .try_send(FsmServiceCommand::Handshake(msg.flag))
+                                        {
+                                            error!("no se pudo enviar UpdateFirmware en core. {e}");
+                                        }
+                                    }
+                                }
+                                MessageFromEdge::Heartbeat(msg) => {
+                                    if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::HeartbeatIncoming) {
+                                        error!("no se pudo enviar HeartbeatIncoming desde core. {e}");
+                                    }
+                                }
+                                MessageFromEdge::LinkageAck(msg) => {
+                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                    if msg.metadata.sender_user_id == edge.as_str() && msg.linkage_ack {
+                                        if let Err(e) = self
+                                            .core_to_fsm_service
+                                            .try_send(FsmServiceCommand::LinkageOk)
+                                        {
+                                            error!("no se pudo enviar LinkageOk en core. {e}");
+                                        }
+                                    }
+                                }
+                                MessageFromEdge::PhaseNotification(msg) => {
+                                    if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::Phase((msg.epoch, msg.phase, msg.frequency, msg.jitter))) {
+                                        error!("no se pudo enviar Phase desde core. {e}");
+                                    }
+                                }
+                                MessageFromEdge::StateBalanceMode(msg) => {
+                                     if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::Balance((msg.state, msg.balance_epoch, msg.duration))) {
+                                         error!("no se pudo enviar Balance desde core. {e}");
+                                     }
+                                }
+                                MessageFromEdge::StateNormal(msg) => {
+                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                    if msg.metadata.sender_user_id == edge.as_str() {
+                                        if let Err(e) =
+                                            self.core_to_fsm_service.try_send(FsmServiceCommand::Normal)
+                                        {
+                                            error!("no se pudo enviar Normal en core. {e}");
+                                        }
+                                    }
+                                }
+                                MessageFromEdge::StateSafeMode(msg) => {
+                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                    if msg.metadata.sender_user_id == edge.as_str() {
+                                        if let Err(e) = self.core_to_fsm_service.try_send(
+                                            FsmServiceCommand::Safe((msg.state, msg.frequency, msg.jitter)),
+                                        ) {
+                                            error!("no se pudo enviar Safe en core. {e}");
+                                        }
+                                    }
+                                }
+                                MessageFromEdge::UpdateFirmware(msg) => {
+                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                    let network = settings.read().unwrap().id_network().to_string();
+                                    let mac = settings.read().unwrap().mac_addr().to_string();
+                                    if msg.metadata.sender_user_id == edge.as_str()
+                                        && msg.network == network.as_str()
+                                    {
+                                        if msg.metadata.destination_id == mac.as_str()
+                                            || msg.metadata.destination_id == "all"
+                                        {
+                                            if let Err(e) =
+                                                self.core_to_ota_service.try_send(OtaCommand::CheckFirmware)
+                                            {
+                                                error!("no se pudo enviar Safe en core. {e}");
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                        },
+                        Err(e) => error!("{e}"),
+                    }
+                },
+
+                res = self.core_from_config_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                             ConfigResponse::GenerateSettings(id) => {
+                                 if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateSettings(id)) {
+                                     error!("no se pudo enviar GenerateSettings desde core. {e}");
+                                 }
+                             }
+                             ConfigResponse::GenerateSettingsAck(id) => {
+                                 if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateSettingsAck(id)) {
+                                     error!("no se pudo enviar GenerateSettingsAck desde core. {e}");
+                                 }
+                             }
+                        },
+                        Err(e) => error!("{e}"),
+                    }
+                },
+
+                res = self.core_from_mqtt_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            MqttData::Connected => {
+
+                            }
+                            MqttData::Disconnected => {
+
+                            }
+                            MqttData::InMessage(msg) => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::ParseMessage(msg)) {
+                                    error!("no se pudo enviar ParseMessage desde core. {e}");
+                                }
+                            }
+                            MqttData::PubAck { msg_id: u16, return_code: u8 } => {
+
+                            }
+                            MqttData::Health(health) => {
+                                if let Err(e) = self.core_to_health_service.try_send(health) {
+                                    error!("no se pudo enviar Health desde core. {e}");
+                                }
+                            }
+                            _ => {}
+                        },
+                        Err(e) => error!("{e}"),
+                    }
+                },
+
+                res = self.core_from_ota_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            OtaResponse::NoUpdateAvailable => {
                                 if let Err(e) = self
                                     .core_to_fsm_service
-                                    .try_send(FsmServiceCommand::Handshake(msg.flag))
+                                    .try_send(FsmServiceCommand::NotUpdateFirmware)
+                                {
+                                    error!("no se pudo enviar NotUpdateFirmware en core. {e}");
+                                }
+                            }
+                            OtaResponse::UpdatedSuccesful(version) => {
+                                if let Err(e) = self
+                                    .core_to_fsm_service
+                                    .try_send(FsmServiceCommand::UpdateFirmware(version))
                                 {
                                     error!("no se pudo enviar UpdateFirmware en core. {e}");
                                 }
                             }
-                        }
-                        MessageFromEdge::Heartbeat(msg) => {}
-                        MessageFromEdge::LinkageAck(msg) => {
-                            let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.metadata.sender_user_id == edge.as_str() && msg.linkage_ack {
-                                if let Err(e) = self
-                                    .core_to_fsm_service
-                                    .try_send(FsmServiceCommand::LinkageOk)
-                                {
-                                    error!("no se pudo enviar LinkageOk en core. {e}");
+                        },
+                        Err(e) => error!("{e}"),
+                    }
+                },
+
+                res = self.core_from_timer_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            _ => {}
+                        },
+                        Err(e) => error!("{e}"),
+                    }
+                },
+
+                res = self.core_from_heartbeat_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            HeartbeatResponse::Connected => {
+                                if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::EdgeConnected) {
+                                    error!("no se pudo enviar EdgeConnected desde core. {e}");
                                 }
                             }
-                        }
-                        MessageFromEdge::PhaseNotification(msg) => {}
-                        MessageFromEdge::StateBalanceMode(msg) => {}
-                        MessageFromEdge::StateNormal(msg) => {
-                            let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.metadata.sender_user_id == edge.as_str() {
-                                if let Err(e) =
-                                    self.core_to_fsm_service.try_send(FsmServiceCommand::Normal)
-                                {
-                                    error!("no se pudo enviar Normal en core. {e}");
+                            HeartbeatResponse::Disconnected => {
+                                if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::EdgeDisconnected) {
+                                    error!("no se pudo enviar EdgeDisconnected desde core. {e}");
                                 }
                             }
-                        }
-                        MessageFromEdge::StateSafeMode(msg) => {
-                            let edge = settings.read().unwrap().id_edge().to_string();
-                            if msg.metadata.sender_user_id == edge.as_str() {
-                                if let Err(e) = self.core_to_fsm_service.try_send(
-                                    FsmServiceCommand::Safe((msg.state, msg.frequency, msg.jitter)),
-                                ) {
-                                    error!("no se pudo enviar Safe en core. {e}");
+                        },
+                        Err(e) => error!("{e}"),
+                    }
+                },
+
+                res = self.core_from_data_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            DataServiceResponse::Report { pulse_counter, pulse_max_duration, mq135_aqi, dht11_temp, dht11_hum } => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::Report { pulse_counter, pulse_max_duration, mq135_aqi, dht11_temp, dht11_hum }) {
+                                    error!("no se pudo enviar Report desde core. {e}");
                                 }
                             }
-                        }
-                        MessageFromEdge::UpdateFirmware(msg) => {
-                            let edge = settings.read().unwrap().id_edge().to_string();
-                            let network = settings.read().unwrap().id_network().to_string();
-                            let mac = settings.read().unwrap().mac_addr().to_string();
-                            if msg.metadata.sender_user_id == edge.as_str()
-                                && msg.network == network.as_str()
-                            {
-                                if msg.metadata.destination_id == mac.as_str()
-                                    || msg.metadata.destination_id == "all"
-                                {
-                                    if let Err(e) =
-                                        self.core_to_ota_service.try_send(OtaCommand::CheckFirmware)
-                                    {
-                                        error!("no se pudo enviar Safe en core. {e}");
+                            DataServiceResponse::AlertAir { initial_air_quality, actual_air_quality } => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::AlertAir { initial_air_quality, actual_air_quality }) {
+                                    error!("no se pudo enviar AlertAir desde core. {e}");
+                                }
+                            }
+                            DataServiceResponse::AlertTemp { initial_temp, actual_temp } => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::AlertTemp { initial_temp, actual_temp }) {
+                                    error!("no se pudo enviar AlertTemp desde core. {e}");
+                                }
+                            }
+                            DataServiceResponse::Monitor { timestamp, uptime_sec, heap_free, heap_min_free, heap_largest_block } => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::Monitor { timestamp, uptime_sec, heap_free, heap_min_free, heap_largest_block }) {
+                                    error!("no se pudo enviar Monitor desde core. {e}");
+                                }
+                            }
+                            DataServiceResponse::EmptyQueueSafe => {
+
+                            }
+                            DataServiceResponse::AnAlertWasGenerated => {
+                                if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::AnAlertWasGenerated) {
+                                    error!("no se pudo enviar AnAlertWasGenerated desde core. {e}");
+                                }
+                            }
+                            DataServiceResponse::EmptyQueuePhase { state, phase } => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::EmptyQueuePhase { state, phase }) {
+                                    error!("no se pudo enviar EmptyQueueSafe desde core. {e}");
+                                }
+                            }
+                            DataServiceResponse::BypassAlertAir { initial_air_quality, actual_air_quality } => {
+
+                            }
+                            DataServiceResponse::BypassAlertTemp { initial_temp, actual_temp } => {
+
+                            }
+                        },
+                        Err(e) => error!("{e}"),
+                    }
+                },
+
+
+                res = self.core_from_health_service.recv().fuse() => {
+                    match res {
+                        Ok(response) => match response {
+                            HealthServiceResponse::StateChanged(health) => {
+                                match health {
+                                    HealthState::Healthy => {
+                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::HealthyConnection) {
+                                            error!("no se pudo enviar HealthyConnection desde core. {e}");
+                                        }
+                                    }
+                                    HealthState::Degraded => {
+                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::DegradedConnection) {
+                                            error!("no se pudo enviar DegradedConnection desde core. {e}");
+                                        }
+                                    }
+                                    HealthState::Critical => {
+                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::CriticalConnection) {
+                                            error!("no se pudo enviar CriticalConnection desde core. {e}");
+                                        }
+                                    }
+                                    HealthState::Unavailable => {
+                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::UnavailableConnection) {
+                                            error!("no se pudo enviar UnavailableConnection desde core. {e}");
+                                        }
                                     }
                                 }
                             }
-                        }
-                    },
-                },
-                Either6::Second(Err(e)) => {
-                    error!("el canal core_from_msg_service se ha cerrado. {e}");
-                }
-
-                Either6::Third(Ok(response)) => {}
-                Either6::Third(Err(e)) => {
-                    error!("el canal core_from_config_service se ha cerrado. {e}");
-                }
-
-                Either6::Fourth(Ok(response)) => {}
-                Either6::Fourth(Err(e)) => {
-                    error!("el canal core_from_mqtt_service se ha cerrado. {e}");
-                }
-
-                Either6::Fifth(Ok(response)) => match response {
-                    OtaResponse::NoUpdateAvailable => {
-                        if let Err(e) = self
-                            .core_to_fsm_service
-                            .try_send(FsmServiceCommand::NotUpdateFirmware)
-                        {
-                            error!("no se pudo enviar NotUpdateFirmware en core. {e}");
-                        }
-                    }
-                    OtaResponse::UpdatedSuccesful(version) => {
-                        if let Err(e) = self
-                            .core_to_fsm_service
-                            .try_send(FsmServiceCommand::UpdateFirmware(version))
-                        {
-                            error!("no se pudo enviar UpdateFirmware en core. {e}");
-                        }
+                        },
+                        Err(e) => error!("{e}"),
                     }
                 },
-                Either6::Fifth(Err(e)) => {
-                    error!("el canal core_from_ota_service se ha cerrado. {e}");
-                }
-
-                Either6::Sixth(Ok(response)) => match response {
-                    TimerResponse::InitSystemReady => {}
-                    TimerResponse::InitBalanceReady => {}
-                    TimerResponse::HandshakeReady => {}
-                    TimerResponse::HeartbeatBalanceReady => {}
-                    TimerResponse::HeartbeatNormalReady => {}
-                    TimerResponse::HeartbeatSafeReady => {}
-                    TimerResponse::CoolingReady => {}
-                    TimerResponse::BypassReady => {}
-                },
-                Either6::Sixth(Err(e)) => {
-                    error!("el canal core_from_timer_service se ha cerrado. {e}");
-                }
             }
         }
     }
