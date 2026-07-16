@@ -44,18 +44,21 @@ pub enum SubStateBalance {
     OutHandshake,
 }
 
-#[derive(PartialEq, Eq)]
-pub enum StateForDataService {
+#[derive(Clone, PartialEq, Eq)]
+pub enum StateGeneral {
+    InitSystem,
     Store,
+    Cooling,
+    UpdateScore,
+    Bypass,
+    Safe { frequency: u32, jitter: u32 },
+    Normal,
+    InitBalance,
+    InHandshake,
     Alert { frequency: u32, jitter: u32 },
     Data { frequency: u32, jitter: u32 },
     Monitor { frequency: u32, jitter: u32 },
-    Normal,
-    Bypass,
-    Safe { frequency: u32, jitter: u32 },
-    Cooling,
-    UpdateScore,
-    None,
+    OutHandshake,
 }
 
 /// Representación compuesta del estado completo de la FSM.
@@ -111,24 +114,23 @@ impl TransitionInvalid {
 /// pero no **ejecuta** la acción (principio de separación de responsabilidades).
 #[derive(Debug, PartialEq, Clone)]
 pub enum Action {
-    ActionCheckFirmware,
-    ActionLinkageProtocol,
-    ActionNotifyFirmware,
-    ActionRestart,
-    ActionInitSystem,
-    ActionSyncStore,
-    ActionSyncCooling,
-    ActionSyncUpdateScore,
-    ActionSyncNormal,
-    ActionSyncBypass,
-    ActionSyncSafe,
-
-    ActionSyncAlert,
-    ActionSyncData,
-    ActionSyncMonitor,
-    ActionSyncInHandshake,
-    ActionSyncOutHandshake,
-    ActionSyncInitBalance,
+    OnEntryCheckFirmware,
+    OnEntryLinkageProtocol,
+    OnEntryNotifyFirmware,
+    OnEntryRestart,
+    OnEntryInitSystem,
+    OnEntryStore,
+    OnEntryCooling,
+    OnEntryUpdateScore,
+    OnEntryNormal,
+    OnEntryBypass,
+    OnEntrySafe,
+    OnEntryAlert,
+    OnEntryData,
+    OnEntryMonitor,
+    OnEntryInHandshake,
+    OnEntryOutHandshake,
+    OnEntryInitBalance,
 }
 
 /// Eventos que alimentan la FSM.
@@ -140,39 +142,22 @@ pub enum Event {
     EventNotUpdate,
     EventUpdateSuccessful,
     EventLinkageOk,
-    EventFromInitToStore,
-    EventFromInitToNormal,
-    EventFromInitToBalance,
-    EventFromInitToSafe,
-
-    EventFromStoreToNormal,
-    EventFromStoreToBypass,
-    EventFromStoreToSafe,
-    EventFromStoreToInHandshake,
-    EventFromStoreToInitBalance,
-
-    EventFromBypassToNormal,
-    EventFromBypassToInitBalance,
-
-    EventFromNormalToCooling,
-    EventFromNormalToInitBalance,
-    EventFromNormalToInHandshake,
-
-    EventFromInitBalanceToInHandshake,
-    EventFromInitBalanceToAlert,
-    EventFromInitBalanceToData,
-    EventFromInitBalanceToMonitor,
+    EventEdgeIsDead,
+    EventInitBalance,
+    EventToSafe,
+    EventToNormal,
+    EventLowScore,
+    EventBadScore,
+    EventTimeoutCooling,
+    EventGoodScore,
+    EventTimeoutBypass,
+    EventAlertGenerated,
     EventNewerEpoch,
-    EventFromInHandshakeToSafe,
-    EventFromInHandshakeToAlert,
-    EventFromAlertToData,
-    EventFromDataToMonitor,
-    EventFromMonitorToOutHandshake,
-    EventFromOutHandshakeToSafe,
-    EventFromOutHandshakeToNormal,
-
-    EventFromSafeToNormal,
-    EventFromSafeToStore,
+    EventToAlert,
+    EventToData,
+    EventToMonitor,
+    EventToInHandshake,
+    EventToOutHandshake,
 }
 
 impl FsmState {
@@ -230,19 +215,19 @@ impl FsmState {
                 let next_fsm = self.clone();
                 state_linkage_event_linkage_ok(next_fsm)
             }
-            (Some(SubStateInit::InitSystem), Event::EventFromInitToStore) => {
+            (Some(SubStateInit::InitSystem), Event::EventEdgeIsDead) => {
                 let next_fsm = self.clone();
                 state_init_system_event_to_store(next_fsm)
             }
-            (Some(SubStateInit::InitSystem), Event::EventFromInitToNormal) => {
+            (Some(SubStateInit::InitSystem), Event::EventToNormal) => {
                 let next_fsm = self.clone();
                 state_init_system_event_to_normal(next_fsm)
             }
-            (Some(SubStateInit::InitSystem), Event::EventFromInitToBalance) => {
+            (Some(SubStateInit::InitSystem), Event::EventInitBalance) => {
                 let next_fsm = self.clone();
                 state_init_system_to_balance(next_fsm)
             }
-            (Some(SubStateInit::InitSystem), Event::EventFromInitToSafe) => {
+            (Some(SubStateInit::InitSystem), Event::EventToSafe) => {
                 let next_fsm = self.clone();
                 state_init_system_to_safe(next_fsm)
             }
@@ -252,25 +237,33 @@ impl FsmState {
 
     fn step_store(&self, event: Event) -> Transition {
         match (&self.store, event) {
-            (Some(SubStateStore::Store), Event::EventFromStoreToNormal) => {
+            (Some(SubStateStore::Store), Event::EventToNormal) => {
                 let next_fsm = self.clone();
                 state_store_event_to_normal(next_fsm)
             }
-            (Some(SubStateStore::Cooling), Event::EventFromStoreToBypass) => {
+            (Some(SubStateStore::Cooling), Event::EventAlertGenerated) => {
                 let next_fsm = self.clone();
                 state_store_event_to_bypass(next_fsm)
             }
-            (Some(SubStateStore::UpdateScore), Event::EventFromStoreToSafe) => {
+            (Some(SubStateStore::Cooling), Event::EventTimeoutCooling) => {
                 let next_fsm = self.clone();
-                state_store_event_to_safe(next_fsm)
+                state_store_event_to_update(next_fsm)
             }
-            (Some(SubStateStore::UpdateScore), Event::EventFromStoreToInitBalance) => {
+            (Some(SubStateStore::UpdateScore), Event::EventLowScore) => {
                 let next_fsm = self.clone();
-                state_store_event_to_init_balance(next_fsm)
+                state_store_event_to_cooling(next_fsm)
             }
-            (Some(SubStateStore::UpdateScore), Event::EventFromStoreToInHandshake) => {
+            (Some(SubStateStore::UpdateScore), Event::EventBadScore) => {
                 let next_fsm = self.clone();
-                state_store_event_to_handshake(next_fsm)
+                state_update_event_to_store(next_fsm)
+            }
+            (Some(SubStateStore::UpdateScore), Event::EventInitBalance) => {
+                let next_fsm = self.clone();
+                state_update_event_to_balance(next_fsm)
+            }
+            (Some(SubStateStore::UpdateScore), Event::EventAlertGenerated) => {
+                let next_fsm = self.clone();
+                state_update_event_to_bypass(next_fsm)
             }
             _ => invalid(),
         }
@@ -278,17 +271,17 @@ impl FsmState {
 
     fn step_normal(&self, event: Event) -> Transition {
         match (&self.global, event) {
-            (StateGlobal::Normal, Event::EventFromNormalToCooling) => {
+            (StateGlobal::Normal, Event::EventEdgeIsDead) => {
                 let next_fsm = self.clone();
-                state_normal_event_to_cooling(next_fsm)
+                state_normal_event_to_store(next_fsm)
             }
-            (StateGlobal::Normal, Event::EventFromNormalToInitBalance) => {
+            (StateGlobal::Normal, Event::EventInitBalance) => {
                 let next_fsm = self.clone();
                 state_normal_event_to_init_balance(next_fsm)
             }
-            (StateGlobal::Normal, Event::EventFromNormalToInHandshake) => {
+            (StateGlobal::Normal, Event::EventLowScore) => {
                 let next_fsm = self.clone();
-                state_normal_event_to_handshake(next_fsm)
+                state_normal_event_to_cooling(next_fsm)
             }
             _ => invalid(),
         }
@@ -296,11 +289,11 @@ impl FsmState {
 
     fn step_bypass(&self, event: Event) -> Transition {
         match (&self.global, event) {
-            (StateGlobal::Bypass, Event::EventFromBypassToNormal) => {
+            (StateGlobal::Bypass, Event::EventTimeoutBypass) => {
                 let next_fsm = self.clone();
                 state_bypass_event_to_normal(next_fsm)
             }
-            (StateGlobal::Bypass, Event::EventFromBypassToInitBalance) => {
+            (StateGlobal::Bypass, Event::EventInitBalance) => {
                 let next_fsm = self.clone();
                 state_bypass_event_to_init_balance(next_fsm)
             }
@@ -310,27 +303,35 @@ impl FsmState {
 
     fn step_balance(&self, event: Event) -> Transition {
         match (&self.balance, event) {
-            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToInHandshake) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventToInHandshake) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_in_handshake(next_fsm)
             }
-            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToAlert) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventToAlert) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_alert(next_fsm)
             }
-            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToData) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventToData) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_data(next_fsm)
             }
-            (Some(SubStateBalance::InitBalanceMode), Event::EventFromInitBalanceToMonitor) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventToMonitor) => {
                 let next_fsm = self.clone();
                 state_init_balance_event_to_monitor(next_fsm)
             }
-            (Some(SubStateBalance::InHandshake), Event::EventFromInHandshakeToSafe) => {
+            (Some(SubStateBalance::InitBalanceMode), Event::EventToSafe) => {
+                let next_fsm = self.clone();
+                state_init_balance_event_to_safe(next_fsm)
+            }
+            (Some(SubStateBalance::InitBalanceMode), Event::EventEdgeIsDead) => {
+                let next_fsm = self.clone();
+                event_to_store(next_fsm)
+            }
+            (Some(SubStateBalance::InHandshake), Event::EventToSafe) => {
                 let next_fsm = self.clone();
                 state_in_handshake_event_to_safe(next_fsm)
             }
-            (Some(SubStateBalance::InHandshake), Event::EventFromInHandshakeToAlert) => {
+            (Some(SubStateBalance::InHandshake), Event::EventToAlert) => {
                 let next_fsm = self.clone();
                 state_in_handshake_event_to_alert(next_fsm)
             }
@@ -338,7 +339,11 @@ impl FsmState {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::Alert), Event::EventFromAlertToData) => {
+            (Some(SubStateBalance::InHandshake), Event::EventEdgeIsDead) => {
+                let next_fsm = self.clone();
+                event_to_store(next_fsm)
+            }
+            (Some(SubStateBalance::Alert), Event::EventToData) => {
                 let next_fsm = self.clone();
                 state_alert_event_to_data(next_fsm)
             }
@@ -346,7 +351,11 @@ impl FsmState {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::Data), Event::EventFromDataToMonitor) => {
+            (Some(SubStateBalance::Alert), Event::EventEdgeIsDead) => {
+                let next_fsm = self.clone();
+                event_to_store(next_fsm)
+            }
+            (Some(SubStateBalance::Data), Event::EventToMonitor) => {
                 let next_fsm = self.clone();
                 state_data_event_to_monitor(next_fsm)
             }
@@ -354,7 +363,11 @@ impl FsmState {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::Monitor), Event::EventFromMonitorToOutHandshake) => {
+            (Some(SubStateBalance::Data), Event::EventEdgeIsDead) => {
+                let next_fsm = self.clone();
+                event_to_store(next_fsm)
+            }
+            (Some(SubStateBalance::Monitor), Event::EventToOutHandshake) => {
                 let next_fsm = self.clone();
                 state_monitor_event_to_out_handshake(next_fsm)
             }
@@ -362,11 +375,15 @@ impl FsmState {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
-            (Some(SubStateBalance::OutHandshake), Event::EventFromOutHandshakeToSafe) => {
+            (Some(SubStateBalance::Monitor), Event::EventEdgeIsDead) => {
+                let next_fsm = self.clone();
+                event_to_store(next_fsm)
+            }
+            (Some(SubStateBalance::OutHandshake), Event::EventToSafe) => {
                 let next_fsm = self.clone();
                 state_out_handshake_event_to_safe(next_fsm)
             }
-            (Some(SubStateBalance::OutHandshake), Event::EventFromOutHandshakeToNormal) => {
+            (Some(SubStateBalance::OutHandshake), Event::EventToNormal) => {
                 let next_fsm = self.clone();
                 state_out_handshake_event_to_normal(next_fsm)
             }
@@ -374,17 +391,21 @@ impl FsmState {
                 let next_fsm = self.clone();
                 newer_epoch(next_fsm)
             }
+            (Some(SubStateBalance::OutHandshake), Event::EventEdgeIsDead) => {
+                let next_fsm = self.clone();
+                event_to_store(next_fsm)
+            }
             _ => invalid(),
         }
     }
 
     fn step_safe(&self, event: Event) -> Transition {
         match (&self.global, event) {
-            (StateGlobal::Safe, Event::EventFromSafeToNormal) => {
+            (StateGlobal::Safe, Event::EventToNormal) => {
                 let next_fsm = self.clone();
                 state_safe_event_to_normal(next_fsm)
             }
-            (StateGlobal::Safe, Event::EventFromSafeToStore) => {
+            (StateGlobal::Safe, Event::EventEdgeIsDead) => {
                 let next_fsm = self.clone();
                 state_safe_event_to_store(next_fsm)
             }
@@ -424,22 +445,22 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
             match state {
                 SubStateInit::CheckFirmware => {
                     actions
-                        .push(Action::ActionCheckFirmware)
+                        .push(Action::OnEntryCheckFirmware)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateInit::Linkage => {
                     actions
-                        .push(Action::ActionLinkageProtocol)
+                        .push(Action::OnEntryLinkageProtocol)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateInit::InitSystem => {
                     actions
-                        .push(Action::ActionInitSystem)
+                        .push(Action::OnEntryInitSystem)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateInit::NotifyFirmwareUpdated => {
                     actions
-                        .push(Action::ActionRestart)
+                        .push(Action::OnEntryRestart)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
             }
@@ -451,17 +472,17 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
             match state {
                 SubStateStore::Store => {
                     actions
-                        .push(Action::ActionSyncStore)
+                        .push(Action::OnEntryStore)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateStore::Cooling => {
                     actions
-                        .push(Action::ActionSyncCooling)
+                        .push(Action::OnEntryCooling)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateStore::UpdateScore => {
                     actions
-                        .push(Action::ActionSyncUpdateScore)
+                        .push(Action::OnEntryUpdateScore)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
             }
@@ -470,19 +491,19 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
 
     if old.global != new.global && new.global == StateGlobal::Normal {
         actions
-            .push(Action::ActionSyncNormal)
+            .push(Action::OnEntryNormal)
             .expect("ACTION_VECTOR_CAPACITY demasiado chico");
     }
 
     if old.global != new.global && new.global == StateGlobal::Safe {
         actions
-            .push(Action::ActionSyncSafe)
+            .push(Action::OnEntrySafe)
             .expect("ACTION_VECTOR_CAPACITY demasiado chico");
     }
 
     if old.global != new.global && new.global == StateGlobal::Bypass {
         actions
-            .push(Action::ActionSyncBypass)
+            .push(Action::OnEntryBypass)
             .expect("ACTION_VECTOR_CAPACITY demasiado chico");
     }
 
@@ -491,32 +512,32 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
             match state {
                 SubStateBalance::Alert => {
                     actions
-                        .push(Action::ActionSyncAlert)
+                        .push(Action::OnEntryAlert)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateBalance::Data => {
                     actions
-                        .push(Action::ActionSyncData)
+                        .push(Action::OnEntryData)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateBalance::Monitor => {
                     actions
-                        .push(Action::ActionSyncMonitor)
+                        .push(Action::OnEntryMonitor)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateBalance::InHandshake => {
                     actions
-                        .push(Action::ActionSyncInHandshake)
+                        .push(Action::OnEntryInHandshake)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateBalance::OutHandshake => {
                     actions
-                        .push(Action::ActionSyncOutHandshake)
+                        .push(Action::OnEntryOutHandshake)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
                 SubStateBalance::InitBalanceMode => {
                     actions
-                        .push(Action::ActionSyncInitBalance)
+                        .push(Action::OnEntryInitBalance)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
             }
@@ -635,6 +656,59 @@ fn state_store_event_to_bypass(mut next_fsm: FsmState) -> Transition {
     Transition::Valid(valid)
 }
 
+fn state_store_event_to_update(mut next_fsm: FsmState) -> Transition {
+    next_fsm.store = Some(SubStateStore::UpdateScore);
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
+fn state_store_event_to_cooling(mut next_fsm: FsmState) -> Transition {
+    next_fsm.store = Some(SubStateStore::Cooling);
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
+fn state_update_event_to_store(mut next_fsm: FsmState) -> Transition {
+    next_fsm.store = Some(SubStateStore::Store);
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
+fn state_update_event_to_balance(mut next_fsm: FsmState) -> Transition {
+    next_fsm.store = None;
+    next_fsm.global = StateGlobal::Balance;
+    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
+fn state_update_event_to_bypass(mut next_fsm: FsmState) -> Transition {
+    next_fsm.store = None;
+    next_fsm.global = StateGlobal::Bypass;
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
 fn state_store_event_to_safe(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Safe;
     next_fsm.store = None;
@@ -670,9 +744,9 @@ fn state_store_event_to_handshake(mut next_fsm: FsmState) -> Transition {
     Transition::Valid(valid)
 }
 
-fn state_normal_event_to_cooling(mut next_fsm: FsmState) -> Transition {
+fn state_normal_event_to_store(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::StoreMessage;
-    next_fsm.store = Some(SubStateStore::Cooling);
+    next_fsm.store = Some(SubStateStore::Store);
 
     let valid = TransitionValid {
         change_state: next_fsm,
@@ -692,9 +766,9 @@ fn state_normal_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
     Transition::Valid(valid)
 }
 
-fn state_normal_event_to_handshake(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Balance;
-    next_fsm.balance = Some(SubStateBalance::InHandshake);
+fn state_normal_event_to_cooling(mut next_fsm: FsmState) -> Transition {
+    next_fsm.global = StateGlobal::StoreMessage;
+    next_fsm.store = Some(SubStateStore::Cooling);
 
     let valid = TransitionValid {
         change_state: next_fsm,
@@ -756,6 +830,17 @@ fn state_init_balance_event_to_data(mut next_fsm: FsmState) -> Transition {
 
 fn state_init_balance_event_to_monitor(mut next_fsm: FsmState) -> Transition {
     next_fsm.balance = Some(SubStateBalance::Monitor);
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
+fn state_init_balance_event_to_safe(mut next_fsm: FsmState) -> Transition {
+    next_fsm.global = StateGlobal::Safe;
+    next_fsm.balance = None;
 
     let valid = TransitionValid {
         change_state: next_fsm,
@@ -829,6 +914,18 @@ fn state_out_handshake_event_to_safe(mut next_fsm: FsmState) -> Transition {
 fn state_out_handshake_event_to_normal(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Normal;
     next_fsm.balance = None;
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
+fn event_to_store(mut next_fsm: FsmState) -> Transition {
+    next_fsm.balance = None;
+    next_fsm.global = StateGlobal::StoreMessage;
+    next_fsm.store = Some(SubStateStore::Store);
 
     let valid = TransitionValid {
         change_state: next_fsm,

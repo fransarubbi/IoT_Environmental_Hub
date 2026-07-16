@@ -19,12 +19,14 @@ use std::sync::{Arc, RwLock};
 
 use crate::app::{
     data::domain::{DataServiceCommand, DataServiceResponse},
-    fsm::domain::StateForDataService,
-    fsm::logic::{FsmServiceCommand, FsmServiceResponse},
+    fsm::{
+        domain::StateGeneral,
+        logic::{FsmServiceCommand, FsmServiceResponse},
+    },
     healthscore::domain::{HealthServiceCommand, HealthServiceResponse, HealthState},
-    heartbeat::domain::{HeartbeatCommand, HeartbeatResponse},
+    heartbeat::domain::{HeartbeatCommand, HeartbeatResponse, StateForHeartbeat},
     message::domain::{MessageFromEdge, MessageServiceCommand, MessageServiceResponse},
-    system_settings::domain::{ConfigCommand, ConfigResponse, SystemSettings},
+    system_settings::domain::{ConfigCommand, ConfigField, ConfigResponse, SystemSettings},
     timer::logic::{TimerCommand, TimerResponse},
 };
 
@@ -285,6 +287,11 @@ impl Core {
                                     error!("no se pudo enviar GenerateLinkageRequest desde core. {e}");
                                 }
                             }
+                            FsmServiceResponse::SubscribeInitialTopic => {
+                                if let Err(e) = self.core_to_mqtt_service.try_send(MqttData::SubscribeInitial) {
+                                    error!("no se pudo enviar SubscribeInitial desde core. {e}");
+                                }
+                            }
                             FsmServiceResponse::NotifyFirmware(version) => {
                                 if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateFirmwareOk(version)) {
                                     error!("no se pudo enviar GenerateFirmwareOk desde core. {e}");
@@ -296,22 +303,37 @@ impl Core {
                                 }
                             }
                             FsmServiceResponse::InitSystem => {
+                                if let Err(e) = self.core_to_mqtt_service.try_send(MqttData::SubscribeOperational) {
+                                    error!("no se pudo enviar SubscribeOperational desde core. {e}");
+                                }
                                 if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStart) {
                                         error!("no se pudo enviar InitSystemStart desde core. {e}");
                                 }
                             }
-                            FsmServiceResponse::EntryStore => {
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
-                                        error!("no se pudo enviar InitSystemStop desde core. {e}");
+                            FsmServiceResponse::EntryStore(state) => {
+                                if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::None)) {
+                                    error!("no se pudo enviar StateForHeartbeat desde core. {e}");
                                 }
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
-                                        error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Store)) {
+                                    error!("no se pudo enviar Store desde core. {e}");
                                 }
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
-                                        error!("no se pudo enviar HandshakeStop desde core. {e}");
-                                }
-                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateForDataService::Store)) {
-                                        error!("no se pudo enviar Store desde core. {e}");
+                                match state {
+                                    StateGeneral::InitSystem => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
+                                                error!("no se pudo enviar InitSystemStop desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::InHandshake | StateGeneral::OutHandshake => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                                error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::InitBalance => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
+                                                error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                             FsmServiceResponse::EntryCooling => {
@@ -327,52 +349,143 @@ impl Core {
                                         error!("no se pudo enviar GeneratePing desde core. {e}");
                                 }
                             }
-                            FsmServiceResponse::EntryNormal => {
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::BypassStop) {
-                                        error!("no se pudo enviar BypassStop desde core. {e}");
+                            FsmServiceResponse::EntryNormal(state) => {
+                                match state {
+                                    StateGeneral::InitSystem => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
+                                            error!("no se pudo enviar InitSystemStop desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::Safe { frequency, jitter } => {
+                                        if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::None)) {
+                                            error!("no se pudo enviar StateForHeartbeat desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::OutHandshake => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                            error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                        }
+                                    }
+                                    _ => {}
                                 }
-
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
-                                        error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::Normal)) {
+                                    error!("no se pudo enviar StateForHeartbeat desde core. {e}");
                                 }
-                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateForDataService::Normal)) {
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Normal)) {
+                                    error!("no se pudo enviar Normal desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntrySafe((state, frequency, jitter)) => {
+                                match state {
+                                    StateGeneral::InitSystem => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
+                                            error!("no se pudo enviar InitSystemStop desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::InHandshake | StateGeneral::OutHandshake => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                            error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::InitBalance => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
+                                            error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::Safe)) {
+                                    error!("no se pudo enviar StateForHeartbeat desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Safe { frequency, jitter })) {
                                         error!("no se pudo enviar Normal desde core. {e}");
                                 }
                             }
-                            FsmServiceResponse::EntrySafe => {
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
-                                        error!("no se pudo enviar HandshakeStop desde core. {e}");
+                            FsmServiceResponse::EntryBypass(state) => {
+                                if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::None)) {
+                                    error!("no se pudo enviar StateForHeartbeat desde core. {e}");
                                 }
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
-                                        error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                match state {
+                                    StateGeneral::Cooling => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStop) {
+                                            error!("no se pudo enviar CoolingStop desde core. {e}");
+                                        }
+                                    }
+                                    _ => {}
                                 }
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::BypassStart) {
+                                    error!("no se pudo enviar BypassStart desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::EntryInitBalance(state, duration) => {
+                                if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::None)) {
+                                    error!("no se pudo enviar StateForHeartbeat desde core. {e}");
+                                }
+                                match state {
+                                    StateGeneral::InitSystem => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
+                                            error!("no se pudo enviar InitSystemStop desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::Cooling => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStop) {
+                                            error!("no se pudo enviar CoolingStop desde core. {e}");
+                                        }
+                                    }
+                                    StateGeneral::InHandshake | StateGeneral::OutHandshake => {
+                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                            error!("no se pudo enviar HandshakeStop desde core. {e}");
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStart) {
                                         error!("no se pudo enviar InitSystemStop desde core. {e}");
                                 }
-                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateForDataService::Safe { frequency: (), jitter: () })) {
-                                        error!("no se pudo enviar Normal desde core. {e}");
+                                if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::Balance)) {
+                                    error!("no se pudo enviar StateForHeartbeat desde core. {e}");
                                 }
                             }
-                            FsmServiceResponse::EntryBypass => {
-
+                            FsmServiceResponse::EntryAlert((frequency, jitter)) => {
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
+                                    error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Alert { frequency, jitter } )) {
+                                    error!("no se pudo enviar Alert desde core. {e}");
+                                }
                             }
-                            FsmServiceResponse::EntryAlert => {
-
+                            FsmServiceResponse::EntryData((frequency, jitter)) => {
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Data { frequency, jitter } )) {
+                                    error!("no se pudo enviar Data desde core. {e}");
+                                }
                             }
-                            FsmServiceResponse::EntryData => {
-
-                            }
-                            FsmServiceResponse::EntryMonitor => {
-
+                            FsmServiceResponse::EntryMonitor((frequency, jitter)) => {
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Monitor { frequency, jitter } )) {
+                                    error!("no se pudo enviar Monitor desde core. {e}");
+                                }
                             }
                             FsmServiceResponse::EntryInHandshake => {
-
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
+                                    error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                }
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStart) {
+                                    error!("no se pudo enviar HandshakeStart desde core. {e}");
+                                }
                             }
                             FsmServiceResponse::EntryOutHandshake => {
-
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStart) {
+                                    error!("no se pudo enviar HandshakeStart desde core. {e}");
+                                }
                             }
-                            FsmServiceResponse::EntryInitBalance => {
-
+                            FsmServiceResponse::UpdateBalanceEpoch(epoch) => {
+                                if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::UpdateField(ConfigField::BalanceEpoch(epoch))) {
+                                    error!("no se pudo enviar UpdateBalanceEpoch desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::UpdateLinkageFlag => {
+                                if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::UpdateField(ConfigField::LinkageFlag(true))) {
+                                    error!("no se pudo enviar UpdateLinkageFlag desde core. {e}");
+                                }
                             }
                         },
                         Err(e) => error!("el canal core_from_fsm_service se ha cerrado. {e}"),
@@ -415,7 +528,7 @@ impl Core {
                                         }
                                     }
                                 }
-                                MessageFromEdge::Heartbeat(msg) => {
+                                MessageFromEdge::Heartbeat(_) => {
                                     if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::HeartbeatIncoming) {
                                         error!("no se pudo enviar HeartbeatIncoming desde core. {e}");
                                     }
@@ -437,7 +550,7 @@ impl Core {
                                     }
                                 }
                                 MessageFromEdge::StateBalanceMode(msg) => {
-                                     if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::Balance((msg.state, msg.balance_epoch, msg.duration))) {
+                                     if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::Balance((msg.balance_epoch, msg.duration))) {
                                          error!("no se pudo enviar Balance desde core. {e}");
                                      }
                                 }
@@ -455,7 +568,7 @@ impl Core {
                                     let edge = settings.read().unwrap().id_edge().to_string();
                                     if msg.metadata.sender_user_id == edge.as_str() {
                                         if let Err(e) = self.core_to_fsm_service.try_send(
-                                            FsmServiceCommand::Safe((msg.state, msg.frequency, msg.jitter)),
+                                            FsmServiceCommand::Safe((msg.frequency, msg.jitter)),
                                         ) {
                                             error!("no se pudo enviar Safe en core. {e}");
                                         }
@@ -507,10 +620,12 @@ impl Core {
                     match res {
                         Ok(response) => match response {
                             MqttData::Connected => {
-
+                                // se podria implementar logica de enviar a healthservice y que repunte algunos points
                             }
                             MqttData::Disconnected => {
-
+                                if let Err(e) = self.core_to_health_service.try_send(HealthServiceCommand::Disconnect) {
+                                    error!("no se pudo enviar Disconnect desde core. {e}");
+                                }
                             }
                             MqttData::InMessage(msg) => {
                                 if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::ParseMessage(msg)) {
@@ -558,7 +673,21 @@ impl Core {
                 res = self.core_from_timer_service.recv().fuse() => {
                     match res {
                         Ok(response) => match response {
-                            _ => {}
+                            TimerResponse::InitSystemReady => {
+
+                            }
+                            TimerResponse::CoolingReady => {
+
+                            }
+                            TimerResponse::BypassReady => {
+
+                            }
+                            TimerResponse::InitBalanceReady => {
+
+                            }
+                            TimerResponse::HandshakeReady => {
+
+                            }
                         },
                         Err(e) => error!("{e}"),
                     }
@@ -567,16 +696,12 @@ impl Core {
                 res = self.core_from_heartbeat_service.recv().fuse() => {
                     match res {
                         Ok(response) => match response {
-                            HeartbeatResponse::Connected => {
-                                if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::EdgeConnected) {
-                                    error!("no se pudo enviar EdgeConnected desde core. {e}");
-                                }
-                            }
                             HeartbeatResponse::Disconnected => {
                                 if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::EdgeDisconnected) {
                                     error!("no se pudo enviar EdgeDisconnected desde core. {e}");
                                 }
                             }
+                            _ => {}
                         },
                         Err(e) => error!("{e}"),
                     }
@@ -640,11 +765,6 @@ impl Core {
                                             error!("no se pudo enviar HealthyConnection desde core. {e}");
                                         }
                                     }
-                                    HealthState::Degraded => {
-                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::DegradedConnection) {
-                                            error!("no se pudo enviar DegradedConnection desde core. {e}");
-                                        }
-                                    }
                                     HealthState::Critical => {
                                         if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::CriticalConnection) {
                                             error!("no se pudo enviar CriticalConnection desde core. {e}");
@@ -655,6 +775,7 @@ impl Core {
                                             error!("no se pudo enviar UnavailableConnection desde core. {e}");
                                         }
                                     }
+                                    _ => {}
                                 }
                             }
                         },

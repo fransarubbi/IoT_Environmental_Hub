@@ -29,6 +29,8 @@ pub enum MqttData {
     InMessage(IncomingMessage),
     OutMessage(SerializedMessage),
     Health(HealthServiceCommand),
+    SubscribeInitial,
+    SubscribeOperational,
 }
 
 /// Estructura que contiene el mensaje binario y el tópico donde se recibió.
@@ -101,7 +103,7 @@ impl EspIdfMqttManager {
         let sender_to_closure = sender.clone();
 
         let client = EspMqttClient::new_cb(&uri, &config, move |event| {
-            // 4. Hacemos match directamente sobre EventPayload
+            // Hacemos match directamente sobre EventPayload
             match event.payload() {
                 EventPayload::Connected(_) => {
                     info!("conectado al broker MQTT");
@@ -152,7 +154,7 @@ impl EspIdfMqttManager {
                     let mut state = rx_state.lock().unwrap();
 
                     match details {
-                        // CASO 1: El mensaje es pequeño y entró completo en un solo paquete
+                        // Caso 1: El mensaje es pequeño y entró completo en un solo paquete
                         Details::Complete => {
                             let topic_str = topic.unwrap_or("");
                             let mut topic_hl = String::<75>::new();
@@ -168,7 +170,7 @@ impl EspIdfMqttManager {
                             }
                         }
 
-                        // CASO 2: El mensaje es grande. Este es el primer fragmento.
+                        // Caso 2: El mensaje es grande. Este es el primer fragmento.
                         Details::InitialChunk(_chunk_info) => {
                             // En el primer fragmento, el tópico siempre viene. Lo guardamos.
                             state.topic.clear();
@@ -181,7 +183,7 @@ impl EspIdfMqttManager {
                             let _ = state.buffer.extend_from_slice(data);
                         }
 
-                        // CASO 3: Es un fragmento intermedio o el último fragmento.
+                        // Caso 3: Es un fragmento intermedio o el último fragmento.
                         Details::SubsequentChunk(chunk_info) => {
                             // En SubsequentChunk, el 'topic' viene como None para ahorrar ancho de banda.
                             // Por eso usamos el que guardamos previamente en state.topic.
@@ -265,6 +267,12 @@ impl EspIdfMqttManager {
                         }
                     }
                 }
+                MqttData::SubscribeInitial => {
+                    self.subscribe_initial_topics();
+                }
+                MqttData::SubscribeOperational => {
+                    self.subscribe_all_topics();
+                }
                 _ => {}
             }
         }
@@ -302,7 +310,16 @@ impl Mqtt for EspIdfMqttManager {
             })
     }
 
-    fn enable_subscriptions(&mut self) {
+    fn subscribe_initial_topics(&mut self) {
+        let settings_arc = Arc::clone(&self.settings);
+        let cfg = settings_arc.read().unwrap();
+        let _ = self.subscribe(
+            &cfg.topic_linkage_ack().topic,
+            match_qos(cfg.topic_linkage_ack().qos),
+        );
+    }
+
+    fn subscribe_all_topics(&mut self) {
         let settings_arc = Arc::clone(&self.settings);
         let cfg = settings_arc.read().unwrap();
 
@@ -341,10 +358,6 @@ impl Mqtt for EspIdfMqttManager {
         let _ = self.subscribe(
             &cfg.topic_edge_setting_ok().topic,
             match_qos(cfg.topic_edge_setting_ok().qos),
-        );
-        let _ = self.subscribe(
-            &cfg.topic_linkage_ack().topic,
-            match_qos(cfg.topic_linkage_ack().qos),
         );
     }
 }

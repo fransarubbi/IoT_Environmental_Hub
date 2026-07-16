@@ -5,7 +5,7 @@ use esp_idf_hal::sys::esp_random;
 use heapless::String;
 use log::info;
 
-use crate::{app::fsm::domain::StateForDataService, app::system_settings::domain::EnergyMode};
+use crate::{app::fsm::domain::StateGeneral, app::system_settings::domain::EnergyMode};
 
 const SCAN_TIME_IN_LOW_MODE: u64 = 20;
 const SCAN_TIME_IN_NORMAL_MODE: u64 = 10;
@@ -55,7 +55,7 @@ pub enum DataServiceResponse {
 }
 
 pub enum DataServiceCommand {
-    State(StateForDataService),
+    State(StateGeneral),
 }
 
 #[derive(Clone)]

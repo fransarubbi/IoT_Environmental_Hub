@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::{
     app::data::domain::*,
-    app::fsm::domain::StateForDataService,
+    app::fsm::domain::StateGeneral,
     app::monitor::logic::{Monitor, monitor_read},
     app::system_settings::domain::SystemSettings,
     bsp::wifi::get_unix_epoch,
@@ -50,7 +50,7 @@ impl DataService {
         let mut monitor_backup: Deque<Monitor, 25> = Deque::new();
         let mut alert_backup: Deque<AlertCache, 5> = Deque::new();
 
-        let mut state = StateForDataService::None;
+        let mut state = StateGeneral::InitSystem;
         let set_guard = self.settings.read().unwrap();
         let mut alert_analysis_temp = EmaDetector::new(set_guard.temp_alpha_ema());
         let mut alert_analysis_air = EmaDetector::new(set_guard.air_alpha_ema());
@@ -187,24 +187,24 @@ impl DataService {
                     };
 
                     match state {
-                        StateForDataService::None => {
+                        StateGeneral::InitSystem => {
                             let _ = tx_scan.try_send(PeriodicCommand::Stop);
                             let _ = tx_sample.try_send(PeriodicCommand::Stop);
                             let _ = tx_sweeper.try_send(PeriodicCommand::Stop);
                         }
-                        StateForDataService::Store => {
+                        StateGeneral::Store => {
                             let _ = tx_scan.try_send(start(energy_secs, InternalEvent::ScanTick));
                             let _ = tx_sample
                                 .try_send(start(sample_secs * 2, InternalEvent::SampleTick));
                             let _ = tx_sweeper.try_send(PeriodicCommand::Stop);
                         }
-                        StateForDataService::Normal => {
+                        StateGeneral::Normal => {
                             let _ = tx_scan.try_send(start(energy_secs, InternalEvent::ScanTick));
                             let _ =
                                 tx_sample.try_send(start(sample_secs, InternalEvent::SampleTick));
                             let _ = tx_sweeper.try_send(start(5, InternalEvent::SweeperTick));
                         }
-                        StateForDataService::Bypass => {
+                        StateGeneral::Bypass => {
                             let _ = tx_scan.try_send(start(energy_secs, InternalEvent::ScanTick));
                             let _ = tx_sample.try_send(PeriodicCommand::Stop);
                             let _ = tx_sweeper.try_send(PeriodicCommand::Stop);
@@ -220,21 +220,21 @@ impl DataService {
                                 });
                             }
                         }
-                        StateForDataService::Cooling | StateForDataService::UpdateScore => {
+                        StateGeneral::Cooling | StateGeneral::UpdateScore => {
                             let _ = tx_scan.try_send(start(energy_secs, InternalEvent::ScanTick));
                             let _ = tx_sweeper.try_send(PeriodicCommand::Stop);
                         }
                         // Estados combinados con jitter y frecuencias configurables
-                        StateForDataService::Alert { frequency, jitter }
-                        | StateForDataService::Data { frequency, jitter }
-                        | StateForDataService::Monitor { frequency, jitter } => {
+                        StateGeneral::Alert { frequency, jitter }
+                        | StateGeneral::Data { frequency, jitter }
+                        | StateGeneral::Monitor { frequency, jitter } => {
                             let sweeper_time = frequency + random_jitter(jitter);
                             let _ = tx_scan.try_send(start(energy_secs, InternalEvent::ScanTick));
                             let _ = tx_sample.try_send(PeriodicCommand::Stop);
                             let _ = tx_sweeper
                                 .try_send(start(sweeper_time as u64, InternalEvent::SweeperTick));
                         }
-                        StateForDataService::Safe { frequency, jitter } => {
+                        StateGeneral::Safe { frequency, jitter } => {
                             let sweeper_time = frequency + random_jitter(jitter);
                             let _ = tx_scan.try_send(start(energy_secs, InternalEvent::ScanTick));
                             let _ = tx_sample
@@ -242,6 +242,7 @@ impl DataService {
                             let _ = tx_sweeper
                                 .try_send(start(sweeper_time as u64, InternalEvent::SweeperTick));
                         }
+                        _ => {}
                     }
                 }
                 Either::First(Err(e)) => error!("{e}"),
@@ -259,16 +260,16 @@ impl DataService {
                             }) = alert_analysis_temp.process(temp)
                             {
                                 match state {
-                                    StateForDataService::Cooling
-                                    | StateForDataService::UpdateScore
-                                    | StateForDataService::Store => {
+                                    StateGeneral::Cooling
+                                    | StateGeneral::UpdateScore
+                                    | StateGeneral::Store => {
                                         alert_cache.actual_temp = Some(current_value);
                                         alert_cache.initial_temp = Some(normal_value);
                                         let _ = self
                                             .sender
                                             .try_send(DataServiceResponse::AnAlertWasGenerated);
                                     }
-                                    StateForDataService::Bypass => {
+                                    StateGeneral::Bypass => {
                                         let _ = self.sender.try_send(
                                             DataServiceResponse::BypassAlertTemp {
                                                 initial_temp: normal_value,
@@ -295,16 +296,16 @@ impl DataService {
                             }) = alert_analysis_air.process(aqi)
                             {
                                 match state {
-                                    StateForDataService::Cooling
-                                    | StateForDataService::UpdateScore
-                                    | StateForDataService::Store => {
+                                    StateGeneral::Cooling
+                                    | StateGeneral::UpdateScore
+                                    | StateGeneral::Store => {
                                         alert_cache.actual_air_quality = Some(current_value);
                                         alert_cache.initial_air_quality = Some(normal_value);
                                         let _ = self
                                             .sender
                                             .try_send(DataServiceResponse::AnAlertWasGenerated);
                                     }
-                                    StateForDataService::Bypass => {
+                                    StateGeneral::Bypass => {
                                         let _ = self.sender.try_send(
                                             DataServiceResponse::BypassAlertAir {
                                                 initial_air_quality: normal_value,
@@ -332,7 +333,7 @@ impl DataService {
                         }
 
                         match state {
-                            StateForDataService::Normal => {
+                            StateGeneral::Normal => {
                                 send_report(&data_cache, &self.sender);
                                 let m = monitor_read().await;
                                 let _ = self.sender.try_send(DataServiceResponse::Monitor {
@@ -343,7 +344,7 @@ impl DataService {
                                     heap_largest_block: m.heap_largest_block,
                                 });
                             }
-                            StateForDataService::Store => {
+                            StateGeneral::Store => {
                                 if data_cache.is_some_complete() {
                                     let _ = data_backup.push_back(data_cache.clone());
                                 }
@@ -358,7 +359,7 @@ impl DataService {
                         let mut next_interval = 5;
 
                         match state {
-                            StateForDataService::Normal => {
+                            StateGeneral::Normal => {
                                 if data_backup.is_empty() {
                                     next_interval = 20;
                                 } else {
@@ -369,7 +370,7 @@ impl DataService {
                                 pop_and_send_monitor(&mut monitor_backup, &self.sender);
                                 reschedule_sweeper = true;
                             }
-                            StateForDataService::Safe { frequency, jitter } => {
+                            StateGeneral::Safe { frequency, jitter } => {
                                 let alert_empty =
                                     pop_and_send_alerts(&mut alert_backup, &self.sender);
                                 let data_empty = pop_and_send_data(&mut data_backup, &self.sender);
@@ -383,7 +384,7 @@ impl DataService {
                                 next_interval = frequency as u64 + random_jitter(jitter) as u64;
                                 reschedule_sweeper = true;
                             }
-                            StateForDataService::Alert { frequency, jitter } => {
+                            StateGeneral::Alert { frequency, jitter } => {
                                 if alert_backup.is_empty() {
                                     let _ = self.sender.try_send(
                                         DataServiceResponse::EmptyQueuePhase {
@@ -397,7 +398,7 @@ impl DataService {
                                 next_interval = frequency as u64 + random_jitter(jitter) as u64;
                                 reschedule_sweeper = true;
                             }
-                            StateForDataService::Data { frequency, jitter } => {
+                            StateGeneral::Data { frequency, jitter } => {
                                 if data_backup.is_empty() {
                                     let _ = self.sender.try_send(
                                         DataServiceResponse::EmptyQueuePhase {
@@ -411,7 +412,7 @@ impl DataService {
                                 next_interval = frequency as u64 + random_jitter(jitter) as u64;
                                 reschedule_sweeper = true;
                             }
-                            StateForDataService::Monitor { frequency, jitter } => {
+                            StateGeneral::Monitor { frequency, jitter } => {
                                 if monitor_backup.is_empty() {
                                     let _ = self.sender.try_send(
                                         DataServiceResponse::EmptyQueuePhase {

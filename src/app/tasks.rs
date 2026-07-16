@@ -174,8 +174,12 @@ pub(crate) fn core1_executor_task(
 
     executor
         .spawn(
-            FsmService::new(channels.fsm_service_to_core, channels.fsm_service_from_core)
-                .run(&executor),
+            FsmService::new(
+                channels.fsm_service_to_core,
+                channels.fsm_service_from_core,
+                Arc::clone(&settings),
+            )
+            .run(&executor),
         )
         .detach();
 

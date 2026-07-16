@@ -11,5 +11,6 @@ pub trait Mqtt {
         retain: bool,
     ) -> Result<u16, String<100>>;
     fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<u16, String<50>>;
-    fn enable_subscriptions(&mut self);
+    fn subscribe_initial_topics(&mut self);
+    fn subscribe_all_topics(&mut self);
 }
