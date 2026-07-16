@@ -27,6 +27,7 @@ impl DataService {
         receiver: Receiver<DataServiceCommand>,
         settings: Arc<RwLock<SystemSettings>>,
     ) -> Self {
+        info!("creando DataService...");
         Self {
             sender,
             receiver,
@@ -169,8 +170,7 @@ impl DataService {
                 backup.is_empty()
             };
 
-        info!("iniciando DataService run...");
-        // Loop principal
+        info!("iniciando DataService...");
         loop {
             match select(self.receiver.recv(), rx.recv()).await {
                 // Comandos Externos

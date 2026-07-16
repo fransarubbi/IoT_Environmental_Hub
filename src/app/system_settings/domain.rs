@@ -18,10 +18,8 @@ pub enum ConfigCommand {
     UpdateField(ConfigField),
     /// Recibe el ACK para no enviar mas el mensaje
     SettingsAck(SettingOk),
-    /// Obliga a leer nuevamente desde NVS
-    Reload,
-    /// Obliga a guardar la configuración actual en NVS
-    Save,
+    /// Recibe la orden para enviar el mensaje de settings
+    StartSendingSettings,
 }
 
 /// Campos que se pueden actualizar individualmente.
@@ -34,6 +32,10 @@ pub enum ConfigField {
 pub enum ConfigResponse {
     GenerateSettings(u32),
     GenerateSettingsAck(u32),
+    UpdateWifi {
+        ssid: String<WIFI_SSID_STRING_LEN>,
+        password: String<30>,
+    },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

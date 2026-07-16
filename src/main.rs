@@ -99,7 +99,7 @@ fn main() -> anyhow::Result<()> {
     if cli.run(config_manager.has_data()) {
         let _ = config_manager
             .save_to_nvs()
-            .map_err(|_| error!("Fallo guardando en NVS"));
+            .map_err(|_| error!("fallo guardando en NVS"));
     }
 
     ThreadSpawnConfiguration {
@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()> {
     }
     .set()?;
 
-    let _core1_thread = Builder::new().stack_size(8192).spawn(move || {
+    let _core1_thread = Builder::new().stack_size(32768).spawn(move || {
         core1_executor_task(
             core,
             channels,

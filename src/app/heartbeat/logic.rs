@@ -6,7 +6,7 @@ use crate::app::system_settings::domain::SystemSettings;
 use async_channel::{Receiver, Sender};
 use embassy_futures::select::{Either, select};
 use heapless::Vec;
-use log::{error, warn};
+use log::{error, info, warn};
 use std::sync::{Arc, RwLock};
 
 pub async fn handler_heartbeat(
@@ -18,7 +18,7 @@ pub async fn handler_heartbeat(
     settings: Arc<RwLock<SystemSettings>>,
 ) {
     let mut fsm_state = StateForHeartbeat::None;
-
+    info!("iniciando handler de Heartbeat...");
     loop {
         match select(rx_service.recv(), rx_fsm.recv()).await {
             Either::First(Ok(cmd)) => match cmd {
@@ -105,6 +105,7 @@ pub async fn run_fsm_heartbeat(
     tx_actions: Sender<Vec<Action, ACTION_VECTOR_CAPACITY>>,
     rx_from_heartbeat: Receiver<Event>,
 ) {
+    info!("iniciando FsmHeartbeat...");
     let mut state = FsmHeartbeat::new();
 
     loop {

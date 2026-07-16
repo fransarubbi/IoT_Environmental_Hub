@@ -282,7 +282,19 @@ pub async fn generator(
                 };
                 send_serialized!(tx, &settings, msg, MessageToEdge::EmptyQueue(msg.clone()));
             }
-            MessageServiceCommand::GenerateEmptyQueueSafe(msg) => {
+            MessageServiceCommand::GenerateEmptyQueueSafe => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let edge = settings.read().unwrap().id_edge().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!(&edge, 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = EmptyQueueSafeMode {
+                    metadata,
+                    state: hl_str!("safe_mode", 15),
+                    queue_empty: true,
+                };
                 send_serialized!(
                     tx,
                     &settings,
@@ -348,6 +360,64 @@ pub async fn generator(
                     msg,
                     MessageToEdge::HandshakeToEdge(msg.clone())
                 );
+            }
+            MessageServiceCommand::GenerateBypassAlertAir {
+                initial_air_quality,
+                actual_air_quality,
+            } => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = AlertAir {
+                    metadata,
+                    network: hl_str!(&network, 20),
+                    initial_air_quality,
+                    actual_air_quality,
+                };
+                let topic = resolve_topic(&settings, &MessageToEdge::AlertAir(msg.clone()));
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(msg)) {
+                            error!(
+                                "no se pudo enviar mensaje SerializedBypass, mensaje descartado. {e}"
+                            );
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
+            }
+            MessageServiceCommand::GenerateBypassAlertTemp {
+                initial_temp,
+                actual_temp,
+            } => {
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = AlertTh {
+                    metadata,
+                    network: hl_str!(&network, 20),
+                    initial_temp,
+                    actual_temp,
+                };
+                let topic = resolve_topic(&settings, &MessageToEdge::AlertTem(msg.clone()));
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(msg)) {
+                            error!(
+                                "no se pudo enviar mensaje SerializedBypass, mensaje descartado. {e}"
+                            );
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             _ => {}
         }

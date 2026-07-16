@@ -16,6 +16,7 @@ pub enum TimerResponse {
     BypassReady,
     InitBalanceReady,
     HandshakeReady,
+    AllBalanceReady,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -25,12 +26,14 @@ pub enum TimerCommand {
     BypassStart,
     InitBalanceStart,
     HandshakeStart,
+    AllBalanceStart(u32),
 
     InitSystemStop,
     CoolingStop,
     BypassStop,
     InitBalanceStop,
     HandshakeStop,
+    AllBalanceStop,
 }
 
 enum OneShotCommand {
@@ -39,14 +42,6 @@ enum OneShotCommand {
         event: TimerResponse,
     },
     Cancel,
-}
-
-enum PeriodicCommand {
-    Start {
-        interval_secs: u64,
-        event: TimerResponse,
-    },
-    Stop,
 }
 
 /// Estado para rastrear qué está haciendo cada worker One-Shot
@@ -109,6 +104,7 @@ impl InternalWorkers {
 
 impl TimerService {
     pub fn new(sender: Sender<TimerResponse>, receiver: Receiver<TimerCommand>) -> Self {
+        info!("creando TimerService...");
         Self { sender, receiver }
     }
 
@@ -136,7 +132,7 @@ impl TimerService {
         let mut os1_state = OsState::Idle;
         let mut os2_state = OsState::Idle;
 
-        info!("servicio Timer inicializado.");
+        info!("iniciando TimerService...");
 
         loop {
             match select(self.receiver.recv(), rx_internal_resp.recv()).await {
@@ -182,6 +178,14 @@ impl TimerService {
                         &tx_os1,
                         &tx_os2,
                     ),
+                    TimerCommand::AllBalanceStart(time) => Self::dispatch_start(
+                        time as u64,
+                        TimerResponse::AllBalanceReady,
+                        &mut os1_state,
+                        &mut os2_state,
+                        &tx_os1,
+                        &tx_os2,
+                    ),
 
                     // --- COMANDOS ONE-SHOT (STOP) ---
                     TimerCommand::InitSystemStop => Self::dispatch_stop(
@@ -214,6 +218,13 @@ impl TimerService {
                     ),
                     TimerCommand::HandshakeStop => Self::dispatch_stop(
                         TimerResponse::HandshakeReady,
+                        &mut os1_state,
+                        &mut os2_state,
+                        &tx_os1,
+                        &tx_os2,
+                    ),
+                    TimerCommand::AllBalanceStop => Self::dispatch_stop(
+                        TimerResponse::AllBalanceReady,
                         &mut os1_state,
                         &mut os2_state,
                         &tx_os1,

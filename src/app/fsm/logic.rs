@@ -1,8 +1,12 @@
 use std::sync::{Arc, RwLock};
 
-use crate::app::{
-    fsm::domain::{ACTION_VECTOR_CAPACITY, Action, Event, FsmState, StateGeneral, Transition},
-    system_settings::domain::SystemSettings,
+use crate::{
+    app::{
+        fsm::domain::{ACTION_VECTOR_CAPACITY, Action, Event, FsmState, StateGeneral, Transition},
+        message::domain::SerializedMessage,
+        system_settings::domain::SystemSettings,
+    },
+    svc::http::Http,
 };
 use async_channel::{Receiver, Sender, bounded};
 use edge_executor::LocalExecutor;
@@ -11,6 +15,11 @@ use embassy_time::{Duration, Timer as EmbassyTimer};
 use esp_idf_hal::reset::restart;
 use heapless::{String, Vec};
 use log::{error, info};
+
+enum BypassCommand {
+    Start,
+    Stop,
+}
 
 pub enum FsmServiceResponse {
     CheckFirmware,
@@ -48,6 +57,13 @@ pub enum FsmServiceCommand {
     Balance((u32, u32)),
     AnAlertWasGenerated,
     EdgeDisconnected,
+    TimeoutInitSystem,
+    TimeoutCooling,
+    TimeoutBypass,
+    TimeoutInitBalance,
+    TimeoutHandshake,
+    TimeoutAllBalance,
+    BypassAlert(SerializedMessage),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -69,26 +85,33 @@ enum PeriodicCommand {
     Stop,
 }
 
-pub struct FsmService {
+pub struct FsmService<H: Http> {
     sender: Sender<FsmServiceResponse>,
     receiver: Receiver<FsmServiceCommand>,
     settings: Arc<RwLock<SystemSettings>>,
+    http_service: H,
 }
 
-impl FsmService {
+impl<H: Http> FsmService<H> {
     pub fn new(
         sender: Sender<FsmServiceResponse>,
         receiver: Receiver<FsmServiceCommand>,
         settings: Arc<RwLock<SystemSettings>>,
+        http_service: H,
     ) -> Self {
+        info!("creando FsmService...");
         Self {
             sender,
             receiver,
             settings,
+            http_service,
         }
     }
 
-    pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
+    pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>)
+    where
+        H: 'a,
+    {
         let (tx_actions, rx_actions) = bounded::<Vec<Action, ACTION_VECTOR_CAPACITY>>(10);
         let (tx_event, rx_event) = bounded::<Event>(10);
         let (tx_response, rx_response) = bounded::<FsmServiceResponse>(10);
@@ -102,10 +125,12 @@ impl FsmService {
                 rx_actions,
                 rx_command,
                 Arc::clone(&self.settings),
+                self.http_service,
                 executor,
             ))
             .detach();
 
+        info!("iniciando FsmService...");
         loop {
             match select(self.receiver.recv(), rx_response.recv()).await {
                 Either::First(Ok(cmd)) => {
@@ -134,18 +159,24 @@ impl FsmService {
     }
 }
 
-async fn handler_events_and_actions<'a>(
+async fn handler_events_and_actions<'a, H: Http + 'a>(
     tx_events: Sender<Event>,
     tx_response: Sender<FsmServiceResponse>,
     rx_action: Receiver<Vec<Action, ACTION_VECTOR_CAPACITY>>,
     rx_extern_events: Receiver<FsmServiceCommand>,
     settings: Arc<RwLock<SystemSettings>>,
+    http_service: H,
     executor: &'a LocalExecutor<'a>,
 ) {
     let (tx, rx_timer) = bounded::<PeriodicCommand>(5);
     let (tx_timer, rx) = bounded::<InternalEvent>(5);
+    let (tx_cmd, control_rx) = bounded::<BypassCommand>(5);
+    let (tx_payload, rx_data) = bounded::<SerializedMessage>(5);
 
     executor.spawn(internal_timer(tx_timer, rx_timer)).detach();
+    executor
+        .spawn(run_bypass(http_service, control_rx, rx_data))
+        .detach();
 
     let mut state = StateMemory {
         old: StateGeneral::InitSystem,
@@ -155,7 +186,7 @@ async fn handler_events_and_actions<'a>(
     let mut frequency: u32 = 0;
     let mut jitter: u32 = 0;
     let mut duration: u32 = 0;
-
+    info!("iniciando handler de FSM...");
     loop {
         match select3(rx_action.recv(), rx_extern_events.recv(), rx.recv()).await {
             Either3::First(Ok(vec_action)) => {
@@ -237,6 +268,11 @@ async fn handler_events_and_actions<'a>(
                         Action::OnEntryNormal => {
                             state.old = state.new;
                             state.new = StateGeneral::Normal;
+                            if state.old == StateGeneral::Bypass {
+                                if let Err(e) = tx_cmd.try_send(BypassCommand::Stop) {
+                                    error!("no se pudo enviar BypassCommand desde el handler. {e}");
+                                }
+                            }
                             if let Err(e) = tx_response
                                 .try_send(FsmServiceResponse::EntryNormal(state.old.clone()))
                             {
@@ -257,6 +293,9 @@ async fn handler_events_and_actions<'a>(
                         Action::OnEntryBypass => {
                             state.old = state.new;
                             state.new = StateGeneral::Bypass;
+                            if let Err(e) = tx_cmd.try_send(BypassCommand::Start) {
+                                error!("no se pudo enviar BypassCommand desde el handler. {e}");
+                            }
                             if let Err(e) = tx_response
                                 .try_send(FsmServiceResponse::EntryBypass(state.old.clone()))
                             {
@@ -309,6 +348,11 @@ async fn handler_events_and_actions<'a>(
                             }
                         }
                         Action::OnEntryInitBalance => {
+                            if state.old == StateGeneral::Bypass {
+                                if let Err(e) = tx_cmd.try_send(BypassCommand::Stop) {
+                                    error!("no se pudo enviar BypassCommand desde el handler. {e}");
+                                }
+                            }
                             if let Err(e) = tx_response.try_send(
                                 FsmServiceResponse::EntryInitBalance(state.old.clone(), duration),
                             ) {
@@ -443,6 +487,41 @@ async fn handler_events_and_actions<'a>(
                         error!("no se pudo enviar evento EventEdgeIsDead desde handler. {e}");
                     }
                 }
+                FsmServiceCommand::TimeoutInitSystem => {
+                    if let Err(e) = tx_events.try_send(Event::EventEdgeIsDead) {
+                        error!("no se pudo enviar evento EventEdgeIsDead desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::TimeoutCooling => {
+                    if let Err(e) = tx_events.try_send(Event::EventTimeoutCooling) {
+                        error!("no se pudo enviar evento EventTimeoutCooling desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::TimeoutBypass => {
+                    if let Err(e) = tx_events.try_send(Event::EventTimeoutBypass) {
+                        error!("no se pudo enviar evento EventTimeoutBypass desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::TimeoutInitBalance => {
+                    if let Err(e) = tx_events.try_send(Event::EventToSafe) {
+                        error!("no se pudo enviar evento EventToSafe desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::TimeoutHandshake => {
+                    if let Err(e) = tx_events.try_send(Event::EventToSafe) {
+                        error!("no se pudo enviar evento EventToSafe desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::TimeoutAllBalance => {
+                    if let Err(e) = tx_events.try_send(Event::EventToNormal) {
+                        error!("no se pudo enviar evento EventToNormal desde handler. {e}");
+                    }
+                }
+                FsmServiceCommand::BypassAlert(msg) => {
+                    if let Err(e) = tx_payload.try_send(msg) {
+                        error!("no se pudo enviar Payload desde el handler. {e}");
+                    }
+                }
             },
             Either3::Second(Err(e)) => {
                 error!("el canal rx_command se ha cerrado. {e}");
@@ -473,7 +552,7 @@ async fn run_fsm(
     tx_actions: Sender<Vec<Action, ACTION_VECTOR_CAPACITY>>,
     rx_event: Receiver<Event>,
 ) {
-    info!("iniciando tarea fsm");
+    info!("iniciando run_fsm...");
     let mut state = FsmState::new();
 
     match state.step(Event::EventStart) {
@@ -537,52 +616,41 @@ async fn internal_timer(tx: Sender<InternalEvent>, rx_cmd: Receiver<PeriodicComm
     }
 }
 
-/*
 /// Tarea Worker asíncrona para el modo Bypass.
-///
 /// Utiliza canales (`Receiver`) en lugar de `xQueueReceive` y `xTaskNotifyWait`.
-
-pub async fn run_bypass_worker<S: BypassService>(
+async fn run_bypass<S: Http>(
     mut service: S,
     control_rx: Receiver<BypassCommand>,
-    temp_alerts_rx: Receiver<Vec<u8>>,
-    air_alerts_rx: Receiver<Vec<u8>>,
+    rx_data: Receiver<SerializedMessage>,
 ) {
+    info!("iniciando Bypass...");
     loop {
-        // 1. Espera pasiva y asíncrona hasta recibir NOTIFY_CMD_START
+        // Espera pasiva y asíncrona hasta recibir start
         if let Ok(BypassCommand::Start) = control_rx.recv().await {
-            info!("Modo Bypass INICIADO");
-
+            info!("modo Bypass activo.");
             loop {
-                // 2. Preparamos los "Futures" (promesas) de lectura.
-                // Llamar a .fuse() es necesario para cancelar de forma segura
-                // los eventos que no ocurrieron dentro del select!.
-                let mut temp_fut = temp_alerts_rx.recv().fuse();
-                let mut air_fut = air_alerts_rx.recv().fuse();
-                let mut ctrl_fut = control_rx.recv().fuse();
+                match select(control_rx.recv(), rx_data.recv()).await {
+                    Either::First(Ok(msg)) => match msg {
+                        BypassCommand::Stop => {
+                            info!("modo Bypass detenido.");
+                            break;
+                        }
+                        _ => {}
+                    },
+                    Either::First(Err(e)) => {
+                        error!("{e}");
+                    }
 
-                // 3. El macro select! SUSPENDE esta tarea (0% consumo de CPU).
-                // Se despertará inmediatamente solo cuando al menos UNO de los
-                // canales reciba nueva información.
-                select! {
-                    temp_res = temp_fut => {
-                        if let Ok(payload) = temp_res {
-                            let _ = service.send_payload(&payload);
+                    Either::Second(Ok(msg)) => {
+                        if let Err(e) = service.send_payload(&msg.get_payload()) {
+                            error!("{e}");
                         }
-                    },
-                    air_res = air_fut => {
-                        if let Ok(payload) = air_res {
-                            let _ = service.send_payload(&payload);
-                        }
-                    },
-                    cmd_res = ctrl_fut => {
-                        if let Ok(BypassCommand::Stop) = cmd_res {
-                            info!("Modo Bypass DETENIDO");
-                            break; // Rompe el bucle interno y vuelve a dormir esperando Start
-                        }
+                    }
+                    Either::Second(Err(e)) => {
+                        error!("{e}");
                     }
                 }
             }
         }
     }
-}*/
+}

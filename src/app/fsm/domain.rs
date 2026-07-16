@@ -1,7 +1,7 @@
 use heapless::{String, Vec};
 use serde::{Deserialize, Serialize};
 
-pub const ACTION_VECTOR_CAPACITY: usize = 3;
+pub const ACTION_VECTOR_CAPACITY: usize = 15;
 
 /// Estados Globales de nivel superior.
 /// Determinan el comportamiento macro del sistema.
@@ -701,41 +701,6 @@ fn state_update_event_to_balance(mut next_fsm: FsmState) -> Transition {
 fn state_update_event_to_bypass(mut next_fsm: FsmState) -> Transition {
     next_fsm.store = None;
     next_fsm.global = StateGlobal::Bypass;
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_store_event_to_safe(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Safe;
-    next_fsm.store = None;
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_store_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Balance;
-    next_fsm.store = None;
-    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_store_event_to_handshake(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Balance;
-    next_fsm.store = None;
-    next_fsm.balance = Some(SubStateBalance::InHandshake);
 
     let valid = TransitionValid {
         change_state: next_fsm,

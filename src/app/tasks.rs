@@ -20,6 +20,7 @@ use esp_idf_hal::{
 };
 
 use crate::app::healthscore::domain::HealthScoreService;
+use crate::bsp::http::EspIdfBypassManager;
 use crate::hal::sensors::Sensor;
 use crate::hal::sensors_drivers::{dht11::Dht11RmtDriver, ky037::Ky037, mq135::Mq135};
 
@@ -87,6 +88,11 @@ pub(crate) fn core1_executor_task(
     gpio34: esp_idf_hal::gpio::Gpio34,
     adc1_periph: esp_idf_hal::adc::ADC1,
 ) {
+    let http_client = {
+        let guard = settings.read().unwrap();
+        EspIdfBypassManager::new(guard.url_bypass())
+    };
+
     // Gpio4 implementa Input + Output nativamente, lo pasamos directo.
     let mut dht11 = Dht11RmtDriver::new(gpio4, "dht11").expect("fallo inicializando DHT11");
     dht11.init().unwrap();
@@ -178,6 +184,7 @@ pub(crate) fn core1_executor_task(
                 channels.fsm_service_to_core,
                 channels.fsm_service_from_core,
                 Arc::clone(&settings),
+                http_client,
             )
             .run(&executor),
         )

@@ -8,7 +8,7 @@ rust-version = "1.85"
 
 [[bin]]
 name = "iot_environmental_hub"
-harness = false # Desactiva el arnés nativo de test para solucionar errores de rust-analyzer
+harness = false
 
 
 [dependencies]
@@ -24,7 +24,6 @@ serde-json-core = "0.6.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 rmp-serde = "1.1"
 anyhow = "1.0"
-serde_json = "1.0"
 thiserror = "2.0.18"
 heapless = { version = "0.9.1", features = ["serde"] }
 futures = "0.3.32"
@@ -41,18 +40,10 @@ embuild = "0.33"
 debug = true       # Conserva los símbolos de depuración (no incrementan el tamaño real en la Flash física)
 opt-level = 0
 
-# OPCIÓN 1: Optimización de producción muy agresiva (Mayor velocidad y tamaño controlado)
 [profile.release]
-opt-level = "s"           # Optimiza reduciendo el tamaño del binario pero manteniendo optimizaciones de rendimiento
-lto = true                # Link-Time Optimization: Elimina de forma global el código muerto de todas las dependencias
-codegen-units = 1         # Reduce las unidades de generación de código a 1 para permitir que LTO limpie de forma mucho más eficaz
-panic = "abort"           # Desactiva el unwinding del stack en pánicos. Reduce drásticamente el tamaño del firmware
-strip = true              # Remueve automáticamente todos los símbolos de debug y tablas de secciones del binario final
-
-# OPCIÓN 2: Optimización moderada
-# [profile.release]
-# opt-level = 2           # Optimización estándar orientada al rendimiento puro (puede aumentar el tamaño del binario final)
-# lto = "thin"            # LTO ligero: realiza optimizaciones intermedias sin consumir tanto tiempo en la compilación
-# codegen-units = 16      # Permite compilación en paralelo más rápida
-# panic = "abort"
-# strip = false
+opt-level = "z"
+#lto = "thin"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

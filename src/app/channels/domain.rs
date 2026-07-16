@@ -102,7 +102,7 @@ impl Channels {
     /// # Retorno
     /// Retorna una instancia completa de `Channels` con todos los extremos conectados.
     pub fn new(buffer_size: usize) -> Self {
-        info!("creando canales del sistema");
+        info!("creando canales del sistema...");
 
         // FSM
         let (fsm_s2c_tx, fsm_s2c_rx) = bounded(buffer_size);

@@ -236,6 +236,7 @@ impl<U: Uart> Cli<U> {
                     self.flags |= flag::WIFI_SSID_OK;
                     self.send("Info: SSID configurado correctamente\r\n");
                 }
+                return None;
             }
             cmd::WIFI_PASS => {
                 if let Some(v) =
@@ -248,6 +249,7 @@ impl<U: Uart> Cli<U> {
                     self.flags |= flag::WIFI_PASS_OK;
                     self.send("Info: password WiFi configurado correctamente\r\n");
                 }
+                return None;
             }
             cmd::MQTT_URI => {
                 if let Some(v) =
@@ -266,6 +268,7 @@ impl<U: Uart> Cli<U> {
                         self.send("Info: MQTT uri configurado correctamente\r\n");
                     }
                 }
+                return None;
             }
             cmd::NETWORK => {
                 if let Some(v) =

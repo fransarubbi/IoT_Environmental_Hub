@@ -112,6 +112,7 @@ impl HealthScoreService {
         sender: Sender<HealthServiceResponse>,
         receiver: Receiver<HealthServiceCommand>,
     ) -> Self {
+        info!("creando HealthScoreService...");
         Self { sender, receiver }
     }
 
@@ -129,7 +130,7 @@ impl HealthScoreService {
                 info!("Red cambió de estado a: {:?}", current_state);
             }
         };
-
+        info!("iniciando HealthScoreService...");
         loop {
             // Esperamos un evento MQTT o que pase 1 segundo para hacer barrido de timeouts.
             let timer_fut = Timer::after(Duration::from_secs(1));

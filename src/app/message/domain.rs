@@ -5,7 +5,7 @@ use async_channel::{Receiver, Sender, bounded};
 use edge_executor::LocalExecutor;
 use embassy_futures::select::{Either, select};
 use heapless::{String, Vec};
-use log::error;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 
@@ -18,6 +18,7 @@ pub const MAX_MSGPACK_BUFFER_SIZE: usize = 192;
 
 pub enum MessageServiceResponse {
     Serialized(SerializedMessage),
+    SerializedBypass(SerializedMessage),
     Message(MessageFromEdge),
 }
 
@@ -53,10 +54,18 @@ pub enum MessageServiceCommand {
         state: String<15>,
         phase: String<10>,
     },
-    GenerateEmptyQueueSafe(EmptyQueueSafeMode),
+    GenerateEmptyQueueSafe,
     GeneratePing,
     GenerateLinkageRequest,
     GenerateHandshake((u32, String<15>)), // balance_epoch
+    GenerateBypassAlertAir {
+        initial_air_quality: f32,
+        actual_air_quality: f32,
+    },
+    GenerateBypassAlertTemp {
+        initial_temp: f32,
+        actual_temp: f32,
+    },
 }
 
 pub struct MessageService {
@@ -71,6 +80,7 @@ impl MessageService {
         receiver: Receiver<MessageServiceCommand>,
         settings: Arc<RwLock<SystemSettings>>,
     ) -> Self {
+        info!("creando MessageService...");
         Self {
             sender,
             receiver,
@@ -95,7 +105,7 @@ impl MessageService {
                 settings_for_generator,
             ))
             .detach();
-
+        info!("iniciando MessageService...");
         loop {
             match select(self.receiver.recv(), rx.recv()).await {
                 // Caso 1: Recibimos un comando del exterior (receiver)

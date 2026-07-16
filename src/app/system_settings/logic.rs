@@ -14,6 +14,7 @@ use embassy_time::{Duration, Timer as EmbassyTimer};
 use esp_idf_hal::sys::{esp_pm_config_esp32_t, esp_pm_configure};
 use esp_idf_svc::nvs::{EspDefaultNvsPartition, EspNvs, NvsDefault};
 use log::{error, info};
+use serde_json_core::{from_slice, to_vec};
 use std::{
     error::Error,
     sync::{Arc, RwLock},
@@ -52,6 +53,7 @@ impl ConfigManager {
         receiver: Receiver<ConfigCommand>,
         nvs_partition: EspDefaultNvsPartition,
     ) -> Result<(Self, Arc<RwLock<SystemSettings>>)> {
+        info!("creando ConfigManager...");
         let nvs = EspNvs::new(nvs_partition, "config", true)?;
 
         // Intentamos cargar; si falla, instanciamos el default.
@@ -66,7 +68,7 @@ impl ConfigManager {
                     nvs,
                     flag: has_data,
                 };
-
+                info!("ConfigManager creado correctamente.");
                 Ok((manager, shared_config))
             }
             Err(e) => {
@@ -85,7 +87,7 @@ impl ConfigManager {
         self.config.write().unwrap().set_message_id(id + 1);
 
         executor.spawn(timer(rx_timer, tx_timer)).detach();
-
+        info!("iniciando ConfigManager...");
         loop {
             match select(self.receiver.recv(), rx.recv()).await {
                 Either::First(Ok(cmd)) => match cmd {
@@ -104,14 +106,65 @@ impl ConfigManager {
                                     .write()
                                     .unwrap()
                                     .set_id_network(new_config.network);
-                                self.config
-                                    .write()
-                                    .unwrap()
-                                    .set_wifi_ssid(new_config.wifi_ssid);
-                                self.config
-                                    .write()
-                                    .unwrap()
-                                    .set_wifi_password(new_config.wifi_password);
+
+                                let wifi_ssid = heapless::String::<20>::try_from(
+                                    self.config.read().unwrap().wifi_ssid().to_string().as_str(),
+                                )
+                                .unwrap_or_default();
+
+                                let wifi_pass = heapless::String::<30>::try_from(
+                                    self.config
+                                        .read()
+                                        .unwrap()
+                                        .wifi_password()
+                                        .to_string()
+                                        .as_str(),
+                                )
+                                .unwrap_or_default();
+
+                                if new_config.wifi_ssid != wifi_ssid
+                                    || new_config.wifi_password != wifi_pass
+                                {
+                                    self.config
+                                        .write()
+                                        .unwrap()
+                                        .set_wifi_ssid(new_config.wifi_ssid);
+
+                                    self.config
+                                        .write()
+                                        .unwrap()
+                                        .set_wifi_password(new_config.wifi_password);
+
+                                    let wifi_ssid = heapless::String::<20>::try_from(
+                                        self.config
+                                            .read()
+                                            .unwrap()
+                                            .wifi_ssid()
+                                            .to_string()
+                                            .as_str(),
+                                    )
+                                    .unwrap_or_default();
+
+                                    let wifi_pass = heapless::String::<30>::try_from(
+                                        self.config
+                                            .read()
+                                            .unwrap()
+                                            .wifi_password()
+                                            .to_string()
+                                            .as_str(),
+                                    )
+                                    .unwrap_or_default();
+
+                                    if let Err(e) =
+                                        self.sender.try_send(ConfigResponse::UpdateWifi {
+                                            ssid: wifi_ssid,
+                                            password: wifi_pass,
+                                        })
+                                    {
+                                        error!("{e}");
+                                    }
+                                }
+
                                 self.config
                                     .write()
                                     .unwrap()
@@ -152,7 +205,6 @@ impl ConfigManager {
                             }
                         }
                     }
-
                     ConfigCommand::UpdateField(field) => {
                         {
                             let mut cfg = self.config.write().unwrap();
@@ -161,25 +213,20 @@ impl ConfigManager {
                         info!("campo de configuración actualizado.");
                         let _ = self.save_to_nvs();
                     }
-
-                    ConfigCommand::Reload => {
-                        if let Ok(loaded) = Self::load_from_nvs(&self.nvs) {
-                            let mut cfg = self.config.write().unwrap();
-                            *cfg = loaded.0;
-                            info!("configuración recargada exitosamente desde NVS.");
-                        }
-                    }
-
-                    ConfigCommand::Save => {
-                        let _ = self.save_to_nvs();
-                    }
-
                     ConfigCommand::SettingsAck(ack) => {
                         let id = self.config.read().unwrap().message_id();
                         if ack.message_id == id && ack.handshake {
                             if let Err(e) = tx.try_send(PeriodicCommand::Stop) {
                                 error!("no se pudo enviar Stop. {e}");
                             }
+                        }
+                    }
+                    ConfigCommand::StartSendingSettings => {
+                        if let Err(e) = tx.try_send(PeriodicCommand::Start {
+                            interval_secs: 10,
+                            event: Event::Timeout,
+                        }) {
+                            error!("no se pudo enviar Start. {e}");
                         }
                     }
                 },
@@ -209,12 +256,22 @@ impl ConfigManager {
 
     /// Carga la configuración como String JSON desde la Flash NVS.
     fn load_from_nvs(nvs: &EspNvs<NvsDefault>) -> Result<(SystemSettings, bool), Box<dyn Error>> {
-        // Buffer pre-asignado de 4096 bytes (4KB).
         let mut buf = [0u8; 4096];
 
         if let Some(data) = nvs.get_str("config", &mut buf)? {
-            let config: SystemSettings = serde_json::from_str(&data)?;
-            Ok((config, true)) // Encontrado en NVS
+            // ⭐ Deserializar directamente desde el buffer
+            // IMPORTANTE: data es &str, necesitamos convertirlo a &[u8]
+            let bytes = data.as_bytes();
+
+            // Deserializar usando serde-json-core
+            match from_slice::<SystemSettings>(bytes) {
+                Ok((config, _bytes_used)) => Ok((config, true)),
+                Err(e) => {
+                    error!("Error al deserializar config desde NVS: {}", e);
+                    // Si falla, usar default
+                    Ok((SystemSettings::default(), false))
+                }
+            }
         } else {
             // Devuelve configuración por defecto y false
             Ok((SystemSettings::default(), false))
@@ -223,13 +280,25 @@ impl ConfigManager {
 
     /// Bloquea temporalmente para leer RAM y persiste la estructura en la memoria Flash NVS.
     pub fn save_to_nvs(&mut self) -> Result<()> {
-        let json = {
-            let cfg = self.config.read().unwrap();
-            serde_json::to_string(&*cfg)?
-        };
-        self.nvs.set_str("config", &json)?;
-        info!("configuración guardada en NVS.");
-        Ok(())
+        let cfg = self.config.read().unwrap();
+
+        // Serializar usando serde-json-core
+        match to_vec::<_, 2048>(&*cfg) {
+            Ok(buffer) => {
+                // buffer es un heapless::Vec<u8, 2048>
+                // Convertir a &str para NVS
+                let json_str = core::str::from_utf8(&buffer)
+                    .map_err(|e| anyhow!("Error al convertir JSON a UTF-8: {}", e))?;
+
+                self.nvs.set_str("config", json_str)?;
+                info!("configuración guardada en NVS ({} bytes)", buffer.len());
+                Ok(())
+            }
+            Err(e) => {
+                error!("Error al serializar config: {}", e);
+                Err(anyhow!("Error de serialización: {}", e))
+            }
+        }
     }
 }
 
