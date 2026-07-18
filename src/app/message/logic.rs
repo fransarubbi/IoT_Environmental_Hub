@@ -5,7 +5,7 @@ use crate::bsp::wifi::get_unix_epoch;
 use anyhow::anyhow;
 use async_channel::{Receiver, Sender};
 use heapless::{String, Vec};
-use log::error;
+use log::{error, info};
 use rmp_serde::{from_slice, to_vec_named as to_vec};
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
@@ -45,42 +45,52 @@ pub async fn parser(
 
         // Enrutar explícitamente según el sufijo del tópico
         let decoded: Option<MessageFromEdge> = if topic.ends_with("balance") {
+            info!("Message. Parseando mensaje de Balance.");
             from_slice::<MessageStateBalanceMode>(&payload)
                 .ok()
                 .map(MessageFromEdge::StateBalanceMode)
         } else if topic.ends_with("normal") {
+            info!("Message. Parseando mensaje de Normal.");
             from_slice::<MessageStateNormal>(&payload)
                 .ok()
                 .map(MessageFromEdge::StateNormal)
         } else if topic.ends_with("safe") {
+            info!("Message. Parseando mensaje de Safe.");
             from_slice::<MessageStateSafeMode>(&payload)
                 .ok()
                 .map(MessageFromEdge::StateSafeMode)
         } else if topic.ends_with("phase") {
+            info!("Message. Parseando mensaje de Phase.");
             from_slice::<PhaseNotification>(&payload)
                 .ok()
                 .map(MessageFromEdge::PhaseNotification)
         } else if topic.ends_with("handshake") {
+            info!("Message. Parseando mensaje de Handshake.");
             from_slice::<Handshake>(&payload)
                 .ok()
                 .map(MessageFromEdge::HandshakeToHub)
         } else if topic.ends_with("heartbeat") {
+            info!("Message. Parseando mensaje de Heartbeat.");
             from_slice::<Heartbeat>(&payload)
                 .ok()
                 .map(MessageFromEdge::Heartbeat)
         } else if topic.ends_with("new_firmware") {
+            info!("Message. Parseando mensaje de NewFirmware.");
             from_slice::<UpdateFirmware>(&payload)
                 .ok()
                 .map(MessageFromEdge::UpdateFirmware)
         } else if topic.ends_with("new_setting") {
+            info!("Message. Parseando mensaje de NewSetting.");
             from_slice::<Settings>(&payload)
                 .ok()
                 .map(MessageFromEdge::FromServerSettings)
         } else if topic.ends_with("new_setting_ok") {
+            info!("Message. Parseando mensaje de SettingOk.");
             from_slice::<SettingOk>(&payload)
                 .ok()
                 .map(MessageFromEdge::FromServerSettingsAck)
         } else if topic.ends_with("linkage_ack") {
+            info!("Message. Parseando mensaje de LinkageAck.");
             from_slice::<LinkageAck>(&payload)
                 .ok()
                 .map(MessageFromEdge::LinkageAck)
@@ -113,6 +123,7 @@ pub async fn generator(
                 dht11_temp,
                 dht11_hum,
             } => {
+                info!("Message. Serializando mensaje de Measurement.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let sample = settings.read().unwrap().sample_rate();
@@ -140,6 +151,7 @@ pub async fn generator(
                 heap_min_free,
                 heap_largest_block,
             } => {
+                info!("Message. Serializando mensaje de Monitor.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
@@ -161,6 +173,7 @@ pub async fn generator(
                 initial_air_quality,
                 actual_air_quality,
             } => {
+                info!("Message. Serializando mensaje de AlertAir.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
@@ -180,6 +193,7 @@ pub async fn generator(
                 initial_temp,
                 actual_temp,
             } => {
+                info!("Message. Serializando mensaje de AlertTemp.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
@@ -196,6 +210,7 @@ pub async fn generator(
                 send_serialized!(tx, &settings, msg, MessageToEdge::AlertTem(msg.clone()));
             }
             MessageServiceCommand::GenerateFirmwareOk(str) => {
+                info!("Message. Serializando mensaje de FirmwareOk.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let metadata = Metadata {
                     sender_user_id: hl_str!(&mac, 18),
@@ -210,6 +225,7 @@ pub async fn generator(
                 send_serialized!(tx, &settings, msg, MessageToEdge::FirmwareOk(msg.clone()));
             }
             MessageServiceCommand::GenerateSettings(id) => {
+                info!("Message. Serializando mensaje de Settings.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let ssid = settings.read().unwrap().wifi_ssid().to_string();
@@ -246,6 +262,7 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GenerateSettingsAck(message_id) => {
+                info!("Message. Serializando mensaje de SettingAck.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
@@ -267,6 +284,7 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::EmptyQueuePhase { state, phase } => {
+                info!("Message. Serializando mensaje de cola vacía de fase.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let edge = settings.read().unwrap().id_edge().to_string();
                 let metadata = Metadata {
@@ -283,6 +301,7 @@ pub async fn generator(
                 send_serialized!(tx, &settings, msg, MessageToEdge::EmptyQueue(msg.clone()));
             }
             MessageServiceCommand::GenerateEmptyQueueSafe => {
+                info!("Message. Serializando mensaje de cola vacía en safe.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let edge = settings.read().unwrap().id_edge().to_string();
                 let metadata = Metadata {
@@ -302,23 +321,8 @@ pub async fn generator(
                     MessageToEdge::EmptyQueueSafe(msg.clone())
                 );
             }
-            MessageServiceCommand::GeneratePing => {
-                let mac = settings.read().unwrap().mac_addr().to_string();
-                let edge = settings.read().unwrap().id_edge().to_string();
-                let network = settings.read().unwrap().id_network().to_string();
-                let metadata = Metadata {
-                    sender_user_id: hl_str!(&mac, 18),
-                    destination_id: hl_str!(&edge, 18),
-                    timestamp: get_unix_epoch(),
-                };
-                let msg = Ping {
-                    metadata,
-                    network: hl_str!(&network, NETWORK_STRING_LEN),
-                    ping: true,
-                };
-                send_serialized!(tx, &settings, msg, MessageToEdge::Ping(msg.clone()));
-            }
             MessageServiceCommand::GenerateLinkageRequest => {
+                info!("Message. Serializando mensaje de LinkageRequest.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let edge = settings.read().unwrap().id_edge().to_string();
                 let dev_name = settings.read().unwrap().device_name().to_string();
@@ -342,6 +346,7 @@ pub async fn generator(
                 );
             }
             MessageServiceCommand::GenerateHandshake((balance_epoch, flag)) => {
+                info!("Message. Serializando mensaje de Handshake.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let edge = settings.read().unwrap().id_edge().to_string();
                 let metadata = Metadata {
@@ -365,6 +370,7 @@ pub async fn generator(
                 initial_air_quality,
                 actual_air_quality,
             } => {
+                info!("Message. Serializando mensaje de alerta de aire bypass.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
@@ -394,6 +400,7 @@ pub async fn generator(
                 initial_temp,
                 actual_temp,
             } => {
+                info!("Message. Serializando mensaje de alerta de aire bypass.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let metadata = Metadata {
@@ -488,11 +495,6 @@ fn resolve_topic(
             settings.read().unwrap().topic_empty_queue().topic.clone(),
             settings.read().unwrap().topic_empty_queue().qos,
             settings.read().unwrap().topic_empty_queue().retain,
-        ),
-        MessageToEdge::Ping(_) => (
-            settings.read().unwrap().topic_ping().topic.clone(),
-            settings.read().unwrap().topic_ping().qos,
-            settings.read().unwrap().topic_ping().retain,
         ),
         MessageToEdge::LinkageRequest(_) => (
             settings

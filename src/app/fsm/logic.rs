@@ -28,8 +28,6 @@ pub enum FsmServiceResponse {
     LinkageProtocol,
     InitSystem,
     EntryStore(StateGeneral),
-    EntryCooling,
-    EntryUpdate,
     EntryNormal(StateGeneral),
     EntrySafe((StateGeneral, u32, u32)),
     EntryBypass(StateGeneral),
@@ -50,9 +48,6 @@ pub enum FsmServiceCommand {
     Handshake(String<15>),
     Safe((u32, u32)),
     Normal,
-    HealthyConnection,
-    CriticalConnection,
-    UnavailableConnection,
     Phase((u32, String<10>, u32, u32)),
     Balance((u32, u32)),
     AnAlertWasGenerated,
@@ -64,6 +59,8 @@ pub enum FsmServiceCommand {
     TimeoutHandshake,
     TimeoutAllBalance,
     BypassAlert(SerializedMessage),
+    NetworkDropped,
+    MqttConnected,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -83,6 +80,12 @@ enum PeriodicCommand {
         event: InternalEvent,
     },
     Stop,
+}
+
+#[derive(PartialEq, Eq)]
+enum MqttStatus {
+    Connected,
+    Disconnected,
 }
 
 pub struct FsmService<H: Http> {
@@ -168,10 +171,10 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
     http_service: H,
     executor: &'a LocalExecutor<'a>,
 ) {
-    let (tx, rx_timer) = bounded::<PeriodicCommand>(5);
-    let (tx_timer, rx) = bounded::<InternalEvent>(5);
-    let (tx_cmd, control_rx) = bounded::<BypassCommand>(5);
-    let (tx_payload, rx_data) = bounded::<SerializedMessage>(5);
+    let (tx, rx_timer) = bounded::<PeriodicCommand>(3);
+    let (tx_timer, rx) = bounded::<InternalEvent>(3);
+    let (tx_cmd, control_rx) = bounded::<BypassCommand>(3);
+    let (tx_payload, rx_data) = bounded::<SerializedMessage>(3);
 
     executor.spawn(internal_timer(tx_timer, rx_timer)).detach();
     executor
@@ -186,6 +189,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
     let mut frequency: u32 = 0;
     let mut jitter: u32 = 0;
     let mut duration: u32 = 0;
+    let mut mqtt_status = MqttStatus::Disconnected;
     info!("iniciando handler de FSM...");
     loop {
         match select3(rx_action.recv(), rx_extern_events.recv(), rx.recv()).await {
@@ -193,12 +197,14 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                 for action in vec_action {
                     match action {
                         Action::OnEntryCheckFirmware => {
+                            info!("FSM. Entrando a estado CheckFirmware.");
                             if let Err(e) = tx_response.try_send(FsmServiceResponse::CheckFirmware)
                             {
                                 error!("no se pudo enviar CheckFirmware desde el handler. {e}");
                             }
                         }
                         Action::OnEntryNotifyFirmware => {
+                            info!("FSM. Entrando a estado NotifyHardware.");
                             if !firmware_version.is_empty() {
                                 if let Err(e) = tx_response.try_send(
                                     FsmServiceResponse::NotifyFirmware(firmware_version.clone()),
@@ -214,19 +220,23 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             restart();
                         }
                         Action::OnEntryInitSystem => {
+                            info!("FSM. Entrando a estado InitSystem.");
                             if let Err(e) = tx_response.try_send(FsmServiceResponse::InitSystem) {
                                 error!("no se pudo enviar InitSystem desde el handler. {e}");
                             }
                         }
                         Action::OnEntryLinkageProtocol => {
+                            info!("FSM. Entrando a estado LinkageProtocol.");
                             let linkage = settings.read().unwrap().linkage_flag();
                             if linkage {
+                                info!("FSM. El dispositivo ya estaba linkeado a un Edge.");
                                 if let Err(e) = tx_events.try_send(Event::EventLinkageOk) {
                                     error!(
                                         "no se pudo enviar evento EventLinkageOk desde handler. {e}"
                                     );
                                 }
                             } else {
+                                info!("FSM. El dispositivo no esta linkeado.");
                                 if let Err(e) =
                                     tx_response.try_send(FsmServiceResponse::SubscribeInitialTopic)
                                 {
@@ -243,6 +253,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryStore => {
+                            info!("FSM. Entrando a estado Store.");
                             state.old = state.new;
                             state.new = StateGeneral::Store;
                             if let Err(e) = tx_response
@@ -251,21 +262,8 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                                 error!("no se pudo enviar EntryStore desde el handler. {e}");
                             }
                         }
-                        Action::OnEntryCooling => {
-                            state.old = state.new;
-                            state.new = StateGeneral::Cooling;
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryCooling) {
-                                error!("no se pudo enviar EntryCooling desde el handler. {e}");
-                            }
-                        }
-                        Action::OnEntryUpdateScore => {
-                            state.old = state.new;
-                            state.new = StateGeneral::UpdateScore;
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::EntryUpdate) {
-                                error!("no se pudo enviar EntryUpdate desde el handler. {e}");
-                            }
-                        }
                         Action::OnEntryNormal => {
+                            info!("FSM. Entrando a estado Normal.");
                             state.old = state.new;
                             state.new = StateGeneral::Normal;
                             if state.old == StateGeneral::Bypass {
@@ -280,6 +278,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntrySafe => {
+                            info!("FSM. Entrando a estado Safe.");
                             state.old = state.new;
                             state.new = StateGeneral::Safe { frequency, jitter };
                             if let Err(e) = tx_response.try_send(FsmServiceResponse::EntrySafe((
@@ -291,6 +290,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryBypass => {
+                            info!("FSM. Entrando a estado Bypass.");
                             state.old = state.new;
                             state.new = StateGeneral::Bypass;
                             if let Err(e) = tx_cmd.try_send(BypassCommand::Start) {
@@ -303,6 +303,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryAlert => {
+                            info!("FSM. Entrando a estado Alert.");
                             state.old = state.new;
                             state.new = StateGeneral::Alert { frequency, jitter };
                             if let Err(e) = tx_response
@@ -312,6 +313,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryData => {
+                            info!("FSM. Entrando a estado Data.");
                             state.old = state.new;
                             state.new = StateGeneral::Data { frequency, jitter };
                             if let Err(e) = tx_response
@@ -321,6 +323,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryMonitor => {
+                            info!("FSM. Entrando a estado Monitor.");
                             state.old = state.new;
                             state.new = StateGeneral::Monitor { frequency, jitter };
                             if let Err(e) = tx_response
@@ -330,6 +333,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryInHandshake => {
+                            info!("FSM. Entrando a estado InHandshake.");
                             state.old = state.new;
                             state.new = StateGeneral::InHandshake;
                             if let Err(e) =
@@ -339,6 +343,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryOutHandshake => {
+                            info!("FSM. Entrando a estado OutHandshake.");
                             state.old = state.new;
                             state.new = StateGeneral::OutHandshake;
                             if let Err(e) =
@@ -348,6 +353,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryInitBalance => {
+                            info!("FSM. Entrando a estado InitBalance.");
                             if state.old == StateGeneral::Bypass {
                                 if let Err(e) = tx_cmd.try_send(BypassCommand::Stop) {
                                     error!("no se pudo enviar BypassCommand desde el handler. {e}");
@@ -369,17 +375,20 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
 
             Either3::Second(Ok(event)) => match event {
                 FsmServiceCommand::NotUpdateFirmware => {
+                    info!("FSM. Se recibió comando NotUpdateFirmware.");
                     if let Err(e) = tx_events.try_send(Event::EventNotUpdate) {
                         error!("no se pudo enviar evento EventNotUpdate desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::UpdateFirmware(version) => {
+                    info!("FSM. Se recibió comando UpdateFirmware.");
                     firmware_version = version;
                     if let Err(e) = tx_events.try_send(Event::EventUpdateSuccessful) {
                         error!("no se pudo enviar evento EventUpdateSuccessful desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::LinkageOk => {
+                    info!("FSM. Se recibió comando LinkageOk.");
                     if let Err(e) = tx.try_send(PeriodicCommand::Stop) {
                         error!("no se pudo enviar PeriodicCommand desde el handler. {e}");
                     }
@@ -392,12 +401,14 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                 }
                 FsmServiceCommand::Handshake(handshake) => {
                     if handshake == "in_handshake" {
+                        info!("FSM. Se recibió comando Handshake de inicio.");
                         if let Err(e) = tx_events.try_send(Event::EventToInHandshake) {
                             error!(
                                 "no se pudo enviar evento EventToInHandshake desde handler. {e}"
                             );
                         }
                     } else if handshake == "out_handshake" {
+                        info!("FSM. Se recibió comando Handshake de salida.");
                         if let Err(e) = tx_events.try_send(Event::EventToOutHandshake) {
                             error!(
                                 "no se pudo enviar evento EventToOutHandshake desde handler. {e}"
@@ -406,6 +417,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                     }
                 }
                 FsmServiceCommand::Safe(safe) => {
+                    info!("FSM. Se recibió comando Safe.");
                     frequency = safe.0;
                     jitter = safe.1;
                     if let Err(e) = tx_events.try_send(Event::EventToSafe) {
@@ -413,41 +425,30 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                     }
                 }
                 FsmServiceCommand::Normal => {
+                    info!("FSM. Se recibió comando Normal.");
                     if let Err(e) = tx_events.try_send(Event::EventToNormal) {
                         error!("no se pudo enviar evento EventToNormal desde handler. {e}");
-                    }
-                }
-                FsmServiceCommand::HealthyConnection => {
-                    if let Err(e) = tx_events.try_send(Event::EventGoodScore) {
-                        error!("no se pudo enviar evento EventGoodScore desde handler. {e}");
-                    }
-                }
-                FsmServiceCommand::CriticalConnection => {
-                    if let Err(e) = tx_events.try_send(Event::EventLowScore) {
-                        error!("no se pudo enviar evento EventLowScore desde handler. {e}");
-                    }
-                }
-                FsmServiceCommand::UnavailableConnection => {
-                    if let Err(e) = tx_events.try_send(Event::EventBadScore) {
-                        error!("no se pudo enviar evento EventBadScore desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::Phase(phase) => {
                     let epoch = settings.read().unwrap().balance_epoch();
                     if phase.0 == epoch {
                         if phase.1 == "alert" {
+                            info!("FSM. Se recibió comando de fase de alerta.");
                             frequency = phase.2;
                             jitter = phase.3;
                             if let Err(e) = tx_events.try_send(Event::EventToAlert) {
                                 error!("no se pudo enviar evento EventToAlert desde handler. {e}");
                             }
                         } else if phase.1 == "data" {
+                            info!("FSM. Se recibió comando de fase de data.");
                             frequency = phase.2;
                             jitter = phase.3;
                             if let Err(e) = tx_events.try_send(Event::EventToData) {
                                 error!("no se pudo enviar evento EventToData desde handler. {e}");
                             }
                         } else if phase.1 == "monitor" {
+                            info!("FSM. Se recibió comando de fase de monitor.");
                             frequency = phase.2;
                             jitter = phase.3;
                             if let Err(e) = tx_events.try_send(Event::EventToMonitor) {
@@ -457,13 +458,19 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                     } else if phase.0 > epoch {
-                        // DECIRLE A SETTINGS QUE ACTUALICE?
+                        info!("FSM. Se recibió un mensaje de fase con epoch mas nuevo.");
                         if let Err(e) = tx_events.try_send(Event::EventNewerEpoch) {
                             error!("no se pudo enviar evento EventNewerEpoch desde handler. {e}");
+                        }
+                        if let Err(e) =
+                            tx_response.try_send(FsmServiceResponse::UpdateBalanceEpoch(phase.0))
+                        {
+                            error!("no se pudo enviar UpdateBalanceEpoch desde handler. {e}");
                         }
                     }
                 }
                 FsmServiceCommand::Balance(balance) => {
+                    info!("FSM. Se recibió mensaje de inicio de balanceo.");
                     let epoch = settings.read().unwrap().balance_epoch();
                     if balance.0 > epoch {
                         if let Err(e) = tx_events.try_send(Event::EventInitBalance) {
@@ -478,48 +485,85 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                     }
                 }
                 FsmServiceCommand::AnAlertWasGenerated => {
+                    info!("FSM. Se recibió la notificación de que se generó una alerta.");
                     if let Err(e) = tx_events.try_send(Event::EventAlertGenerated) {
                         error!("no se pudo enviar evento EventAlertGenerated desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::EdgeDisconnected => {
+                    info!("FSM. Se recibió comando de Edge muerto por falta de latidos.");
                     if let Err(e) = tx_events.try_send(Event::EventEdgeIsDead) {
                         error!("no se pudo enviar evento EventEdgeIsDead desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutInitSystem => {
+                    info!("FSM. Se recibió timeout en InitSystem.");
                     if let Err(e) = tx_events.try_send(Event::EventEdgeIsDead) {
                         error!("no se pudo enviar evento EventEdgeIsDead desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutCooling => {
+                    info!("FSM. Se recibió comando de timeout en Cooling.");
                     if let Err(e) = tx_events.try_send(Event::EventTimeoutCooling) {
                         error!("no se pudo enviar evento EventTimeoutCooling desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutBypass => {
+                    info!("FSM. Se recibió comando de timeout Bypass.");
                     if let Err(e) = tx_events.try_send(Event::EventTimeoutBypass) {
                         error!("no se pudo enviar evento EventTimeoutBypass desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutInitBalance => {
+                    info!("FSM. Se recibió comando de fase de monitor.");
                     if let Err(e) = tx_events.try_send(Event::EventToSafe) {
                         error!("no se pudo enviar evento EventToSafe desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutHandshake => {
+                    info!("FSM. Se recibió comando de timeout en Handshake.");
                     if let Err(e) = tx_events.try_send(Event::EventToSafe) {
                         error!("no se pudo enviar evento EventToSafe desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutAllBalance => {
+                    info!("FSM. Se recibió comando de timeout de todo el protocolo de balanceo.");
                     if let Err(e) = tx_events.try_send(Event::EventToNormal) {
                         error!("no se pudo enviar evento EventToNormal desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::BypassAlert(msg) => {
+                    info!("FSM. Se recibió mensaje de alerta para Bypass.");
                     if let Err(e) = tx_payload.try_send(msg) {
                         error!("no se pudo enviar Payload desde el handler. {e}");
+                    }
+                }
+                FsmServiceCommand::NetworkDropped => {
+                    info!("FSM. Se recibió comando NetworkDropped.");
+                    if mqtt_status == MqttStatus::Connected {
+                        mqtt_status = MqttStatus::Disconnected;
+                        if let Err(e) = tx_events.try_send(Event::EventNetworkDropped) {
+                            error!(
+                                "no se pudo enviar evento EventNetworkDropped desde handler. {e}"
+                            );
+                        }
+                    }
+                }
+                FsmServiceCommand::MqttConnected => {
+                    info!("FSM. Se recibió comando MqttConnected.");
+                    if mqtt_status == MqttStatus::Disconnected {
+                        mqtt_status = MqttStatus::Connected;
+                        if state.new == StateGeneral::InitSystem {
+                            if let Err(e) = tx_events.try_send(Event::EventStart) {
+                                error!("no se pudo enviar evento EventStart desde handler. {e}");
+                            }
+                        } else {
+                            if let Err(e) = tx_events.try_send(Event::EventNetworkRestored) {
+                                error!(
+                                    "no se pudo enviar evento EventNetworkRestored desde handler. {e}"
+                                );
+                            }
+                        }
                     }
                 }
             },
@@ -530,6 +574,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
 
             Either3::Third(Ok(msg)) => match msg {
                 InternalEvent::Timeout => {
+                    info!("FSM. Se recibió evento de timeout de LinkageProtocol.");
                     if let Err(e) = tx_response.try_send(FsmServiceResponse::LinkageProtocol) {
                         error!("no se pudo enviar LinkageProtocol desde el handler. {e}");
                     }
@@ -554,13 +599,6 @@ async fn run_fsm(
 ) {
     info!("iniciando run_fsm...");
     let mut state = FsmState::new();
-
-    match state.step(Event::EventStart) {
-        Transition::Valid(t) => {
-            state = t.change_state();
-        }
-        Transition::Invalid(t) => error!("fsm transición inválida {}", t.get_invalid()),
-    }
 
     loop {
         if let Ok(event) = rx_event.recv().await {

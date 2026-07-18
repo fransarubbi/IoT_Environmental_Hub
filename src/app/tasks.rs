@@ -19,7 +19,6 @@ use esp_idf_hal::{
     modem::Modem,
 };
 
-use crate::app::healthscore::domain::HealthScoreService;
 use crate::bsp::http::EspIdfBypassManager;
 use crate::hal::sensors::Sensor;
 use crate::hal::sensors_drivers::{dht11::Dht11RmtDriver, ky037::Ky037, mq135::Mq135};
@@ -152,16 +151,6 @@ pub(crate) fn core1_executor_task(
                 channels.heartbeat_service_to_core,
                 channels.heartbeat_service_from_core,
                 Arc::clone(&settings),
-            )
-            .run(&executor),
-        )
-        .detach();
-
-    executor
-        .spawn(
-            HealthScoreService::new(
-                channels.health_service_to_core,
-                channels.health_service_from_core,
             )
             .run(&executor),
         )

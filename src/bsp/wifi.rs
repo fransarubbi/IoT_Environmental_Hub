@@ -11,8 +11,6 @@ use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configura
 use heapless::String;
 use log::{error, info, warn};
 
-const WIFI_MAX_RETRY: u8 = 5;
-
 pub enum WifiCommand {
     Update {
         ssid: String<WIFI_SSID_STRING_LEN>,
@@ -85,7 +83,6 @@ impl<'a> EspIdfWifiManager<'a> {
             s
         })?;
 
-        // Equivale a: esp_wifi_set_max_tx_power(20)
         unsafe {
             // 80 representa 20 dBm (el valor interno se multiplica por 4, o sea 20 * 4 = 80)
             esp_wifi_set_max_tx_power(80);
@@ -97,16 +94,14 @@ impl<'a> EspIdfWifiManager<'a> {
     }
 
     pub async fn run(mut self) {
-        if let Err(e) = self.connect().await {
-            error!("Fallo en la conexión inicial: {}", e);
-        }
+        self.connect().await;
 
         loop {
             // Esperamos comandos (ej. si cambian la config de red)
             if let Ok(cmd) = self.receiver.recv().await {
                 match cmd {
                     WifiCommand::Update { ssid, password } => {
-                        info!("Recibidas nuevas credenciales. Reconectando...");
+                        info!("recibidas nuevas credenciales. Reconectando...");
 
                         // Desconectamos la red actual
                         let _ = self.disconnect();
@@ -125,48 +120,33 @@ impl<'a> EspIdfWifiManager<'a> {
 
                         // Aplicamos y volvemos a conectar
                         if let Err(e) = self.wifi.set_configuration(&wifi_configuration) {
-                            error!("No se pudo setear nueva config WiFi: {e}");
+                            error!("no se pudo setear nueva config WiFi: {e}");
                             continue;
                         }
 
-                        if let Err(e) = self.connect().await {
-                            error!("Fallo al reconectar a nueva red: {e}");
-                        }
+                        self.connect().await;
                     }
                 }
             }
         }
     }
 
-    async fn connect(&mut self) -> Result<(), String<50>> {
-        let mut retry_count = 0;
-
+    async fn connect(&mut self) {
+        let mut attempt = 1;
         loop {
-            info!(
-                "intentando conectar al AP... (Intento {}/{})",
-                retry_count + 1,
-                WIFI_MAX_RETRY
-            );
-
+            info!("intentando conectar al AP... (Intento {})", attempt);
             match self.wifi.connect() {
                 Ok(_) => match self.wifi.wait_netif_up() {
                     Ok(_) => {
                         info!("conexión WiFi exitosa. IP obtenida.");
-                        return Ok(());
+                        return;
                     }
                     Err(e) => warn!("fallo obteniendo IP tras conectar: {}", e),
                 },
                 Err(e) => warn!("fallo al conectar al AP: {}", e),
             }
-
-            retry_count += 1;
-            if retry_count >= WIFI_MAX_RETRY {
-                return Err(
-                    String::<50>::try_from("timeout/Fallo de conexión WiFi").unwrap_or_default()
-                );
-            }
-
-            // ESPERA ASÍNCRONA: Permite que MQTT siga trabajando mientras reintentamos
+            attempt += 1;
+            // Esperamos 5 segundos antes del próximo intento
             embassy_time::Timer::after(embassy_time::Duration::from_secs(5)).await;
         }
     }

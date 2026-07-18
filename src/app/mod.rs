@@ -2,7 +2,6 @@ pub mod channels;
 pub mod core;
 pub mod data;
 pub mod fsm;
-pub mod healthscore;
 pub mod heartbeat;
 pub mod message;
 pub mod monitor;

@@ -55,7 +55,6 @@ pub enum MessageServiceCommand {
         phase: String<10>,
     },
     GenerateEmptyQueueSafe,
-    GeneratePing,
     GenerateLinkageRequest,
     GenerateHandshake((u32, String<15>)), // balance_epoch
     GenerateBypassAlertAir {
@@ -108,7 +107,6 @@ impl MessageService {
         info!("iniciando MessageService...");
         loop {
             match select(self.receiver.recv(), rx.recv()).await {
-                // Caso 1: Recibimos un comando del exterior (receiver)
                 Either::First(Ok(cmd)) => match cmd {
                     MessageServiceCommand::ParseMessage(msg) => {
                         if let Err(e) = to_parser.try_send(msg) {
@@ -130,7 +128,6 @@ impl MessageService {
                     break;
                 }
 
-                // Caso 2: Recibimos una respuesta interna de los submódulos (rx)
                 Either::Second(Ok(msg)) => {
                     if let Err(e) = self.sender.try_send(msg) {
                         error!(
@@ -323,16 +320,6 @@ pub struct Heartbeat {
     pub beat: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Ping {
-    #[serde(rename = "m")]
-    pub metadata: Metadata,
-    #[serde(rename = "n")]
-    pub network: String<NETWORK_STRING_LEN>,
-    #[serde(rename = "p")]
-    pub ping: bool,
-}
-
 /// Confirmación de recepción de configuración (Handshake bidireccional).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SettingOk {
@@ -436,7 +423,6 @@ pub enum MessageToEdge {
     FromHubSettingsAck(SettingOk),
     EmptyQueue(EmptyQueue),
     EmptyQueueSafe(EmptyQueueSafeMode),
-    Ping(Ping),
     LinkageRequest(LinkageRequest),
 }
 

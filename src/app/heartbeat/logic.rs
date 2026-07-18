@@ -5,6 +5,7 @@ use crate::app::heartbeat::domain::{
 use crate::app::system_settings::domain::SystemSettings;
 use async_channel::{Receiver, Sender};
 use embassy_futures::select::{Either, select};
+use embassy_time::{Duration, Timer as EmbassyTimer};
 use heapless::Vec;
 use log::{error, info, warn};
 use std::sync::{Arc, RwLock};
@@ -18,23 +19,33 @@ pub async fn handler_heartbeat(
     settings: Arc<RwLock<SystemSettings>>,
 ) {
     let mut fsm_state = StateForHeartbeat::None;
-    info!("iniciando handler de Heartbeat...");
+    info!("Iniciando handler de Heartbeat...");
+
     loop {
         match select(rx_service.recv(), rx_fsm.recv()).await {
             Either::First(Ok(cmd)) => match cmd {
                 HeartbeatCommand::HeartbeatIncoming => {
+                    info!("Heartbeat. Se recibió un latido desde el Edge.");
                     if let Err(e) = tx_to_fsm.try_send(Event::Heartbeat) {
-                        error!("no se pudo enviar evento Heartbeat a la FSM heartbeat. {e}");
+                        error!("No se pudo enviar evento Heartbeat a la FSM. {e}");
                     }
                 }
                 HeartbeatCommand::State(state) => {
                     fsm_state = state;
+                    info!(
+                        "Heartbeat. Nuevo contexto desde FSM principal: {:#?}.",
+                        fsm_state
+                    );
+
+                    // Si el sistema principal deja de esperar latidos, detenemos el watchdog
+                    if matches!(fsm_state, StateForHeartbeat::None) {
+                        let _ = tx_to_timer.try_send(WatchdogCommand::Stop);
+                    }
                 }
             },
             Either::First(Err(e)) => {
                 error!("{e}");
             }
-
             Either::Second(Ok(cmd)) => {
                 for action in cmd {
                     match action {
@@ -52,13 +63,17 @@ pub async fn handler_heartbeat(
                                     }
                                     _ => 0,
                                 };
-                                if let Err(e) = tx_to_timer.try_send(WatchdogCommand::Start {
-                                    interval_secs: timer as u64,
-                                    event: Event::Timeout,
-                                }) {
-                                    error!(
-                                        "no se pudo enviar evento de inicio de timer al watchdog del heartbeat. {e}"
-                                    );
+
+                                // PROTECCIÓN CONTRA TIMERS DE 0 SEGUNDOS
+                                if timer > 0 {
+                                    if let Err(e) = tx_to_timer.try_send(WatchdogCommand::Start {
+                                        interval_secs: timer as u64,
+                                        event: Event::Timeout,
+                                    }) {
+                                        error!("Error al iniciar watchdog: {e}");
+                                    }
+                                } else {
+                                    warn!("Ignorando inicio de timer: fsm_state es None o 0.");
                                 }
                             }
                             _ => {}
@@ -66,28 +81,28 @@ pub async fn handler_heartbeat(
                         Action::SendStatusConditional(old_status, new_status) => {
                             if old_status != new_status {
                                 if new_status == Status::Connected {
+                                    info!("Heartbeat FSM: Estado cambiado a CONECTADO.");
                                     if let Err(e) =
                                         tx_to_service.try_send(HeartbeatResponse::Connected)
                                     {
-                                        error!(
-                                            "no se pudo enviar Connected al HeartbeatService.{e}"
-                                        );
+                                        error!("Error enviando Connected al Core: {e}");
                                     }
                                 }
                                 if new_status == Status::Disconnected {
+                                    warn!(
+                                        "Heartbeat FSM: Estado cambiado a DESCONECTADO (Muerte de Edge)."
+                                    );
                                     if let Err(e) =
                                         tx_to_service.try_send(HeartbeatResponse::Disconnected)
                                     {
-                                        error!(
-                                            "no se pudo enviar Disconnected al HeartbeatService. {e}"
-                                        );
+                                        error!("Error enviando Disconnected al Core: {e}");
                                     }
                                 }
                             }
                         }
                         Action::StopTimer => {
                             if let Err(e) = tx_to_timer.try_send(WatchdogCommand::Stop) {
-                                error!("no se pudo parar el timer watchdog del heartbeat. {e}");
+                                error!("No se pudo detener el watchdog. {e}");
                             }
                         }
                         _ => {}
@@ -105,7 +120,7 @@ pub async fn run_fsm_heartbeat(
     tx_actions: Sender<Vec<Action, ACTION_VECTOR_CAPACITY>>,
     rx_from_heartbeat: Receiver<Event>,
 ) {
-    info!("iniciando FsmHeartbeat...");
+    info!("Iniciando FsmHeartbeat...");
     let mut state = FsmHeartbeat::new();
 
     loop {
@@ -116,15 +131,71 @@ pub async fn run_fsm_heartbeat(
                 Transition::Valid(valid) => {
                     state = valid.get_change_state();
                     if let Err(e) = tx_actions.try_send(valid.get_actions()) {
-                        error!("no se pudo enviar la acción a heartbeat_handler. {e}");
+                        error!("No se pudo enviar la acción a heartbeat_handler. {e}");
                     }
                 }
                 Transition::Invalid(invalid) => {
                     warn!(
-                        "fsm Heartbeat transición inválida: {}",
+                        "FSM Heartbeat transición inválida: {}",
                         invalid.get_invalid()
                     );
                 }
+            }
+        }
+    }
+}
+
+pub async fn run_heartbeat_watchdog_timer(tx: Sender<Event>, rx_cmd: Receiver<WatchdogCommand>) {
+    let mut current_duration = 0;
+    let mut current_event = Event::Timeout;
+    let mut running = false;
+
+    loop {
+        if running {
+            // --- ESTADO RUNNING ---
+            let timer_fut = EmbassyTimer::after(Duration::from_secs(current_duration));
+            let cmd_fut = rx_cmd.recv();
+
+            match select(timer_fut, cmd_fut).await {
+                Either::First(_) => {
+                    // ¡Expiró el tiempo de forma natural!
+                    warn!("¡Watchdog de latidos EXPIRÓ! Avisando a la FSM...");
+                    let _ = tx.send(current_event.clone()).await;
+                    running = false; // Pasamos a IDLE esperando nuevas órdenes
+                }
+                Either::Second(Ok(WatchdogCommand::Start {
+                    interval_secs,
+                    event,
+                })) => {
+                    info!(
+                        "Watchdog REINICIADO por nuevo latido: {} seg",
+                        interval_secs
+                    );
+                    current_duration = interval_secs;
+                    current_event = event;
+                }
+                Either::Second(Ok(WatchdogCommand::Stop)) => {
+                    info!("Watchdog DETENIDO.");
+                    running = false;
+                }
+                Either::Second(Err(_)) => break,
+            }
+        } else {
+            // --- ESTADO IDLE ---
+            match rx_cmd.recv().await {
+                Ok(WatchdogCommand::Start {
+                    interval_secs,
+                    event,
+                }) => {
+                    info!("Watchdog INICIADO: {} seg", interval_secs);
+                    current_duration = interval_secs;
+                    current_event = event;
+                    running = true;
+                }
+                Ok(WatchdogCommand::Stop) => {
+                    // Ignorar stops adicionales si ya estamos en IDLE
+                }
+                Err(_) => break,
             }
         }
     }

@@ -80,8 +80,8 @@ impl ConfigManager {
 
     /// Ciclo de vida asíncrono del Manager. Recibe comandos y actúa en consecuencia.
     pub async fn run<'a>(mut self, executor: &'a LocalExecutor<'a>) {
-        let (tx, rx_timer) = bounded(5);
-        let (tx_timer, rx) = bounded(5);
+        let (tx, rx_timer) = bounded(3);
+        let (tx_timer, rx) = bounded(3);
 
         let id = self.config.read().unwrap().message_id();
         self.config.write().unwrap().set_message_id(id + 1);
@@ -195,6 +195,7 @@ impl ConfigManager {
                                 ) {
                                     error!("no se pudo enviar GenerateSettingsAck. {e}");
                                 }
+                                self.config.write().unwrap().update_topics();
                             } else {
                                 if let Err(e) = self
                                     .sender
@@ -283,9 +284,8 @@ impl ConfigManager {
         let cfg = self.config.read().unwrap();
 
         // Serializar usando serde-json-core
-        match to_vec::<_, 2048>(&*cfg) {
+        match to_vec::<_, 4096>(&*cfg) {
             Ok(buffer) => {
-                // buffer es un heapless::Vec<u8, 2048>
                 // Convertir a &str para NVS
                 let json_str = core::str::from_utf8(&buffer)
                     .map_err(|e| anyhow!("Error al convertir JSON a UTF-8: {}", e))?;

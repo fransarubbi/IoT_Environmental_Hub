@@ -12,7 +12,6 @@ pub struct TimerService {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TimerResponse {
     InitSystemReady,
-    CoolingReady,
     BypassReady,
     InitBalanceReady,
     HandshakeReady,
@@ -22,14 +21,12 @@ pub enum TimerResponse {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TimerCommand {
     InitSystemStart,
-    CoolingStart,
     BypassStart,
     InitBalanceStart,
     HandshakeStart,
     AllBalanceStart(u32),
 
     InitSystemStop,
-    CoolingStop,
     BypassStop,
     InitBalanceStop,
     HandshakeStop,
@@ -146,14 +143,6 @@ impl TimerService {
                         &tx_os1,
                         &tx_os2,
                     ),
-                    TimerCommand::CoolingStart => Self::dispatch_start(
-                        30,
-                        TimerResponse::CoolingReady,
-                        &mut os1_state,
-                        &mut os2_state,
-                        &tx_os1,
-                        &tx_os2,
-                    ),
                     TimerCommand::BypassStart => Self::dispatch_start(
                         60,
                         TimerResponse::BypassReady,
@@ -190,13 +179,6 @@ impl TimerService {
                     // --- COMANDOS ONE-SHOT (STOP) ---
                     TimerCommand::InitSystemStop => Self::dispatch_stop(
                         TimerResponse::InitSystemReady,
-                        &mut os1_state,
-                        &mut os2_state,
-                        &tx_os1,
-                        &tx_os2,
-                    ),
-                    TimerCommand::CoolingStop => Self::dispatch_stop(
-                        TimerResponse::CoolingReady,
                         &mut os1_state,
                         &mut os2_state,
                         &tx_os1,

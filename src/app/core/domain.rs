@@ -23,7 +23,6 @@ use crate::app::{
         domain::StateGeneral,
         logic::{FsmServiceCommand, FsmServiceResponse},
     },
-    healthscore::domain::{HealthServiceCommand, HealthServiceResponse, HealthState},
     heartbeat::domain::{HeartbeatCommand, HeartbeatResponse, StateForHeartbeat},
     message::domain::{MessageFromEdge, MessageServiceCommand, MessageServiceResponse},
     system_settings::domain::{ConfigCommand, ConfigField, ConfigResponse, SystemSettings},
@@ -60,9 +59,6 @@ pub struct Core {
 
     core_from_data_service: Receiver<DataServiceResponse>,
     core_to_data_service: Sender<DataServiceCommand>,
-
-    core_from_health_service: Receiver<HealthServiceResponse>,
-    core_to_health_service: Sender<HealthServiceCommand>,
 }
 
 /// Builder para construir la estructura `Core`.
@@ -97,9 +93,6 @@ pub struct CoreBuilder {
 
     core_from_data_service: Option<Receiver<DataServiceResponse>>,
     core_to_data_service: Option<Sender<DataServiceCommand>>,
-
-    core_from_health_service: Option<Receiver<HealthServiceResponse>>,
-    core_to_health_service: Option<Sender<HealthServiceCommand>>,
 }
 
 impl CoreBuilder {
@@ -185,15 +178,6 @@ impl CoreBuilder {
         self
     }
 
-    pub fn core_from_health_service(mut self, ch: Receiver<HealthServiceResponse>) -> Self {
-        self.core_from_health_service = Some(ch);
-        self
-    }
-    pub fn core_to_health_service(mut self, ch: Sender<HealthServiceCommand>) -> Self {
-        self.core_to_health_service = Some(ch);
-        self
-    }
-
     /// Construye la instancia de `Core`.
     ///
     /// # Errores
@@ -259,13 +243,6 @@ impl CoreBuilder {
             core_to_data_service: self
                 .core_to_data_service
                 .ok_or(anyhow!("falta: core_to_data_service"))?,
-
-            core_from_health_service: self
-                .core_from_health_service
-                .ok_or(anyhow!("falta: core_from_health_service"))?,
-            core_to_health_service: self
-                .core_to_health_service
-                .ok_or(anyhow!("falta: core_to_health_service"))?,
         })
     }
 }
@@ -346,19 +323,6 @@ impl Core {
                                     _ => {}
                                 }
                             }
-                            FsmServiceResponse::EntryCooling => {
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStart) {
-                                        error!("no se pudo enviar CoolingStart desde core. {e}");
-                                }
-                            }
-                            FsmServiceResponse::EntryUpdate => {
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStop) {
-                                        error!("no se pudo enviar CoolingStop desde core. {e}");
-                                }
-                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GeneratePing) {
-                                        error!("no se pudo enviar GeneratePing desde core. {e}");
-                                }
-                            }
                             FsmServiceResponse::EntryNormal(state) => {
                                 match state {
                                     StateGeneral::InitSystem => {
@@ -420,17 +384,9 @@ impl Core {
                                         error!("no se pudo enviar Normal desde core. {e}");
                                 }
                             }
-                            FsmServiceResponse::EntryBypass(state) => {
+                            FsmServiceResponse::EntryBypass(_) => {
                                 if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::None)) {
                                     error!("no se pudo enviar StateForHeartbeat desde core. {e}");
-                                }
-                                match state {
-                                    StateGeneral::Cooling => {
-                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStop) {
-                                            error!("no se pudo enviar CoolingStop desde core. {e}");
-                                        }
-                                    }
-                                    _ => {}
                                 }
                                 if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::BypassStart) {
                                     error!("no se pudo enviar BypassStart desde core. {e}");
@@ -444,11 +400,6 @@ impl Core {
                                     StateGeneral::InitSystem => {
                                         if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitSystemStop) {
                                             error!("no se pudo enviar InitSystemStop desde core. {e}");
-                                        }
-                                    }
-                                    StateGeneral::Cooling => {
-                                        if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::CoolingStop) {
-                                            error!("no se pudo enviar CoolingStop desde core. {e}");
                                         }
                                     }
                                     StateGeneral::InHandshake | StateGeneral::OutHandshake => {
@@ -654,9 +605,14 @@ impl Core {
                 res = self.core_from_mqtt_service.recv().fuse() => {
                     match res {
                         Ok(response) => match response {
+                            MqttData::Connected => {
+                                if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::MqttConnected) {
+                                    error!("no se pudo enviar MqttConnected desde core. {e}");
+                                }
+                            }
                             MqttData::Disconnected => {
-                                if let Err(e) = self.core_to_health_service.try_send(HealthServiceCommand::Disconnect) {
-                                    error!("no se pudo enviar Disconnect desde core. {e}");
+                                if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::NetworkDropped) {
+                                    error!("no se pudo enviar NetworkDropped desde core. {e}");
                                 }
                             }
                             MqttData::InMessage(msg) => {
@@ -664,16 +620,11 @@ impl Core {
                                     error!("no se pudo enviar ParseMessage desde core. {e}");
                                 }
                             }
-                            MqttData::PubAck { msg_id, return_code } => {
+                            MqttData::PubAck { msg_id: _, return_code } => {
                                 if return_code > 0 {
-                                    if let Err(e) = self.core_to_health_service.try_send(HealthServiceCommand::Disconnect) {
-                                        error!("no se pudo enviar Disconnect desde core. Id {msg_id}. {e}");
+                                    if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::NetworkDropped) {
+                                        error!("no se pudo enviar NetworkDropped desde core. {e}");
                                     }
-                                }
-                            }
-                            MqttData::Health(health) => {
-                                if let Err(e) = self.core_to_health_service.try_send(health) {
-                                    error!("no se pudo enviar Health desde core. {e}");
                                 }
                             }
                             _ => {}
@@ -712,11 +663,6 @@ impl Core {
                             TimerResponse::InitSystemReady => {
                                 if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::TimeoutInitSystem) {
                                     error!("no se pudo enviar TimeoutInitSystem desde core. {e}");
-                                }
-                            }
-                            TimerResponse::CoolingReady => {
-                                if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::TimeoutCooling) {
-                                    error!("no se pudo enviar TimeoutCooling desde core. {e}");
                                 }
                             }
                             TimerResponse::BypassReady => {
@@ -809,36 +755,7 @@ impl Core {
                         },
                         Err(e) => error!("{e}"),
                     }
-                },
-
-
-                res = self.core_from_health_service.recv().fuse() => {
-                    match res {
-                        Ok(response) => match response {
-                            HealthServiceResponse::StateChanged(health) => {
-                                match health {
-                                    HealthState::Healthy => {
-                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::HealthyConnection) {
-                                            error!("no se pudo enviar HealthyConnection desde core. {e}");
-                                        }
-                                    }
-                                    HealthState::Critical => {
-                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::CriticalConnection) {
-                                            error!("no se pudo enviar CriticalConnection desde core. {e}");
-                                        }
-                                    }
-                                    HealthState::Unavailable => {
-                                        if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::UnavailableConnection) {
-                                            error!("no se pudo enviar UnavailableConnection desde core. {e}");
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        },
-                        Err(e) => error!("{e}"),
-                    }
-                },
+                }
             }
         }
     }

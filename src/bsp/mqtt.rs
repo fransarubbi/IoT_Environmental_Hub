@@ -2,7 +2,6 @@
 //! Abstrae la implementación específica del hardware detrás de traits.
 
 use crate::app::{
-    healthscore::domain::HealthServiceCommand,
     message::domain::{MAX_MSGPACK_BUFFER_SIZE, SerializedMessage},
     system_settings::domain::SystemSettings,
 };
@@ -28,7 +27,6 @@ pub enum MqttData {
     PubAck { msg_id: u16, return_code: u8 },
     InMessage(IncomingMessage),
     OutMessage(SerializedMessage),
-    Health(HealthServiceCommand),
     SubscribeInitial,
     SubscribeOperational,
 }
@@ -50,7 +48,6 @@ pub struct EspIdfMqttManager {
     client: EspMqttClient<'static>, // El cliente nativo de esp-idf-svc
     settings: Arc<RwLock<SystemSettings>>,
     receiver: Receiver<MqttData>,
-    sender: Sender<MqttData>,
 }
 
 impl EspIdfMqttManager {
@@ -115,11 +112,6 @@ impl EspIdfMqttManager {
 
                 EventPayload::Disconnected => {
                     warn!("desconectado del broker");
-                    if let Err(e) = sender_to_closure
-                        .try_send(MqttData::Health(HealthServiceCommand::Disconnect))
-                    {
-                        error!("no se pudo enviar evento Disconnect. {e}");
-                    }
                     if let Err(e) = sender_to_closure.try_send(MqttData::Disconnected) {
                         error!("no se pudo enviar MqttData por el canal. {e}");
                     }
@@ -132,15 +124,6 @@ impl EspIdfMqttManager {
                         return_code: 0,
                     }) {
                         error!("no se pudo enviar MqttData por el canal.{e}");
-                    }
-                    if let Err(e) =
-                        sender_to_closure.try_send(MqttData::Health(HealthServiceCommand::PubAck {
-                            msg_id: msg_id as i32,
-                            return_code: 0,
-                            is_mqtt5: false,
-                        }))
-                    {
-                        error!("{e}");
                     }
                 }
 
@@ -208,10 +191,8 @@ impl EspIdfMqttManager {
                 }
                 EventPayload::Error(e) => {
                     error!("error en cliente MQTT: {:?}", e);
-                    if let Err(e) = sender_to_closure
-                        .try_send(MqttData::Health(HealthServiceCommand::ErrorSend))
-                    {
-                        error!("{e}");
+                    if let Err(e) = sender_to_closure.try_send(MqttData::Disconnected) {
+                        error!("no se pudo enviar MqttData por el canal. {e}");
                     }
                 }
                 _ => {}
@@ -228,7 +209,6 @@ impl EspIdfMqttManager {
             client,
             settings,
             receiver,
-            sender,
         })
     }
 
@@ -236,6 +216,7 @@ impl EspIdfMqttManager {
         while let Ok(cmd) = self.receiver.recv().await {
             match cmd {
                 MqttData::OutMessage(msg) => {
+                    debug!("MQTT. Enviando mensaje.");
                     let qos = msg.get_qos();
                     match self.publish(
                         &msg.get_topic(),
@@ -243,34 +224,18 @@ impl EspIdfMqttManager {
                         match_qos(qos),
                         msg.get_retain(),
                     ) {
-                        Ok(msg_id) => {
-                            // Si QoS > 0, esperamos un ACK, así que iniciamos el timer en el HealthScore
-                            if qos > 0 && msg_id > 0 {
-                                if let Err(e) = self.sender.try_send(MqttData::Health(
-                                    HealthServiceCommand::MsgSent {
-                                        msg_id: msg_id as i32,
-                                    },
-                                )) {
-                                    error!("{e}");
-                                }
-                            }
-                        }
+                        Ok(_) => {}
                         Err(e) => {
-                            error!("Fallo al publicar mensaje en {}: {}", msg.get_topic(), e);
-                            // Si falla el envío, penalizamos para el healthscore
-                            if let Err(e) = self
-                                .sender
-                                .try_send(MqttData::Health(HealthServiceCommand::ErrorSend))
-                            {
-                                error!("{e}");
-                            }
+                            error!("fallo al publicar mensaje en {}: {}", msg.get_topic(), e);
                         }
                     }
                 }
                 MqttData::SubscribeInitial => {
+                    debug!("MQTT. Subscribiendo a los topicos iniciales.");
                     self.subscribe_initial_topics();
                 }
                 MqttData::SubscribeOperational => {
+                    debug!("MQTT. Subscribiendo a todos los topicos.");
                     self.subscribe_all_topics();
                 }
                 _ => {}

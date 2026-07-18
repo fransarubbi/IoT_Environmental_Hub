@@ -34,6 +34,7 @@ use crate::app::{
 fn main() -> anyhow::Result<()> {
     esp_idf_svc::sys::link_patches();
     EspLogger::initialize_default();
+
     info!("Iniciando IoT Environmental Hub...");
 
     let peripherals =
@@ -65,7 +66,7 @@ fn main() -> anyhow::Result<()> {
     )?;
     let uart = EspIdfUartManager::new(uart_driver);
 
-    let channels = Channels::new(10);
+    let channels = Channels::new(3);
 
     let core = Core::builder()
         .core_from_fsm_service(channels.core_from_fsm_service.clone())
@@ -85,8 +86,6 @@ fn main() -> anyhow::Result<()> {
         .core_to_heartbeat_service(channels.core_to_heartbeat_service.clone())
         .core_from_data_service(channels.core_from_data_service.clone())
         .core_to_data_service(channels.core_to_data_service.clone())
-        .core_from_health_service(channels.core_from_health_service.clone())
-        .core_to_health_service(channels.core_to_health_service.clone())
         .build()?;
 
     let (mut config_manager, settings) = ConfigManager::new(
@@ -100,6 +99,12 @@ fn main() -> anyhow::Result<()> {
         let _ = config_manager
             .save_to_nvs()
             .map_err(|_| error!("fallo guardando en NVS"));
+    }
+
+    {
+        let mut cfg = settings.write().unwrap();
+        cfg.update_topics();
+        info!("tópicos MQTT generados exitosamente.");
     }
 
     ThreadSpawnConfiguration {

@@ -479,8 +479,8 @@ impl<U: Uart> Cli<U> {
 
         match v.parse::<u32>() {
             Ok(secs) if secs > 0 && secs <= u16::MAX as u32 => {
-                let micros = secs * 1_000_000 + 5_000_000;
-                apply(self, micros);
+                let seconds = secs + 5;
+                apply(self, seconds);
                 self.flags |= ok_flag;
                 self.send(&format!(
                     "Info: tiempo de latidos en estado {label} configurado correctamente\r\n"

@@ -8,7 +8,7 @@ use heapless::{String, Vec};
 use log::{error, info};
 use std::sync::{Arc, RwLock};
 
-pub const ACTION_VECTOR_CAPACITY: usize = 3;
+pub const ACTION_VECTOR_CAPACITY: usize = 10;
 
 pub enum HeartbeatResponse {
     Connected,
@@ -20,6 +20,7 @@ pub enum HeartbeatCommand {
     State(StateForHeartbeat),
 }
 
+#[derive(Debug)]
 pub enum StateForHeartbeat {
     Normal,
     Balance,
@@ -52,11 +53,11 @@ impl HeartbeatService {
     }
 
     pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
-        let (tx_to_core, rx) = bounded::<HeartbeatResponse>(10);
-        let (tx_to_fsm, rx_from_heartbeat) = bounded::<Event>(10);
-        let (tx_to_timer, rx_watchdog_heartbeat) = bounded::<WatchdogCommand>(10);
-        let (tx_msg, rx_from_server) = bounded::<HeartbeatCommand>(10);
-        let (tx_actions, rx_fsm) = bounded::<Vec<Action, ACTION_VECTOR_CAPACITY>>(10);
+        let (tx_to_core, rx) = bounded::<HeartbeatResponse>(3);
+        let (tx_to_fsm, rx_from_heartbeat) = bounded::<Event>(3);
+        let (tx_to_timer, rx_watchdog_heartbeat) = bounded::<WatchdogCommand>(3);
+        let (tx_msg, rx_from_server) = bounded::<HeartbeatCommand>(3);
+        let (tx_actions, rx_fsm) = bounded::<Vec<Action, ACTION_VECTOR_CAPACITY>>(3);
 
         let heartbeat_tx_to_fsm = tx_to_fsm.clone();
         executor
@@ -359,9 +360,13 @@ fn state_not_heartbeat_yet_event_timeout(mut next_fsm: FsmHeartbeat) -> Transiti
     ))
     .expect("ACTION_VECTOR_CAPACITY demasiado chico");
 
+    // --> FALTABA ESTO: DETENER EL TIMER AL DECLARAR MUERTE <--
+    vec.push(Action::StopTimer)
+        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+
     let valid = TransitionValid {
         change_state: next_fsm.clone(),
-        action: vec, // (Connected, Disconnected)
+        action: vec,
     };
     Transition::Valid(valid)
 }

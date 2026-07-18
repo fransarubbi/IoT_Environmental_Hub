@@ -17,7 +17,6 @@
 
 use crate::app::data::domain::{DataServiceCommand, DataServiceResponse};
 use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
-use crate::app::healthscore::domain::{HealthServiceCommand, HealthServiceResponse};
 use crate::app::heartbeat::domain::{HeartbeatCommand, HeartbeatResponse};
 use crate::app::message::domain::{MessageServiceCommand, MessageServiceResponse};
 use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse};
@@ -79,11 +78,6 @@ pub struct Channels {
     pub core_from_data_service: Receiver<DataServiceResponse>,
     pub core_to_data_service: Sender<DataServiceCommand>,
     pub data_service_from_core: Receiver<DataServiceCommand>,
-
-    pub health_service_to_core: Sender<HealthServiceResponse>,
-    pub core_from_health_service: Receiver<HealthServiceResponse>,
-    pub core_to_health_service: Sender<HealthServiceCommand>,
-    pub health_service_from_core: Receiver<HealthServiceCommand>,
 }
 
 impl Channels {
@@ -139,10 +133,6 @@ impl Channels {
         let (data_s2c_tx, data_s2c_rx) = bounded(buffer_size);
         let (data_c2s_tx, data_c2s_rx) = bounded(buffer_size);
 
-        // Healthscore
-        let (health_s2c_tx, health_s2c_rx) = bounded(buffer_size);
-        let (health_c2s_tx, health_c2s_rx) = bounded(buffer_size);
-
         Self {
             fsm_service_to_core: fsm_s2c_tx,
             core_from_fsm_service: fsm_s2c_rx,
@@ -186,11 +176,6 @@ impl Channels {
             core_from_data_service: data_s2c_rx,
             core_to_data_service: data_c2s_tx,
             data_service_from_core: data_c2s_rx,
-
-            health_service_to_core: health_s2c_tx,
-            core_from_health_service: health_s2c_rx,
-            core_to_health_service: health_c2s_tx,
-            health_service_from_core: health_c2s_rx,
         }
     }
 }

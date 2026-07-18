@@ -54,7 +54,6 @@ pub struct SystemSettings {
     topic_settings_ok: Topic,
     topic_hub_firmware_ok: Topic,
     topic_handshake_to_edge: Topic,
-    topic_ping: Topic,
     topic_empty_queue: Topic,
     topic_linkage_request: Topic,
 
@@ -352,13 +351,6 @@ impl SystemSettings {
         self.topic_handshake_to_edge = t;
     }
 
-    pub fn topic_ping(&self) -> &Topic {
-        &self.topic_ping
-    }
-    pub fn set_topic_ping(&mut self, t: Topic) {
-        self.topic_ping = t;
-    }
-
     pub fn topic_empty_queue(&self) -> &Topic {
         &self.topic_empty_queue
     }
@@ -459,5 +451,76 @@ impl SystemSettings {
             ConfigField::LinkageFlag(flag) => self.set_linkage_flag(flag),
             ConfigField::MessageId(id) => self.set_message_id(id),
         }
+    }
+
+    pub fn update_topics(&mut self) {
+        let net = heapless::String::<NETWORK_STRING_LEN>::try_from(
+            self.id_network().to_string().as_str(),
+        )
+        .unwrap_or_default();
+
+        let mac = heapless::String::<18>::try_from(self.mac_addr().to_string().as_str())
+            .unwrap_or_default();
+
+        let edge = heapless::String::<18>::try_from(self.id_edge().to_string().as_str())
+            .unwrap_or_default();
+
+        // Macro interna para formatear strings heapless de forma segura sin usar allocations (malloc)
+        macro_rules! build_topic {
+                ($fmt:expr, $($arg:expr),*) => {{
+                    let mut s = heapless::String::<75>::new();
+                    let _ = core::fmt::write(&mut s, format_args!($fmt, $($arg),*));
+                    s
+                }};
+            }
+
+        // -----------------------
+        // TÓPICOS DE PUBLICACIÓN
+        // -----------------------
+        self.topic_data.topic = build_topic!("iot/{}/hub/{}/data", net, mac);
+        self.topic_data.qos = 0;
+        self.topic_alert_air.topic = build_topic!("iot/{}/hub/{}/alert_air", net, mac);
+        self.topic_alert_air.qos = 0;
+        self.topic_alert_temp.topic = build_topic!("iot/{}/hub/{}/alert_temp", net, mac);
+        self.topic_alert_temp.qos = 0;
+        self.topic_monitor.topic = build_topic!("iot/{}/hub/{}/monitor", net, mac);
+        self.topic_monitor.qos = 0;
+        self.topic_settings.topic = build_topic!("iot/{}/hub/{}/setting", net, mac);
+        self.topic_settings.qos = 0;
+        self.topic_settings_ok.topic = build_topic!("iot/{}/hub/{}/hub_setting_ok", net, mac);
+        self.topic_settings_ok.qos = 0;
+        self.topic_hub_firmware_ok.topic = build_topic!("iot/{}/hub/{}/hub_firmware_ok", net, mac);
+        self.topic_hub_firmware_ok.qos = 0;
+        self.topic_handshake_to_edge.topic =
+            build_topic!("iot/{}/hub/{}/balance_mode_handshake", net, mac);
+        self.topic_handshake_to_edge.qos = 0;
+        self.topic_empty_queue.topic = build_topic!("iot/{}/hub/{}/empty_queue", net, mac);
+        self.topic_empty_queue.qos = 0;
+        self.topic_linkage_request.topic = build_topic!("iot/{}/linkage_request", edge);
+        self.topic_linkage_request.qos = 0;
+
+        // -------------------
+        // TÓPICOS DE ESCUCHA
+        // -------------------
+        self.topic_edge_state_normal.topic = build_topic!("iot/{}/state/normal", edge);
+        self.topic_edge_state_normal.qos = 0;
+        self.topic_edge_state_balance.topic = build_topic!("iot/{}/state/balance", edge);
+        self.topic_edge_state_balance.qos = 0;
+        self.topic_edge_state_safe.topic = build_topic!("iot/{}/state/safe", edge);
+        self.topic_edge_state_safe.qos = 0;
+        self.topic_edge_phase.topic = build_topic!("iot/{}/state/phase", edge);
+        self.topic_edge_phase.qos = 0;
+        self.topic_edge_handshake.topic = build_topic!("iot/{}/handshake", edge);
+        self.topic_edge_handshake.qos = 0;
+        self.topic_heartbeat.topic = build_topic!("iot/{}/heartbeat", edge);
+        self.topic_heartbeat.qos = 0;
+        self.topic_new_firmware.topic = build_topic!("iot/{}/new_firmware", net);
+        self.topic_new_firmware.qos = 0;
+        self.topic_new_settings.topic = build_topic!("iot/{}/new_setting", net);
+        self.topic_new_settings.qos = 0;
+        self.topic_edge_setting_ok.topic = build_topic!("iot/{}/new_setting_ok", net);
+        self.topic_edge_setting_ok.qos = 0;
+        self.topic_linkage_ack.topic = build_topic!("iot/{}/linkage_ack", edge);
+        self.topic_linkage_ack.qos = 0;
     }
 }

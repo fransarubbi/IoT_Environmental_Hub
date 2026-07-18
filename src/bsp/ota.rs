@@ -8,7 +8,7 @@ use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
 use esp_idf_svc::ota::EspOta;
 use esp_idf_svc::sys::esp_crt_bundle_attach;
 use heapless::String;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 const URL_VERSION: &str =
     "https://raw.githubusercontent.com/fransarubbi/IoT_Environmental_Hub/master/version.txt";
@@ -41,12 +41,14 @@ impl EspIdfOtaManager {
             if let Ok(cmd) = self.receiver.recv().await {
                 match cmd {
                     OtaCommand::CheckFirmware => {
+                        debug!("OTA. Se recibió comando de CheckFirmware.");
                         match self.check_update(CURRENT_FIRMWARE_VERSION) {
                             Ok(update) => {
                                 let version = update.clone();
                                 if update.is_some() {
                                     match self.perform_update(&update.unwrap()) {
                                         Ok(_) => {
+                                            debug!("OTA. Actualización exitosa.");
                                             if let Err(e) = self.sender.try_send(
                                                 OtaResponse::UpdatedSuccesful(version.unwrap()),
                                             ) {
@@ -56,6 +58,7 @@ impl EspIdfOtaManager {
                                         Err(e) => error!("{e}"),
                                     }
                                 } else {
+                                    debug!("OTA. No hay actualizaciones disponibles.");
                                     if let Err(e) =
                                         self.sender.try_send(OtaResponse::NoUpdateAvailable)
                                     {
@@ -63,7 +66,13 @@ impl EspIdfOtaManager {
                                     }
                                 }
                             }
-                            Err(e) => error!("{e}"),
+                            Err(e) => {
+                                debug!("fallo al checkear actualizaciones. {e}");
+                                if let Err(e) = self.sender.try_send(OtaResponse::NoUpdateAvailable)
+                                {
+                                    error!("no se pudo enviar NoUpdateAvailable. {e}");
+                                }
+                            }
                         }
                     }
                 }
@@ -131,19 +140,17 @@ impl Ota for EspIdfOtaManager {
         let raw = core::str::from_utf8(&version_buf[..bytes_read]).unwrap_or("");
         let trimmed = raw.trim();
         let mut remote_version = String::<6>::new();
-        // push_str truncates silently if too long via try variant
         let _ = remote_version.push_str(&trimmed[..trimmed.len().min(6)]);
 
         info!(
-            "comparando. Version remota = '{}' vs version local = '{}'",
-            remote_version, current_version
+            "comparando versiones. Version remota: {remote_version} - Version local: {current_version}"
         );
 
         if is_newer_version(&remote_version, current_version) {
             warn!("actualización encontrada (v{}).", remote_version);
             Ok(Some(remote_version))
         } else {
-            info!("sistema actualizado (remoto <= local). No se requiere OTA.");
+            info!("sistema actualizado (remoto = local). No se requiere OTA.");
             Ok(None)
         }
     }

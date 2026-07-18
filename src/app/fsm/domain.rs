@@ -29,8 +29,6 @@ pub enum SubStateInit {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SubStateStore {
     Store,
-    Cooling,
-    UpdateScore,
 }
 
 /// Sub-estados del estado Balance (`StateGlobal::Balance`).
@@ -44,12 +42,10 @@ pub enum SubStateBalance {
     OutHandshake,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum StateGeneral {
     InitSystem,
     Store,
-    Cooling,
-    UpdateScore,
     Bypass,
     Safe { frequency: u32, jitter: u32 },
     Normal,
@@ -99,7 +95,7 @@ impl TransitionValid {
 /// Datos resultantes de una transición fallida o no permitida.
 #[derive(Debug)]
 pub struct TransitionInvalid {
-    invalid: String<20>,
+    invalid: String<23>,
 }
 
 impl TransitionInvalid {
@@ -120,8 +116,6 @@ pub enum Action {
     OnEntryRestart,
     OnEntryInitSystem,
     OnEntryStore,
-    OnEntryCooling,
-    OnEntryUpdateScore,
     OnEntryNormal,
     OnEntryBypass,
     OnEntrySafe,
@@ -138,6 +132,8 @@ pub enum Action {
 /// Estos son los "Triggers" que provocan los cambios de estado.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
+    EventNetworkDropped,
+    EventNetworkRestored,
     EventStart,
     EventNotUpdate,
     EventUpdateSuccessful,
@@ -146,10 +142,7 @@ pub enum Event {
     EventInitBalance,
     EventToSafe,
     EventToNormal,
-    EventLowScore,
-    EventBadScore,
     EventTimeoutCooling,
-    EventGoodScore,
     EventTimeoutBypass,
     EventAlertGenerated,
     EventNewerEpoch,
@@ -173,6 +166,16 @@ impl FsmState {
 
     /// Lógica interna de despacho según el estado global.
     fn step_inner(&self, event: Event) -> Transition {
+        // -------------------------------------------------------------
+        // Si perdemos conexión con el Broker (o WiFi), abortamos
+        // lo que sea que estemos haciendo y nos refugiamos en Store.
+        // -------------------------------------------------------------
+        if event == Event::EventNetworkDropped {
+            if self.global != StateGlobal::StoreMessage && self.global != StateGlobal::Init {
+                let next_fsm = self.clone();
+                return event_to_store(next_fsm);
+            }
+        }
         match self.global {
             StateGlobal::Start => self.step_start(event),
             StateGlobal::Init => self.step_init(event),
@@ -237,33 +240,20 @@ impl FsmState {
 
     fn step_store(&self, event: Event) -> Transition {
         match (&self.store, event) {
+            (Some(SubStateStore::Store), Event::EventNetworkRestored) => {
+                let mut next_fsm = self.clone();
+                next_fsm.global = StateGlobal::Init;
+                next_fsm.store = None;
+                next_fsm.init = Some(SubStateInit::InitSystem);
+                let valid = TransitionValid {
+                    change_state: next_fsm,
+                    actions: Vec::new(),
+                };
+                Transition::Valid(valid)
+            }
             (Some(SubStateStore::Store), Event::EventToNormal) => {
                 let next_fsm = self.clone();
                 state_store_event_to_normal(next_fsm)
-            }
-            (Some(SubStateStore::Cooling), Event::EventAlertGenerated) => {
-                let next_fsm = self.clone();
-                state_store_event_to_bypass(next_fsm)
-            }
-            (Some(SubStateStore::Cooling), Event::EventTimeoutCooling) => {
-                let next_fsm = self.clone();
-                state_store_event_to_update(next_fsm)
-            }
-            (Some(SubStateStore::UpdateScore), Event::EventLowScore) => {
-                let next_fsm = self.clone();
-                state_store_event_to_cooling(next_fsm)
-            }
-            (Some(SubStateStore::UpdateScore), Event::EventBadScore) => {
-                let next_fsm = self.clone();
-                state_update_event_to_store(next_fsm)
-            }
-            (Some(SubStateStore::UpdateScore), Event::EventInitBalance) => {
-                let next_fsm = self.clone();
-                state_update_event_to_balance(next_fsm)
-            }
-            (Some(SubStateStore::UpdateScore), Event::EventAlertGenerated) => {
-                let next_fsm = self.clone();
-                state_update_event_to_bypass(next_fsm)
             }
             _ => invalid(),
         }
@@ -278,10 +268,6 @@ impl FsmState {
             (StateGlobal::Normal, Event::EventInitBalance) => {
                 let next_fsm = self.clone();
                 state_normal_event_to_init_balance(next_fsm)
-            }
-            (StateGlobal::Normal, Event::EventLowScore) => {
-                let next_fsm = self.clone();
-                state_normal_event_to_cooling(next_fsm)
             }
             _ => invalid(),
         }
@@ -475,16 +461,6 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
                         .push(Action::OnEntryStore)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
-                SubStateStore::Cooling => {
-                    actions
-                        .push(Action::OnEntryCooling)
-                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
-                }
-                SubStateStore::UpdateScore => {
-                    actions
-                        .push(Action::OnEntryUpdateScore)
-                        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
-                }
             }
         }
     }
@@ -553,7 +529,7 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
 /// Retorna una transición inválida genérica para Init.
 fn invalid() -> Transition {
     let invalid = TransitionInvalid {
-        invalid: String::<20>::try_from("Transición inválida.").unwrap(),
+        invalid: String::<23>::try_from("Transición inválida.").unwrap(),
     };
     Transition::Invalid(invalid)
 }
@@ -645,70 +621,6 @@ fn state_store_event_to_normal(mut next_fsm: FsmState) -> Transition {
     Transition::Valid(valid)
 }
 
-fn state_store_event_to_bypass(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Bypass;
-    next_fsm.store = None;
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_store_event_to_update(mut next_fsm: FsmState) -> Transition {
-    next_fsm.store = Some(SubStateStore::UpdateScore);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_store_event_to_cooling(mut next_fsm: FsmState) -> Transition {
-    next_fsm.store = Some(SubStateStore::Cooling);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_update_event_to_store(mut next_fsm: FsmState) -> Transition {
-    next_fsm.store = Some(SubStateStore::Store);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_update_event_to_balance(mut next_fsm: FsmState) -> Transition {
-    next_fsm.store = None;
-    next_fsm.global = StateGlobal::Balance;
-    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_update_event_to_bypass(mut next_fsm: FsmState) -> Transition {
-    next_fsm.store = None;
-    next_fsm.global = StateGlobal::Bypass;
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
 fn state_normal_event_to_store(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::StoreMessage;
     next_fsm.store = Some(SubStateStore::Store);
@@ -723,17 +635,6 @@ fn state_normal_event_to_store(mut next_fsm: FsmState) -> Transition {
 fn state_normal_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Balance;
     next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_normal_event_to_cooling(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::StoreMessage;
-    next_fsm.store = Some(SubStateStore::Cooling);
 
     let valid = TransitionValid {
         change_state: next_fsm,
