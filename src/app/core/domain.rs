@@ -460,6 +460,11 @@ impl Core {
                                     error!("no se pudo enviar UpdateLinkageFlag desde core. {e}");
                                 }
                             }
+                            FsmServiceResponse::SendHandshake((epoch, flag)) => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateHandshake((epoch, flag))) {
+                                    error!("no se pudo enviar GenerateHandshake desde core. {e}");
+                                }
+                            }
                         },
                         Err(e) => error!("el canal core_from_fsm_service se ha cerrado. {e}"),
                     }

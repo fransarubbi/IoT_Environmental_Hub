@@ -358,11 +358,9 @@ fn state_not_heartbeat_yet_event_timeout(mut next_fsm: FsmHeartbeat) -> Transiti
         old_status,
         next_fsm.status.clone(),
     ))
-    .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+    .unwrap();
 
-    // --> FALTABA ESTO: DETENER EL TIMER AL DECLARAR MUERTE <--
-    vec.push(Action::StopTimer)
-        .expect("ACTION_VECTOR_CAPACITY demasiado chico");
+    vec.push(Action::StopTimer).unwrap();
 
     let valid = TransitionValid {
         change_state: next_fsm.clone(),

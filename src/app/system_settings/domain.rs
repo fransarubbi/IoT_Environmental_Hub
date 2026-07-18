@@ -45,29 +45,50 @@ pub struct SystemSettings {
     wifi: Wifi,
     mqtt_uri: String<MQTT_URI_STRING_LEN>,
 
-    // Publica
+    // --- Publica ---
+    #[serde(skip)]
     topic_data: Topic,
+    #[serde(skip)]
     topic_alert_air: Topic,
+    #[serde(skip)]
     topic_alert_temp: Topic,
+    #[serde(skip)]
     topic_monitor: Topic,
+    #[serde(skip)]
     topic_settings: Topic,
+    #[serde(skip)]
     topic_settings_ok: Topic,
+    #[serde(skip)]
     topic_hub_firmware_ok: Topic,
+    #[serde(skip)]
     topic_handshake_to_edge: Topic,
+    #[serde(skip)]
     topic_empty_queue: Topic,
+    #[serde(skip)]
     topic_linkage_request: Topic,
 
-    // Escucha
+    // --- Escucha ---
+    #[serde(skip)]
     topic_edge_state_normal: Topic,
+    #[serde(skip)]
     topic_edge_state_balance: Topic,
+    #[serde(skip)]
     topic_edge_state_safe: Topic,
+    #[serde(skip)]
     topic_edge_phase: Topic,
+    #[serde(skip)]
     topic_edge_handshake: Topic,
+    #[serde(skip)]
     topic_heartbeat: Topic,
+    #[serde(skip)]
     topic_new_firmware: Topic,
+    #[serde(skip)]
     topic_new_settings: Topic,
+    #[serde(skip)]
     topic_edge_setting_ok: Topic,
+    #[serde(skip)]
     topic_linkage_ack: Topic,
+    #[serde(skip)]
     topic_ping_ack: Topic,
 
     energy_mode: EnergyMode,

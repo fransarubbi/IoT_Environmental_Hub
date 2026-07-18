@@ -39,6 +39,7 @@ pub enum FsmServiceResponse {
     EntryInitBalance(StateGeneral, u32),
     UpdateBalanceEpoch(u32),
     UpdateLinkageFlag,
+    SendHandshake((u32, String<15>)),
 }
 
 pub enum FsmServiceCommand {
@@ -186,6 +187,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
         new: StateGeneral::InitSystem,
     };
     let mut firmware_version = String::new();
+    let mut handshake_flag = String::new();
     let mut frequency: u32 = 0;
     let mut jitter: u32 = 0;
     let mut duration: u32 = 0;
@@ -336,20 +338,40 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             info!("FSM. Entrando a estado InHandshake.");
                             state.old = state.new;
                             state.new = StateGeneral::InHandshake;
+                            let epoch = settings.read().unwrap().balance_epoch();
                             if let Err(e) =
                                 tx_response.try_send(FsmServiceResponse::EntryInHandshake)
                             {
                                 error!("no se pudo enviar EntryInHandshake desde el handler. {e}");
+                            }
+                            let flag = heapless::String::<15>::try_from(
+                                handshake_flag.to_string().as_str(),
+                            )
+                            .unwrap_or_default();
+                            if let Err(e) = tx_response
+                                .try_send(FsmServiceResponse::SendHandshake((epoch, flag)))
+                            {
+                                error!("no se pudo enviar SendHandshake desde el handler. {e}");
                             }
                         }
                         Action::OnEntryOutHandshake => {
                             info!("FSM. Entrando a estado OutHandshake.");
                             state.old = state.new;
                             state.new = StateGeneral::OutHandshake;
+                            let epoch = settings.read().unwrap().balance_epoch();
                             if let Err(e) =
                                 tx_response.try_send(FsmServiceResponse::EntryOutHandshake)
                             {
                                 error!("no se pudo enviar EntryOutHandshake desde el handler. {e}");
+                            }
+                            let flag = heapless::String::<15>::try_from(
+                                handshake_flag.to_string().as_str(),
+                            )
+                            .unwrap_or_default();
+                            if let Err(e) = tx_response
+                                .try_send(FsmServiceResponse::SendHandshake((epoch, flag)))
+                            {
+                                error!("no se pudo enviar SendHandshake desde el handler. {e}");
                             }
                         }
                         Action::OnEntryInitBalance => {
@@ -400,19 +422,48 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                     }
                 }
                 FsmServiceCommand::Handshake(handshake) => {
-                    if handshake == "in_handshake" {
+                    if handshake == "in" {
                         info!("FSM. Se recibió comando Handshake de inicio.");
-                        if let Err(e) = tx_events.try_send(Event::EventToInHandshake) {
-                            error!(
-                                "no se pudo enviar evento EventToInHandshake desde handler. {e}"
-                            );
+                        handshake_flag = handshake;
+                        if state.new == StateGeneral::InHandshake {
+                            let flag = heapless::String::<15>::try_from(
+                                handshake_flag.to_string().as_str(),
+                            )
+                            .unwrap_or_default();
+                            let epoch = settings.read().unwrap().balance_epoch();
+                            if let Err(e) = tx_response
+                                .try_send(FsmServiceResponse::SendHandshake((epoch, flag)))
+                            {
+                                error!("no se pudo enviar SendHandshake desde el handler. {e}");
+                            }
+                        } else {
+                            if let Err(e) = tx_events.try_send(Event::EventToInHandshake) {
+                                error!(
+                                    "no se pudo enviar evento EventToInHandshake desde handler. {e}"
+                                );
+                            }
                         }
-                    } else if handshake == "out_handshake" {
+                    } else if handshake == "out" {
                         info!("FSM. Se recibió comando Handshake de salida.");
-                        if let Err(e) = tx_events.try_send(Event::EventToOutHandshake) {
-                            error!(
-                                "no se pudo enviar evento EventToOutHandshake desde handler. {e}"
-                            );
+                        handshake_flag = handshake;
+
+                        if state.new == StateGeneral::OutHandshake {
+                            let flag = heapless::String::<15>::try_from(
+                                handshake_flag.to_string().as_str(),
+                            )
+                            .unwrap_or_default();
+                            let epoch = settings.read().unwrap().balance_epoch();
+                            if let Err(e) = tx_response
+                                .try_send(FsmServiceResponse::SendHandshake((epoch, flag)))
+                            {
+                                error!("no se pudo enviar SendHandshake desde el handler. {e}");
+                            }
+                        } else {
+                            if let Err(e) = tx_events.try_send(Event::EventToOutHandshake) {
+                                error!(
+                                    "no se pudo enviar evento EventToOutHandshake desde handler. {e}"
+                                );
+                            }
                         }
                     }
                 }
@@ -472,7 +523,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                 FsmServiceCommand::Balance(balance) => {
                     info!("FSM. Se recibió mensaje de inicio de balanceo.");
                     let epoch = settings.read().unwrap().balance_epoch();
-                    if balance.0 > epoch {
+                    if balance.0 >= epoch {
                         if let Err(e) = tx_events.try_send(Event::EventInitBalance) {
                             error!("no se pudo enviar evento EventInitBalance desde handler. {e}");
                         }
@@ -516,14 +567,14 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                 }
                 FsmServiceCommand::TimeoutInitBalance => {
                     info!("FSM. Se recibió comando de fase de monitor.");
-                    if let Err(e) = tx_events.try_send(Event::EventToSafe) {
-                        error!("no se pudo enviar evento EventToSafe desde handler. {e}");
+                    if let Err(e) = tx_events.try_send(Event::EventEdgeIsDead) {
+                        error!("no se pudo enviar evento EventEdgeIsDead desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutHandshake => {
                     info!("FSM. Se recibió comando de timeout en Handshake.");
-                    if let Err(e) = tx_events.try_send(Event::EventToSafe) {
-                        error!("no se pudo enviar evento EventToSafe desde handler. {e}");
+                    if let Err(e) = tx_events.try_send(Event::EventEdgeIsDead) {
+                        error!("no se pudo enviar evento EventEdgeIsDead desde handler. {e}");
                     }
                 }
                 FsmServiceCommand::TimeoutAllBalance => {

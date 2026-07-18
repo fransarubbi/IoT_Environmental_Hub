@@ -43,6 +43,11 @@ pub async fn parser(
         let topic = msg.topic.as_str();
         let payload = &msg.payload[..];
 
+        if payload.is_empty() {
+            log::debug!("Message. Payload vacío en {}, ignorando...", topic);
+            continue;
+        }
+
         // Enrutar explícitamente según el sufijo del tópico
         let decoded: Option<MessageFromEdge> = if topic.ends_with("balance") {
             info!("Message. Parseando mensaje de Balance.");
