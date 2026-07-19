@@ -289,16 +289,8 @@ impl Mqtt for EspIdfMqttManager {
         let cfg = settings_arc.read().unwrap();
 
         let _ = self.subscribe(
-            &cfg.topic_edge_state_balance().topic,
-            match_qos(cfg.topic_edge_state_balance().qos),
-        );
-        let _ = self.subscribe(
-            &cfg.topic_edge_state_normal().topic,
-            match_qos(cfg.topic_edge_state_normal().qos),
-        );
-        let _ = self.subscribe(
-            &cfg.topic_edge_state_safe().topic,
-            match_qos(cfg.topic_edge_state_safe().qos),
+            &cfg.topic_edge_state().topic,
+            match_qos(cfg.topic_edge_state().qos),
         );
         let _ = self.subscribe(
             &cfg.topic_edge_phase().topic,

@@ -255,6 +255,10 @@ impl FsmState {
                 let next_fsm = self.clone();
                 state_store_event_to_normal(next_fsm)
             }
+            (Some(SubStateStore::Store), Event::EventInitBalance) => {
+                let next_fsm = self.clone();
+                state_store_event_to_balance(next_fsm)
+            }
             _ => invalid(),
         }
     }
@@ -613,6 +617,18 @@ fn state_init_system_to_safe(mut next_fsm: FsmState) -> Transition {
 fn state_store_event_to_normal(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::Normal;
     next_fsm.store = None;
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
+fn state_store_event_to_balance(mut next_fsm: FsmState) -> Transition {
+    next_fsm.global = StateGlobal::Balance;
+    next_fsm.store = None;
+    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
 
     let valid = TransitionValid {
         change_state: next_fsm,

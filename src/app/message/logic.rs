@@ -49,21 +49,11 @@ pub async fn parser(
         }
 
         // Enrutar explícitamente según el sufijo del tópico
-        let decoded: Option<MessageFromEdge> = if topic.ends_with("balance") {
-            info!("Message. Parseando mensaje de Balance.");
-            from_slice::<MessageStateBalanceMode>(&payload)
+        let decoded: Option<MessageFromEdge> = if topic.ends_with("edge_state") {
+            info!("Message. Parseando mensaje de EdgeState.");
+            from_slice::<EdgeState>(&payload)
                 .ok()
-                .map(MessageFromEdge::StateBalanceMode)
-        } else if topic.ends_with("normal") {
-            info!("Message. Parseando mensaje de Normal.");
-            from_slice::<MessageStateNormal>(&payload)
-                .ok()
-                .map(MessageFromEdge::StateNormal)
-        } else if topic.ends_with("safe") {
-            info!("Message. Parseando mensaje de Safe.");
-            from_slice::<MessageStateSafeMode>(&payload)
-                .ok()
-                .map(MessageFromEdge::StateSafeMode)
+                .map(MessageFromEdge::State)
         } else if topic.ends_with("phase") {
             info!("Message. Parseando mensaje de Phase.");
             from_slice::<PhaseNotification>(&payload)
@@ -431,6 +421,22 @@ pub async fn generator(
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
                 }
             }
+            MessageServiceCommand::GenerateHubState(state) => {
+                info!("Message. Serializando mensaje de HubState.");
+                let mac = settings.read().unwrap().mac_addr().to_string();
+                let network = settings.read().unwrap().id_network().to_string();
+                let metadata = Metadata {
+                    sender_user_id: hl_str!(&mac, 18),
+                    destination_id: hl_str!("server0", 18),
+                    timestamp: get_unix_epoch(),
+                };
+                let msg = HubState {
+                    metadata,
+                    network: hl_str!(&network, 20),
+                    state,
+                };
+                send_serialized!(tx, &settings, msg, MessageToEdge::State(msg.clone()));
+            }
             _ => {}
         }
     }
@@ -510,6 +516,11 @@ fn resolve_topic(
                 .clone(),
             settings.read().unwrap().topic_linkage_request().qos,
             settings.read().unwrap().topic_linkage_request().retain,
+        ),
+        MessageToEdge::State(_) => (
+            settings.read().unwrap().topic_hub_state().topic.clone(),
+            settings.read().unwrap().topic_hub_state().qos,
+            settings.read().unwrap().topic_hub_state().retain,
         ),
     }
 }

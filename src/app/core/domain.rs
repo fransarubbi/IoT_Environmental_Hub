@@ -420,8 +420,8 @@ impl Core {
                                 }
                             }
                             FsmServiceResponse::EntryAlert((frequency, jitter)) => {
-                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::InitBalanceStop) {
-                                    error!("no se pudo enviar InitBalanceStop desde core. {e}");
+                                if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::HandshakeStop) {
+                                    error!("no se pudo enviar HandshakeStop desde core. {e}");
                                 }
                                 if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Alert { frequency, jitter } )) {
                                     error!("no se pudo enviar Alert desde core. {e}");
@@ -463,6 +463,11 @@ impl Core {
                             FsmServiceResponse::SendHandshake((epoch, flag)) => {
                                 if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateHandshake((epoch, flag))) {
                                     error!("no se pudo enviar GenerateHandshake desde core. {e}");
+                                }
+                            }
+                            FsmServiceResponse::GenerateHubState(hub_state) => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateHubState(hub_state)) {
+                                    error!("no se pudo enviar GenerateHubState desde core. {e}");
                                 }
                             }
                         },
@@ -535,29 +540,9 @@ impl Core {
                                         error!("no se pudo enviar Phase desde core. {e}");
                                     }
                                 }
-                                MessageFromEdge::StateBalanceMode(msg) => {
-                                     if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::Balance((msg.balance_epoch, msg.duration))) {
-                                         error!("no se pudo enviar Balance desde core. {e}");
-                                     }
-                                }
-                                MessageFromEdge::StateNormal(msg) => {
-                                    let edge = settings.read().unwrap().id_edge().to_string();
-                                    if msg.metadata.sender_user_id == edge.as_str() {
-                                        if let Err(e) =
-                                            self.core_to_fsm_service.try_send(FsmServiceCommand::Normal)
-                                        {
-                                            error!("no se pudo enviar Normal en core. {e}");
-                                        }
-                                    }
-                                }
-                                MessageFromEdge::StateSafeMode(msg) => {
-                                    let edge = settings.read().unwrap().id_edge().to_string();
-                                    if msg.metadata.sender_user_id == edge.as_str() {
-                                        if let Err(e) = self.core_to_fsm_service.try_send(
-                                            FsmServiceCommand::Safe((msg.frequency, msg.jitter)),
-                                        ) {
-                                            error!("no se pudo enviar Safe en core. {e}");
-                                        }
+                                MessageFromEdge::State(msg) => {
+                                    if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::EdgeState(msg)) {
+                                        error!("no se pudo enviar EdgeState desde core. {e}");
                                     }
                                 }
                                 MessageFromEdge::UpdateFirmware(msg) => {

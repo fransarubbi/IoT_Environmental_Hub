@@ -66,14 +66,12 @@ pub struct SystemSettings {
     topic_empty_queue: Topic,
     #[serde(skip)]
     topic_linkage_request: Topic,
+    #[serde(skip)]
+    topic_hub_state: Topic,
 
     // --- Escucha ---
     #[serde(skip)]
-    topic_edge_state_normal: Topic,
-    #[serde(skip)]
-    topic_edge_state_balance: Topic,
-    #[serde(skip)]
-    topic_edge_state_safe: Topic,
+    topic_edge_state: Topic,
     #[serde(skip)]
     topic_edge_phase: Topic,
     #[serde(skip)]
@@ -386,26 +384,19 @@ impl SystemSettings {
         self.topic_linkage_request = t;
     }
 
+    pub fn topic_hub_state(&self) -> &Topic {
+        &self.topic_hub_state
+    }
+    pub fn set_topic_hub_state(&mut self, t: Topic) {
+        self.topic_hub_state = t;
+    }
+
     // --- GETTERS & SETTERS PARA LOS TOPICS (Escucha) ---
-    pub fn topic_edge_state_normal(&self) -> &Topic {
-        &self.topic_edge_state_normal
+    pub fn topic_edge_state(&self) -> &Topic {
+        &self.topic_edge_state
     }
-    pub fn set_topic_edge_state_normal(&mut self, t: Topic) {
-        self.topic_edge_state_normal = t;
-    }
-
-    pub fn topic_edge_state_balance(&self) -> &Topic {
-        &self.topic_edge_state_balance
-    }
-    pub fn set_topic_edge_state_balance(&mut self, t: Topic) {
-        self.topic_edge_state_balance = t;
-    }
-
-    pub fn topic_edge_state_safe(&self) -> &Topic {
-        &self.topic_edge_state_safe
-    }
-    pub fn set_topic_edge_state_safe(&mut self, t: Topic) {
-        self.topic_edge_state_safe = t;
+    pub fn set_topic_edge_state(&mut self, t: Topic) {
+        self.topic_edge_state = t;
     }
 
     pub fn topic_edge_phase(&self) -> &Topic {
@@ -500,48 +491,82 @@ impl SystemSettings {
         // -----------------------
         self.topic_data.topic = build_topic!("iot/{}/hub/{}/data", net, mac);
         self.topic_data.qos = 0;
+        self.topic_data.retain = false;
+
         self.topic_alert_air.topic = build_topic!("iot/{}/hub/{}/alert_air", net, mac);
         self.topic_alert_air.qos = 0;
+        self.topic_alert_air.retain = false;
+
         self.topic_alert_temp.topic = build_topic!("iot/{}/hub/{}/alert_temp", net, mac);
         self.topic_alert_temp.qos = 0;
+        self.topic_alert_temp.retain = false;
+
         self.topic_monitor.topic = build_topic!("iot/{}/hub/{}/monitor", net, mac);
         self.topic_monitor.qos = 0;
+        self.topic_monitor.retain = false;
+
         self.topic_settings.topic = build_topic!("iot/{}/hub/{}/setting", net, mac);
         self.topic_settings.qos = 0;
+        self.topic_settings.retain = false;
+
         self.topic_settings_ok.topic = build_topic!("iot/{}/hub/{}/hub_setting_ok", net, mac);
         self.topic_settings_ok.qos = 0;
+        self.topic_settings_ok.retain = false;
+
         self.topic_hub_firmware_ok.topic = build_topic!("iot/{}/hub/{}/hub_firmware_ok", net, mac);
         self.topic_hub_firmware_ok.qos = 0;
+        self.topic_hub_firmware_ok.retain = false;
+
         self.topic_handshake_to_edge.topic =
             build_topic!("iot/{}/hub/{}/balance_mode_handshake", net, mac);
         self.topic_handshake_to_edge.qos = 0;
+        self.topic_handshake_to_edge.retain = false;
+
         self.topic_empty_queue.topic = build_topic!("iot/{}/hub/{}/empty_queue", net, mac);
         self.topic_empty_queue.qos = 0;
+        self.topic_empty_queue.retain = false;
+
         self.topic_linkage_request.topic = build_topic!("iot/{}/linkage_request", edge);
         self.topic_linkage_request.qos = 0;
+        self.topic_linkage_request.retain = false;
+
+        self.topic_hub_state.topic = build_topic!("iot/{}/hub/{}/hub_state", net, mac);
+        self.topic_hub_state.qos = 0;
+        self.topic_hub_state.retain = false;
 
         // -------------------
         // TÓPICOS DE ESCUCHA
         // -------------------
-        self.topic_edge_state_normal.topic = build_topic!("iot/{}/state/normal", edge);
-        self.topic_edge_state_normal.qos = 0;
-        self.topic_edge_state_balance.topic = build_topic!("iot/{}/state/balance", edge);
-        self.topic_edge_state_balance.qos = 0;
-        self.topic_edge_state_safe.topic = build_topic!("iot/{}/state/safe", edge);
-        self.topic_edge_state_safe.qos = 0;
+        self.topic_edge_state.topic = build_topic!("iot/{}/state/edge_state", edge);
+        self.topic_edge_state.qos = 0;
+        self.topic_edge_state.retain = false;
+
         self.topic_edge_phase.topic = build_topic!("iot/{}/state/phase", edge);
         self.topic_edge_phase.qos = 0;
+        self.topic_edge_phase.retain = false;
+
         self.topic_edge_handshake.topic = build_topic!("iot/{}/handshake", edge);
         self.topic_edge_handshake.qos = 0;
+        self.topic_edge_handshake.retain = false;
+
         self.topic_heartbeat.topic = build_topic!("iot/{}/heartbeat", edge);
         self.topic_heartbeat.qos = 0;
+        self.topic_heartbeat.retain = false;
+
         self.topic_new_firmware.topic = build_topic!("iot/{}/new_firmware", net);
         self.topic_new_firmware.qos = 0;
+        self.topic_new_firmware.retain = false;
+
         self.topic_new_settings.topic = build_topic!("iot/{}/new_setting", net);
         self.topic_new_settings.qos = 0;
+        self.topic_new_settings.retain = false;
+
         self.topic_edge_setting_ok.topic = build_topic!("iot/{}/new_setting_ok", net);
         self.topic_edge_setting_ok.qos = 0;
+        self.topic_edge_setting_ok.retain = false;
+
         self.topic_linkage_ack.topic = build_topic!("iot/{}/linkage_ack", edge);
         self.topic_linkage_ack.qos = 0;
+        self.topic_linkage_ack.retain = false;
     }
 }

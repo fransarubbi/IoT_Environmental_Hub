@@ -65,6 +65,7 @@ pub enum MessageServiceCommand {
         initial_temp: f32,
         actual_temp: f32,
     },
+    GenerateHubState(String<20>),
 }
 
 pub struct MessageService {
@@ -259,6 +260,45 @@ pub struct Handshake {
     pub balance_epoch: u32,
 }
 
+/// Envio periódico de estado al servidor.
+/// Si el Edge esta caido, se deja de enviar.
+/// Se reanuda con el envío cuando el Edge vuelve.
+/// El campo state puede ser: normal, balance, safe
+#[derive(Clone, Serialize, Deserialize)]
+pub struct HubState {
+    #[serde(rename = "m")]
+    pub metadata: Metadata,
+    #[serde(rename = "n")]
+    pub network: String<NETWORK_STRING_LEN>,
+    #[serde(rename = "s")]
+    pub state: String<20>,
+}
+
+/// Mensaje enviado por el Edge indicando su estado actual.
+/// Cada estado tiene atributos importantes para el, por ende
+/// todos los campos estan definidas en una misma estructura
+/// y cuando se envia un estado que no tiene implicancias en
+/// otras variables, simplemente las envia vacias o nulas.
+/// De todos modos, el Hub debe validar el campo "state" y
+/// en base a eso inspeccionar otras varibales o no.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct EdgeState {
+    #[serde(rename = "m")]
+    pub metadata: Metadata,
+    #[serde(rename = "s")]
+    pub state: String<20>,
+
+    #[serde(rename = "b")]
+    pub balance_epoch: u32,
+    #[serde(rename = "d")]
+    pub duration: u32,
+
+    #[serde(rename = "f")]
+    pub frequency: u32,
+    #[serde(rename = "j")]
+    pub jitter: u32,
+}
+
 /// Notificación de cambio a Modo Balance.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MessageStateBalanceMode {
@@ -403,10 +443,8 @@ pub enum MessageFromEdge {
     Heartbeat(Heartbeat),
     HandshakeToHub(Handshake),
     PhaseNotification(PhaseNotification),
-    StateBalanceMode(MessageStateBalanceMode),
-    StateNormal(MessageStateNormal),
-    StateSafeMode(MessageStateSafeMode),
     LinkageAck(LinkageAck),
+    State(EdgeState),
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -424,6 +462,7 @@ pub enum MessageToEdge {
     EmptyQueue(EmptyQueue),
     EmptyQueueSafe(EmptyQueueSafeMode),
     LinkageRequest(LinkageRequest),
+    State(HubState),
 }
 
 /// Representación final de un mensaje listo para ser enviado por MQTT.
