@@ -39,9 +39,9 @@ pub(crate) fn core0_executor_task(
     sys_loop: EspSystemEventLoop,
     nvs: EspDefaultNvsPartition,
     modem: Modem,
-    hub_cert: &[u8],
-    hub_key: &[u8],
-    root_ca: &[u8],
+    hub_cert: &'static [u8],
+    hub_key: &'static [u8],
+    root_ca: &'static [u8],
 ) -> anyhow::Result<()> {
     let executor: LocalExecutor = Default::default();
 
@@ -92,7 +92,6 @@ pub(crate) fn core1_executor_task(
         EspIdfBypassManager::new(guard.url_bypass())
     };
 
-    // Gpio4 implementa Input + Output nativamente, lo pasamos directo.
     let mut dht11 = Dht11RmtDriver::new(gpio4, "dht11").expect("fallo inicializando DHT11");
     dht11.init().unwrap();
 

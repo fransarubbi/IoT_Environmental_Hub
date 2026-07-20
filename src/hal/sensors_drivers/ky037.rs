@@ -1,82 +1,106 @@
 use crate::hal::sensors::{Sensor, SensorData, SensorError, SensorResult, SensorType, SensorValue};
 use core::sync::atomic::{AtomicU32, Ordering};
-use esp_idf_hal::gpio::{Input, InterruptType, PinDriver};
+use esp_idf_hal::gpio::{Input, PinDriver};
+use esp_idf_hal::sys::{
+    ESP_INTR_FLAG_IRAM, esp_timer_get_time, gpio_get_level, gpio_install_isr_service,
+    gpio_int_type_t_GPIO_INTR_ANYEDGE, gpio_intr_disable, gpio_intr_enable, gpio_isr_handler_add,
+    gpio_isr_handler_remove, gpio_set_intr_type,
+};
 use heapless::Vec;
 
-// ─────────────────────────────────────────────
-// Estado Global Atómico (Lock-free)
-// ─────────────────────────────────────────────
-// Estas variables viven estáticamente en memoria.
-static COUNTER: AtomicU32 = AtomicU32::new(0);
+static PULSES: AtomicU32 = AtomicU32::new(0);
 static MAX_DURATION_US: AtomicU32 = AtomicU32::new(0);
-static START_TIME_US: AtomicU32 = AtomicU32::new(0);
+static PULSE_START: AtomicU32 = AtomicU32::new(0);
 
-/// Driver para el sensor de sonido KY-037.
-pub struct Ky037<'d> {
-    id: &'static str,
-    _pin: PinDriver<'d, Input>,
-}
+#[unsafe(link_section = ".iram1.text")]
+unsafe extern "C" fn ky037_raw_isr(arg: *mut core::ffi::c_void) {
+    let pin_num = arg as i32;
 
-impl<'d> Ky037<'d> {
-    pub fn new(id: &'static str, mut pin: PinDriver<'d, Input>) -> SensorResult<Self> {
-        // Configuramos para que dispare en cualquier flanco
-        pin.set_interrupt_type(InterruptType::AnyEdge)
-            .map_err(|_| SensorError::CommunicationError)?;
+    let level = unsafe { gpio_get_level(pin_num) };
+    let now = unsafe { esp_timer_get_time() as u32 };
 
-        // Guardamos el número de pin casteado a i32 (c_int) para usarlo en la función FFI nativa
-        let pin_num = pin.pin() as i32;
+    if level == 1 {
+        // Flanco de subida, guardamos inicio. (| 1 asegura que nunca sea 0)
+        PULSE_START.store(now | 1, Ordering::Relaxed);
+    } else {
+        // Flanco de bajada
+        let start = PULSE_START.swap(0, Ordering::Relaxed);
+        if start > 0 {
+            let duration = now.wrapping_sub(start);
 
-        unsafe {
-            pin.subscribe(move || {
-                // FFI Directo para máxima velocidad
-                let level = esp_idf_hal::sys::gpio_get_level(pin_num);
+            PULSES.fetch_add(1, Ordering::Relaxed);
 
-                // Casteamos a u32 (el truncamiento es intencional y seguro)
-                // Usamos '| 1' para garantizar que 'now' nunca sea 0, ya que usamos 0
-                // como valor centinela de "no hay pulso activo". Esto inserta un error
-                // máximo de 1 microsegundo, lo cual es irrelevante para el KY-037.
-                let now = (esp_idf_hal::sys::esp_timer_get_time() as u32) | 1;
-
-                if level == 1 {
-                    // Flanco de subida: Guardamos el tiempo
-                    START_TIME_US.store(now, Ordering::Relaxed);
-                } else {
-                    // Flanco de bajada: Recuperamos y ponemos a 0 en una instrucción
-                    let start = START_TIME_US.swap(0, Ordering::Relaxed);
-
-                    if start > 0 {
-                        // wrapping_sub maneja la resta incluso si el timer de 32bits dio la vuelta
-                        let duration = now.wrapping_sub(start);
-
-                        COUNTER.fetch_add(1, Ordering::Relaxed);
-                        MAX_DURATION_US.fetch_max(duration, Ordering::Relaxed);
-                    }
-                }
-            })
-            .map_err(|_| SensorError::CommunicationError)?;
+            let current_max = MAX_DURATION_US.load(Ordering::Relaxed);
+            if duration > current_max {
+                MAX_DURATION_US.store(duration, Ordering::Relaxed);
+            }
         }
-
-        // Habilitamos la interrupción
-        pin.enable_interrupt()
-            .map_err(|_| SensorError::CommunicationError)?;
-
-        Ok(Self { id, _pin: pin })
     }
 }
 
-/// ─────────────────────────────────────────────
-/// Implementación de la Interfaz Común
-/// ─────────────────────────────────────────────
+pub struct Ky037<'d> {
+    id: &'static str,
+    _pin: PinDriver<'d, Input>,
+    pin_num: i32,
+}
+
+impl<'d> Ky037<'d> {
+    pub fn new(id: &'static str, pin: PinDriver<'d, Input>) -> SensorResult<Self> {
+        let pin_num = pin.pin() as i32;
+
+        unsafe {
+            let res = gpio_set_intr_type(pin_num, gpio_int_type_t_GPIO_INTR_ANYEDGE);
+            if res != 0 {
+                return Err(SensorError::CommunicationError);
+            }
+
+            let _ = gpio_install_isr_service(ESP_INTR_FLAG_IRAM as i32);
+
+            gpio_isr_handler_remove(pin_num);
+
+            let res = gpio_isr_handler_add(
+                pin_num,
+                Some(ky037_raw_isr),
+                pin_num as *mut core::ffi::c_void,
+            );
+            if res != 0 {
+                return Err(SensorError::CommunicationError);
+            }
+
+            let res = gpio_intr_enable(pin_num);
+            if res != 0 {
+                return Err(SensorError::CommunicationError);
+            }
+        }
+
+        Ok(Self {
+            id,
+            _pin: pin,
+            pin_num,
+        })
+    }
+}
+
+// Limpieza segura al destruir el objeto
+impl<'d> Drop for Ky037<'d> {
+    fn drop(&mut self) {
+        unsafe {
+            gpio_intr_disable(self.pin_num);
+            gpio_isr_handler_remove(self.pin_num);
+        }
+    }
+}
+
 impl<'d> Sensor for Ky037<'d> {
     fn init(&mut self) -> SensorResult<()> {
-        COUNTER.store(0, Ordering::SeqCst);
+        PULSES.store(0, Ordering::SeqCst);
         MAX_DURATION_US.store(0, Ordering::SeqCst);
-        START_TIME_US.store(0, Ordering::SeqCst);
+        PULSE_START.store(0, Ordering::SeqCst);
         Ok(())
     }
 
     fn read(&mut self) -> SensorResult<SensorData> {
-        let total_counter = COUNTER.swap(0, Ordering::SeqCst);
+        let total_pulses = PULSES.swap(0, Ordering::SeqCst);
         let max_duration_us = MAX_DURATION_US.swap(0, Ordering::SeqCst);
 
         let max_duration_ms = (max_duration_us as f32) / 1000.0;
@@ -84,7 +108,7 @@ impl<'d> Sensor for Ky037<'d> {
 
         let val_counter = SensorValue {
             name: "sound_pulses",
-            value: total_counter as f32,
+            value: total_pulses as f32,
             unit: "count",
             timestamp: timestamp_ms,
         };

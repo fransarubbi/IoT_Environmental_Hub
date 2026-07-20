@@ -16,7 +16,7 @@ use heapless::{String, Vec};
 use log::{debug, error, info, warn};
 
 use std::{
-    ffi::CString, // Necesario para compatibilidad con C
+    ffi::CStr,
     sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
@@ -56,39 +56,29 @@ impl EspIdfMqttManager {
         sender: Sender<MqttData>,
         receiver: Receiver<MqttData>,
         settings: Arc<RwLock<SystemSettings>>,
-        hub_cert: &[u8],
-        hub_key: &[u8],
-        root_ca: &[u8],
+        hub_cert: &'static [u8],
+        hub_key: &'static [u8],
+        root_ca: &'static [u8],
     ) -> Result<Self, String<50>> {
-        // Convertimos los bytes crudos a CString para asegurar que terminan en Null (\0)
-        // Esto previene fallos de segmentación (segfaults) en el motor de C.
-        let root_ca_cstr: &'static std::ffi::CStr = Box::leak(
-            CString::new(root_ca)
-                .map_err(|_| String::<50>::try_from("error root_ca").unwrap_or_default())?
-                .into_boxed_c_str(),
-        );
-        let hub_cert_cstr: &'static std::ffi::CStr = Box::leak(
-            CString::new(hub_cert)
-                .map_err(|_| String::<50>::try_from("error hub_cert").unwrap_or_default())?
-                .into_boxed_c_str(),
-        );
-        let hub_key_cstr: &'static std::ffi::CStr = Box::leak(
-            CString::new(hub_key)
-                .map_err(|_| String::<50>::try_from("error hub_key").unwrap_or_default())?
-                .into_boxed_c_str(),
-        );
-
         let id: std::string::String = settings.read().unwrap().mac_addr().to_string();
         let uri: std::string::String = settings.read().unwrap().mqtt_uri().to_string();
+
+        // Convertimos los slices de bytes nulo-terminados a CStr sin reservar memoria
+        let root_ca_cstr = CStr::from_bytes_with_nul(root_ca)
+            .map_err(|_| String::<50>::try_from("root_ca sin null").unwrap_or_default())?;
+        let hub_cert_cstr = CStr::from_bytes_with_nul(hub_cert)
+            .map_err(|_| String::<50>::try_from("hub_cert sin null").unwrap_or_default())?;
+        let hub_key_cstr = CStr::from_bytes_with_nul(hub_key)
+            .map_err(|_| String::<50>::try_from("hub_key sin null").unwrap_or_default())?;
 
         let config = MqttClientConfiguration {
             client_id: Some(&id),
             keep_alive_interval: Some(Duration::from_secs(60)),
             network_timeout: Duration::from_secs(30),
             crt_bundle_attach: None,
-            server_certificate: Some(X509::pem(&root_ca_cstr)),
-            client_certificate: Some(X509::pem(&hub_cert_cstr)),
-            private_key: Some(X509::pem(&hub_key_cstr)),
+            server_certificate: Some(X509::pem(root_ca_cstr)),
+            client_certificate: Some(X509::pem(hub_cert_cstr)),
+            private_key: Some(X509::pem(hub_key_cstr)),
             ..Default::default()
         };
 

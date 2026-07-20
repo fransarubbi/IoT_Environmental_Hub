@@ -69,6 +69,7 @@ impl ConfigManager {
                     flag: has_data,
                 };
                 info!("ConfigManager creado correctamente.");
+
                 Ok((manager, shared_config))
             }
             Err(e) => {

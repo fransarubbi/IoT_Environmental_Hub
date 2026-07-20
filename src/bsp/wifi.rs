@@ -139,6 +139,7 @@ impl<'a> EspIdfWifiManager<'a> {
                 Ok(_) => match self.wifi.wait_netif_up() {
                     Ok(_) => {
                         info!("conexión WiFi exitosa. IP obtenida.");
+                        embassy_time::Timer::after(embassy_time::Duration::from_secs(5)).await;
                         return;
                     }
                     Err(e) => warn!("fallo obteniendo IP tras conectar: {}", e),

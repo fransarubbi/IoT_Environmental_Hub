@@ -92,10 +92,6 @@ impl DataService {
             if let Ok(mq_data) = mq135.read() {
                 cache.mq135_aqi = Some(mq_data.values[0].value);
             }
-            if let Ok(ky_data) = ky037.read() {
-                cache.pulse_counter = Some(ky_data.values[0].value);
-                cache.pulse_max_duration = Some(ky_data.values[1].value);
-            }
             cache.last_updated = get_unix_epoch();
         };
 
@@ -354,6 +350,14 @@ impl DataService {
                         // Refrescar si el dato es obsoleto (> 15s)
                         if (now - data_cache.last_updated) > 15 {
                             update_sensors(&mut data_cache);
+                        }
+
+                        if let Ok(ky_data) = ky037.read() {
+                            data_cache.pulse_counter = Some(ky_data.values[0].value);
+                            data_cache.pulse_max_duration = Some(ky_data.values[1].value);
+                        } else {
+                            data_cache.pulse_counter = Some(0.0);
+                            data_cache.pulse_max_duration = Some(0.0);
                         }
 
                         match state {

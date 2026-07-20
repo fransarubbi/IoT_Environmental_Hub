@@ -4,21 +4,23 @@ pub mod bsp;
 pub mod hal;
 pub mod svc;
 
+use core::fmt::Write;
+use esp_idf_hal::sys::esp_efuse_mac_get_default;
+use esp_idf_hal::{
+    cpu::Core::{Core0, Core1},
+    peripherals::Peripherals,
+    task::thread::ThreadSpawnConfiguration,
+};
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::gpio::AnyIOPin;
 use esp_idf_svc::hal::uart::{UartConfig, UartDriver};
 use esp_idf_svc::hal::units::Hertz;
 use esp_idf_svc::log::EspLogger;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use heapless::String;
 use log::{error, info};
 use std::sync::Arc;
 use std::thread::Builder;
-
-use esp_idf_hal::{
-    cpu::Core::{Core0, Core1},
-    peripherals::Peripherals,
-    task::thread::ThreadSpawnConfiguration,
-};
 
 use crate::hal::uart::EspIdfUartManager;
 
@@ -43,9 +45,9 @@ fn main() -> anyhow::Result<()> {
     let nvs = EspDefaultNvsPartition::take()?;
     let modem = peripherals.modem;
 
-    let root_ca: &[u8] = include_bytes!("../certs/root.crt");
-    let hub_cert: &[u8] = include_bytes!("../certs/hub.crt");
-    let hub_key: &[u8] = include_bytes!("../certs/hub.key");
+    let root_ca: &'static [u8] = concat!(include_str!("../certs/root.crt"), "\0").as_bytes();
+    let hub_cert: &'static [u8] = concat!(include_str!("../certs/hub.crt"), "\0").as_bytes();
+    let hub_key: &'static [u8] = concat!(include_str!("../certs/hub.key"), "\0").as_bytes();
 
     let tx_pin = peripherals.pins.gpio17;
     let rx_pin = peripherals.pins.gpio16;
@@ -102,7 +104,21 @@ fn main() -> anyhow::Result<()> {
     }
 
     {
+        let mut mac_bytes = [0u8; 6];
+        unsafe {
+            esp_efuse_mac_get_default(mac_bytes.as_mut_ptr());
+        }
+        let mut mac_address = String::<18>::new();
+
+        write!(
+            &mut mac_address,
+            "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+            mac_bytes[0], mac_bytes[1], mac_bytes[2], mac_bytes[3], mac_bytes[4], mac_bytes[5]
+        )
+        .unwrap();
+
         let mut cfg = settings.write().unwrap();
+        cfg.set_mac_addr(mac_address);
         cfg.update_topics();
         info!("tópicos MQTT generados exitosamente.");
     }
@@ -117,7 +133,7 @@ fn main() -> anyhow::Result<()> {
 
     let channels0 = channels.clone();
     let settings0 = Arc::clone(&settings);
-    let _core0_thread = Builder::new().stack_size(8192).spawn(move || {
+    let _core0_thread = Builder::new().stack_size(16384).spawn(move || {
         if let Err(e) = core0_executor_task(
             channels0, settings0, sys_loop, nvs, modem, hub_cert, hub_key, root_ca,
         ) {
