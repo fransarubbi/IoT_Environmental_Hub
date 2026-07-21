@@ -39,8 +39,14 @@ impl Http for EspIdfBypassManager {
         })?;
         let mut client = HttpClient::wrap(connection);
 
-        // Configurar Headers y preparar POST
-        let headers = [("Content-Type", "application/x-msgpack")];
+        let mut cl_buf = heapless::String::<16>::new();
+        let _ = core::fmt::write(&mut cl_buf, format_args!("{}", payload.len()));
+
+        let headers = [
+            ("Content-Type", "application/x-msgpack"),
+            ("Content-Length", cl_buf.as_str()),
+        ];
+
         let mut request = client.post(&self.url, &headers).map_err(|e| {
             let mut s = String::<50>::new();
             let _ = core::fmt::write(&mut s, format_args!("Error POST: {}", e));

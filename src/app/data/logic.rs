@@ -88,9 +88,13 @@ impl DataService {
             if let Ok(dht_data) = dht11.read() {
                 cache.dht11_temp = Some(dht_data.values[0].value);
                 cache.dht11_hum = Some(dht_data.values[1].value);
+            } else {
+                error!("DataService. Falló lectura de dht11.");
             }
             if let Ok(mq_data) = mq135.read() {
                 cache.mq135_aqi = Some(mq_data.values[0].value);
+            } else {
+                error!("DataService. Falló lectura de mq135.");
             }
             cache.last_updated = get_unix_epoch();
         };
@@ -209,15 +213,30 @@ impl DataService {
                             let _ = tx_sample.try_send(PeriodicCommand::Stop);
                             let _ = tx_sweeper.try_send(PeriodicCommand::Stop);
 
-                            if alert_cache.is_some_complete() {
-                                let _ = self.sender.try_send(DataServiceResponse::AlertAir {
-                                    initial_air_quality: alert_cache.initial_air_quality.unwrap(),
-                                    actual_air_quality: alert_cache.actual_air_quality.unwrap(),
+                            if let (Some(initial), Some(actual)) = (
+                                alert_cache.initial_air_quality,
+                                alert_cache.actual_air_quality,
+                            ) {
+                                let _ = self.sender.try_send(DataServiceResponse::BypassAlertAir {
+                                    initial_air_quality: initial,
+                                    actual_air_quality: actual,
                                 });
-                                let _ = self.sender.try_send(DataServiceResponse::AlertTemp {
-                                    initial_temp: alert_cache.initial_temp.unwrap(),
-                                    actual_temp: alert_cache.actual_temp.unwrap(),
-                                });
+                                // Limpiar el cache tras enviarlo
+                                alert_cache.initial_air_quality = None;
+                                alert_cache.actual_air_quality = None;
+                            }
+
+                            if let (Some(initial), Some(actual)) =
+                                (alert_cache.initial_temp, alert_cache.actual_temp)
+                            {
+                                let _ =
+                                    self.sender.try_send(DataServiceResponse::BypassAlertTemp {
+                                        initial_temp: initial,
+                                        actual_temp: actual,
+                                    });
+                                // Limpiar el cache tras enviarlo
+                                alert_cache.initial_temp = None;
+                                alert_cache.actual_temp = None;
                             }
                         }
                         // Estados combinados con jitter y frecuencias configurables

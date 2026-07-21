@@ -392,6 +392,9 @@ impl Core {
                                 if let Err(e) = self.core_to_timer_service.try_send(TimerCommand::BypassStart) {
                                     error!("no se pudo enviar BypassStart desde core. {e}");
                                 }
+                                if let Err(e) = self.core_to_data_service.try_send(DataServiceCommand::State(StateGeneral::Bypass)) {
+                                    error!("no se pudo enviar Bypass desde core. {e}");
+                                }
                             }
                             FsmServiceResponse::EntryInitBalance(state, duration) => {
                                 if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::State(StateForHeartbeat::None)) {

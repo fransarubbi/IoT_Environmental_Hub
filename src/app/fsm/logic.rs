@@ -270,6 +270,11 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             info!("FSM. Entrando a estado Store.");
                             state.old = state.new;
                             state.new = StateGeneral::Store;
+                            if state.old == StateGeneral::Bypass {
+                                if let Err(e) = tx_cmd.try_send(BypassCommand::Stop) {
+                                    error!("no se pudo enviar BypassCommand desde el handler. {e}");
+                                }
+                            }
                             if let Err(e) = tx_response
                                 .try_send(FsmServiceResponse::EntryStore(state.old.clone()))
                             {
@@ -283,11 +288,6 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             info!("FSM. Entrando a estado Normal.");
                             state.old = state.new;
                             state.new = StateGeneral::Normal;
-                            if state.old == StateGeneral::Bypass {
-                                if let Err(e) = tx_cmd.try_send(BypassCommand::Stop) {
-                                    error!("no se pudo enviar BypassCommand desde el handler. {e}");
-                                }
-                            }
                             if let Err(e) = tx_response
                                 .try_send(FsmServiceResponse::EntryNormal(state.old.clone()))
                             {
@@ -704,7 +704,6 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
 
             Either4::Fourth(Ok(msg)) => match msg {
                 InternalEvent::Timeout => {
-                    info!("FSM. Se recibió evento de timeout de HubState.");
                     if mqtt_status == MqttStatus::Connected {
                         let state_hub: String<20> = match state.new {
                             StateGeneral::Normal => {
@@ -841,7 +840,7 @@ async fn run_bypass<S: Http>(
                     }
 
                     Either::Second(Ok(msg)) => {
-                        if let Err(e) = service.send_payload(&msg.get_payload()) {
+                        if let Err(e) = service.send_payload(msg.get_payload()) {
                             error!("{e}");
                         }
                     }

@@ -259,6 +259,10 @@ impl FsmState {
                 let next_fsm = self.clone();
                 state_store_event_to_balance(next_fsm)
             }
+            (Some(SubStateStore::Store), Event::EventAlertGenerated) => {
+                let next_fsm = self.clone();
+                state_store_event_to_bypass(next_fsm)
+            }
             _ => invalid(),
         }
     }
@@ -281,11 +285,7 @@ impl FsmState {
         match (&self.global, event) {
             (StateGlobal::Bypass, Event::EventTimeoutBypass) => {
                 let next_fsm = self.clone();
-                state_bypass_event_to_normal(next_fsm)
-            }
-            (StateGlobal::Bypass, Event::EventInitBalance) => {
-                let next_fsm = self.clone();
-                state_bypass_event_to_init_balance(next_fsm)
+                state_bypass_event_to_store(next_fsm)
             }
             _ => invalid(),
         }
@@ -637,6 +637,17 @@ fn state_store_event_to_balance(mut next_fsm: FsmState) -> Transition {
     Transition::Valid(valid)
 }
 
+fn state_store_event_to_bypass(mut next_fsm: FsmState) -> Transition {
+    next_fsm.global = StateGlobal::Bypass;
+    next_fsm.store = None;
+
+    let valid = TransitionValid {
+        change_state: next_fsm,
+        actions: Vec::new(),
+    };
+    Transition::Valid(valid)
+}
+
 fn state_normal_event_to_store(mut next_fsm: FsmState) -> Transition {
     next_fsm.global = StateGlobal::StoreMessage;
     next_fsm.store = Some(SubStateStore::Store);
@@ -659,19 +670,9 @@ fn state_normal_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
     Transition::Valid(valid)
 }
 
-fn state_bypass_event_to_normal(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Normal;
-
-    let valid = TransitionValid {
-        change_state: next_fsm,
-        actions: Vec::new(),
-    };
-    Transition::Valid(valid)
-}
-
-fn state_bypass_event_to_init_balance(mut next_fsm: FsmState) -> Transition {
-    next_fsm.global = StateGlobal::Balance;
-    next_fsm.balance = Some(SubStateBalance::InitBalanceMode);
+fn state_bypass_event_to_store(mut next_fsm: FsmState) -> Transition {
+    next_fsm.global = StateGlobal::StoreMessage;
+    next_fsm.store = Some(SubStateStore::Store);
 
     let valid = TransitionValid {
         change_state: next_fsm,

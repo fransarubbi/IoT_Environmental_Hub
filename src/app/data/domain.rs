@@ -12,7 +12,7 @@ const SCAN_TIME_IN_NORMAL_MODE: u64 = 10;
 const SCAN_TIME_IN_PERFORMANCE_MODE: u64 = 5;
 const BETA_ERROR: f32 = 0.05;
 const K_SENSIBILIDAD: f32 = 2.0;
-const UMBRAL_MINIMO_ABS: f32 = 10.0;
+const UMBRAL_MINIMO_ABS: f32 = 3.0;
 const HYSTERESIS: f32 = 0.8;
 
 pub enum DataServiceResponse {

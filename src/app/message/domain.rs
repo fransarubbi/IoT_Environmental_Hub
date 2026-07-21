@@ -188,9 +188,9 @@ pub struct AlertAir {
     pub metadata: Metadata,
     #[serde(rename = "n")]
     pub network: String<NETWORK_STRING_LEN>,
-    #[serde(rename = "i")]
+    #[serde(rename = "ia")]
     pub initial_air_quality: f32,
-    #[serde(rename = "a")]
+    #[serde(rename = "aa")]
     pub actual_air_quality: f32,
 }
 
