@@ -1,0 +1,49 @@
+[package]
+name = "iot_environmental_hub"
+version = "0.12.0"
+authors = ["Franco Sarubbi <sarubbi.fe@gmail.com>"]
+edition = "2024"
+resolver = "2"
+rust-version = "1.85"
+
+[[bin]]
+name = "iot_environmental_hub"
+harness = false
+
+
+[dependencies]
+log = "0.4"
+esp-idf-hal = "0.46.2"
+esp-idf-svc = { version = "0.52.1", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
+embassy-time = { version = "0.5", features = ["generic-queue-32"] }
+embedded-svc = "0.29"
+async-channel = "2.3"
+embassy-futures = "0.1"
+edge-executor = "0.4.1"
+serde-json-core = "0.6.0"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+rmp-serde = "1.1"
+anyhow = "1.0"
+thiserror = "2.0.18"
+heapless = { version = "0.9.1", features = ["serde"] }
+futures = "0.3.32"
+
+[build-dependencies]
+embuild = "0.33"
+
+
+# ==============================================================================
+# PERFILES DE COMPILACIÓN Y CONFIGURACIÓN DE OPTIMIZACIÓN EN ESP32
+# ==============================================================================
+
+[profile.dev]
+debug = true       # Conserva los símbolos de depuración (no incrementan el tamaño real en la Flash física)
+opt-level = 0
+
+[profile.release]
+opt-level = "z"
+#lto = "thin"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
