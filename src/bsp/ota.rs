@@ -15,7 +15,7 @@ const URL_VERSION: &str =
 const URL_BIN_TEMPLATE: &str =
     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v{}/firmware.bin";
 
-const CURRENT_FIRMWARE_VERSION: &str = "0.10.0";
+const CURRENT_FIRMWARE_VERSION: &str = "0.13.0";
 
 pub enum OtaResponse {
     NoUpdateAvailable,
