@@ -1,5 +1,4 @@
 use core::time::Duration;
-
 use esp_idf_hal::delay::{Ets, TickType};
 use esp_idf_hal::gpio::{InputPin, OutputPin};
 use esp_idf_hal::rmt::config::{ReceiveConfig, RxChannelConfig};
@@ -10,11 +9,11 @@ use esp_idf_hal::units::Hertz;
 use crate::bsp::wifi::get_unix_epoch;
 use crate::hal::sensors::{Sensor, SensorData, SensorError, SensorResult, SensorType, SensorValue};
 
-/// Driver concreto para el DHT11 utilizando el periférico RMT
 pub struct Dht11RmtDriver<'a> {
     rx_channel: RxChannelDriver<'a>,
     pin_num: u8,
     id: &'static str,
+    buffer: [Symbol; 80],
 }
 
 impl<'a> Dht11RmtDriver<'a> {
@@ -22,15 +21,9 @@ impl<'a> Dht11RmtDriver<'a> {
     where
         T: InputPin + OutputPin + 'a,
     {
-        // Guardamos el número de pin antes de mover `pin` dentro del canal
-        // RMT (su ownership queda consumido por `RxChannelDriver::new`),
-        // porque lo necesitamos para bit-banguear la señal de start a
-        // mano con las funciones `gpio_*` más abajo.
         let pin_num = pin.pin();
-
-        // Config a nivel de CANAL: se pasa una única vez, al crearlo.
         let channel_config = RxChannelConfig {
-            resolution: Hertz(1_000_000), // 1 tick = 1 µs, para leer los t0/t1 directo en µs
+            resolution: Hertz(1_000_000),
             ..Default::default()
         };
 
@@ -41,11 +34,11 @@ impl<'a> Dht11RmtDriver<'a> {
             rx_channel,
             pin_num,
             id: sensor_id,
+            buffer: [Symbol::default(); 80],
         })
     }
 }
 
-/// Implementación del Trait
 impl<'a> Sensor for Dht11RmtDriver<'a> {
     fn init(&mut self) -> SensorResult<()> {
         Ok(())
@@ -60,20 +53,17 @@ impl<'a> Sensor for Dht11RmtDriver<'a> {
     }
 
     fn read(&mut self) -> SensorResult<SensorData> {
-        // Señal de inicio
         unsafe {
             sys::gpio_set_direction(self.pin_num as i32, sys::gpio_mode_t_GPIO_MODE_OUTPUT_OD);
-            sys::gpio_set_level(self.pin_num as i32, 0); // Línea LOW
+            sys::gpio_set_level(self.pin_num as i32, 0);
         }
-
-        Ets::delay_us(20_000); // 20ms
+        Ets::delay_us(20_000);
 
         unsafe {
-            sys::gpio_set_level(self.pin_num as i32, 1); // Línea HIGH
+            sys::gpio_set_level(self.pin_num as i32, 1);
             sys::gpio_set_direction(self.pin_num as i32, sys::gpio_mode_t_GPIO_MODE_INPUT);
         }
 
-        // Recepcion RMT
         let receive_config = ReceiveConfig {
             signal_range_min: Duration::from_micros(1),
             signal_range_max: Duration::from_micros(900),
@@ -81,21 +71,17 @@ impl<'a> Sensor for Dht11RmtDriver<'a> {
             ..Default::default()
         };
 
-        let mut symbols = [Symbol::default(); 80];
-
         let num_symbols = self
             .rx_channel
-            .receive(&mut symbols, &receive_config)
+            .receive(&mut self.buffer, &receive_config)
             .map_err(|_| SensorError::Timeout(100))?;
 
-        // Decodificacion de la trama
         let mut bits = 0u64;
         let mut bit_count = 0u32;
 
-        for symbol in symbols.iter().take(num_symbols) {
+        for symbol in self.buffer.iter().take(num_symbols) {
             let p0 = symbol.level0();
             let p1 = symbol.level1();
-
             let t0 = p0.ticks.ticks();
             let t1 = p1.ticks.ticks();
             let v0_high = matches!(p0.pin_state, PinState::High);
@@ -118,7 +104,6 @@ impl<'a> Sensor for Dht11RmtDriver<'a> {
             } else if bit_count > 0 && bit_count < 40 {
                 bit_count = 0;
             }
-
             if bit_count == 40 {
                 break;
             }
@@ -130,26 +115,25 @@ impl<'a> Sensor for Dht11RmtDriver<'a> {
             return Err(SensorError::ReadError(err_msg));
         }
 
-        // Extraccion de datos y checksum
         let hum_i = ((bits >> 32) & 0xFF) as u8;
         let hum_d = ((bits >> 24) & 0xFF) as u8;
         let temp_i = ((bits >> 16) & 0xFF) as u8;
         let temp_d = ((bits >> 8) & 0xFF) as u8;
         let checksum = (bits & 0xFF) as u8;
 
-        let expected_checksum = hum_i
-            .wrapping_add(hum_d)
-            .wrapping_add(temp_i)
-            .wrapping_add(temp_d);
-
-        if checksum != expected_checksum {
+        if checksum
+            != hum_i
+                .wrapping_add(hum_d)
+                .wrapping_add(temp_i)
+                .wrapping_add(temp_d)
+        {
             return Err(SensorError::InvalidChecksum);
         }
 
         let temperature = temp_i as f32 + (temp_d as f32 * 0.1);
         let humidity = hum_i as f32 + (hum_d as f32 * 0.1);
-
         let ts = get_unix_epoch();
+
         let mut values = heapless::Vec::<SensorValue, 2>::new();
         let _ = values.push(SensorValue {
             name: "temperatura",
@@ -171,6 +155,5 @@ impl<'a> Sensor for Dht11RmtDriver<'a> {
         })
     }
 }
-
 unsafe impl<'a> Send for Dht11RmtDriver<'a> {}
 unsafe impl<'a> Sync for Dht11RmtDriver<'a> {}

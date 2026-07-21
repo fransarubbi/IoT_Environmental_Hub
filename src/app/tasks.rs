@@ -15,7 +15,6 @@ use esp_idf_hal::{
         oneshot::config::AdcChannelConfig,
         oneshot::{AdcChannelDriver, AdcDriver},
     },
-    gpio::{PinDriver, Pull},
     modem::Modem,
 };
 
@@ -95,8 +94,29 @@ pub(crate) fn core1_executor_task(
     let mut dht11 = Dht11RmtDriver::new(gpio4, "dht11").expect("fallo inicializando DHT11");
     dht11.init().unwrap();
 
-    let ky_pin = PinDriver::input(gpio5, Pull::Floating).expect("fallo pin KY037");
-    let mut ky037 = Ky037::new("ky037", ky_pin).expect("fallo inicializando KY037");
+    use esp_idf_hal::pcnt::{
+        PcntUnitDriver,
+        config::{ChannelConfig, ChannelEdgeAction, UnitConfig},
+    };
+
+    let mut unit = PcntUnitDriver::new(&UnitConfig::default()).expect("Fallo pcnt unit");
+
+    unit.add_channel(
+        Some(gpio5),
+        Option::<esp_idf_hal::gpio::AnyIOPin>::None,
+        &ChannelConfig::default(),
+    )
+    .expect("Fallo pcnt channel")
+    .set_edge_action(ChannelEdgeAction::Hold, ChannelEdgeAction::Increase)
+    .expect("Fallo edge");
+
+    // En la API de ESP-IDF v5 es obligatorio habilitar explícitamente la unidad
+    unit.enable().unwrap();
+    unit.clear_count().unwrap();
+    unit.start().unwrap();
+
+    // Inyectamos el driver ya configurado en el sensor
+    let mut ky037 = Ky037::new("ky037", unit).expect("fallo inicializando KY037");
     ky037.init().unwrap();
 
     let adc1 = AdcDriver::new(adc1_periph).expect("fallo inicializando ADC1");

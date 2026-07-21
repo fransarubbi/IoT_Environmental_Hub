@@ -13,6 +13,7 @@
 
 use anyhow::{Result, anyhow};
 use async_channel::{Receiver, Sender};
+use esp_idf_hal::reset::restart;
 use futures::{FutureExt, select};
 use log::{error, info};
 use std::sync::{Arc, RwLock};
@@ -555,11 +556,7 @@ impl Core {
                                         if msg.metadata.destination_id == mac.as_str()
                                             || msg.metadata.destination_id == "all"
                                         {
-                                            if let Err(e) =
-                                                self.core_to_ota_service.try_send(OtaCommand::CheckFirmware)
-                                            {
-                                                error!("no se pudo enviar Safe en core. {e}");
-                                            }
+                                            restart();
                                         }
                                     }
                                 }

@@ -1,4 +1,3 @@
-// Declaración de los módulos principales de la aplicación
 pub mod app;
 pub mod bsp;
 pub mod hal;
