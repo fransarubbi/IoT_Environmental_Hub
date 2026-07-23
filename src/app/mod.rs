@@ -5,6 +5,7 @@ pub mod fsm;
 pub mod heartbeat;
 pub mod message;
 pub mod monitor;
+pub mod pool;
 pub mod system_settings;
 pub mod tasks;
 pub mod timer;

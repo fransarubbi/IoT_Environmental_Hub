@@ -87,16 +87,47 @@ fn main() -> anyhow::Result<()> {
         .core_to_heartbeat_service(channels.core_to_heartbeat_service.clone())
         .core_from_data_service(channels.core_from_data_service.clone())
         .core_to_data_service(channels.core_to_data_service.clone())
+        .free_pool_index_tx(channels.free_pool_index_tx.clone())
         .build()?;
 
     let (mut config_manager, settings) = ConfigManager::new(
         channels.config_manager_to_core.clone(),
         channels.config_manager_from_core.clone(),
         nvs.clone(),
+        channels.free_pool_index_tx.clone(),
     )?;
 
-    let mut cli = Cli::new(uart, Arc::clone(&settings));
-    if cli.run(config_manager.has_data()) {
+    // --- CLI en una tarea FreeRTOS dedicada ---
+    // La CLI es la principal responsable del consumo de stack del hilo main (buffers de
+    // 256 bytes, formateo de strings con `format!`, tablas ANSI, etc.). En vez de correrla
+    // sobre el stack del hilo main (que queda reservado para siempre durante toda la vida
+    // del programa), la movemos a un hilo/tarea propia con su stack dedicado.
+    //
+    // El hilo main queda bloqueado en `.join()` -es decir, la secuencialidad se preserva
+    // igual que antes-, y cuando la tarea de la CLI termina, ESP-IDF destruye la tarea
+    // FreeRTOS subyacente y libera *todo* su stack, sin dejar nada reservado.
+    let has_existing_config = config_manager.has_data();
+    let cli_settings = Arc::clone(&settings);
+
+    ThreadSpawnConfiguration {
+        name: Some(c"cli_task"),
+        priority: 5,
+        ..Default::default()
+    }
+    .set()?;
+
+    let cli_thread = Builder::new().stack_size(16384).spawn(move || {
+        let mut cli = Cli::new(uart, cli_settings);
+        cli.run(has_existing_config)
+    })?;
+
+    // Bloquea main hasta que la CLI termine. En este punto la tarea ya fue eliminada
+    // por FreeRTOS y su stack quedó completamente liberado.
+    let save_required = cli_thread
+        .join()
+        .map_err(|_| anyhow::anyhow!("la tarea de la CLI paniqueó"))?;
+
+    if save_required {
         let _ = config_manager
             .save_to_nvs()
             .map_err(|_| error!("fallo guardando en NVS"));
@@ -148,7 +179,7 @@ fn main() -> anyhow::Result<()> {
     }
     .set()?;
 
-    let _core1_thread = Builder::new().stack_size(32768).spawn(move || {
+    let _core1_thread = Builder::new().stack_size(20480).spawn(move || {
         core1_executor_task(
             core,
             channels,

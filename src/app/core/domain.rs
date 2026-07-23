@@ -26,6 +26,7 @@ use crate::app::{
     },
     heartbeat::domain::{HeartbeatCommand, HeartbeatResponse, StateForHeartbeat},
     message::domain::{MessageFromEdge, MessageServiceCommand, MessageServiceResponse},
+    pool::pool::CORE_DATA_POOL,
     system_settings::domain::{ConfigCommand, ConfigField, ConfigResponse, SystemSettings},
     timer::logic::{TimerCommand, TimerResponse},
 };
@@ -60,6 +61,8 @@ pub struct Core {
 
     core_from_data_service: Receiver<DataServiceResponse>,
     core_to_data_service: Sender<DataServiceCommand>,
+
+    free_pool_index_tx: Sender<usize>,
 }
 
 /// Builder para construir la estructura `Core`.
@@ -94,6 +97,8 @@ pub struct CoreBuilder {
 
     core_from_data_service: Option<Receiver<DataServiceResponse>>,
     core_to_data_service: Option<Sender<DataServiceCommand>>,
+
+    free_pool_index_tx: Option<Sender<usize>>,
 }
 
 impl CoreBuilder {
@@ -179,6 +184,11 @@ impl CoreBuilder {
         self
     }
 
+    pub fn free_pool_index_tx(mut self, ch: Sender<usize>) -> Self {
+        self.free_pool_index_tx = Some(ch);
+        self
+    }
+
     /// Construye la instancia de `Core`.
     ///
     /// # Errores
@@ -244,6 +254,10 @@ impl CoreBuilder {
             core_to_data_service: self
                 .core_to_data_service
                 .ok_or(anyhow!("falta: core_to_data_service"))?,
+
+            free_pool_index_tx: self
+                .free_pool_index_tx
+                .ok_or(anyhow!("falta: free_pool_index_tx"))?,
         })
     }
 }
@@ -474,6 +488,18 @@ impl Core {
                                     error!("no se pudo enviar GenerateHubState desde core. {e}");
                                 }
                             }
+                            FsmServiceResponse::CleanRestart => {
+                                // 1. Avisamos al broker MQTT que nos vamos (comando agregado previamente)
+                                if let Err(e) = self.core_to_mqtt_service.try_send(MqttData::Stop) {
+                                    error!("no se pudo enviar MqttData Stop desde core. {e}");
+                                }
+
+                                // 2. Damos un margen de tiempo para que el socket envíe el paquete DISCONNECT
+                                embassy_time::Timer::after(embassy_time::Duration::from_millis(1000)).await;
+
+                                // 3. Reiniciamos directamente. El hardware apagará el radio WiFi de forma segura
+                                restart();
+                            }
                         },
                         Err(e) => error!("el canal core_from_fsm_service se ha cerrado. {e}"),
                     }
@@ -482,86 +508,111 @@ impl Core {
                 res = self.core_from_msg_service.recv().fuse() => {
                     match res {
                         Ok(response) => match response {
-                            MessageServiceResponse::Serialized(msg) => {
+                            MessageServiceResponse::Serialized(idx) => {
                                 if let Err(e) = self
                                     .core_to_mqtt_service
-                                    .try_send(MqttData::OutMessage(msg))
+                                    .try_send(MqttData::OutMessage(idx))
                                 {
                                     error!("no se pudo enviar OutMessage en core. {e}");
+                                    { CORE_DATA_POOL[idx].lock().unwrap().serialized = None; }
+                                    self.free_pool_index_tx.try_send(idx).unwrap();
                                 }
                             }
-                            MessageServiceResponse::SerializedBypass(msg) => {
+                            MessageServiceResponse::SerializedBypass(idx) => {
                                 if let Err(e) = self
                                     .core_to_fsm_service
-                                    .try_send(FsmServiceCommand::BypassAlert(msg))
+                                    .try_send(FsmServiceCommand::BypassAlert(idx))
                                 {
                                     error!("no se pudo enviar BypassAlert en core. {e}");
+                                    { CORE_DATA_POOL[idx].lock().unwrap().serialized = None; }
+                                    self.free_pool_index_tx.try_send(idx).unwrap();
                                 }
                             }
-                            MessageServiceResponse::Message(msg) => match msg {
-                                MessageFromEdge::FromServerSettings(msg) => {
-                                    if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::UpdateConfig(msg)) {
-                                        error!("no se pudo enviar UpdateConfig desde core. {e}");
-                                    }
-                                }
-                                MessageFromEdge::FromServerSettingsAck(msg) => {
-                                    if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::SettingsAck(msg)) {
-                                        error!("no se pudo enviar SettingsAck desde core. {e}");
-                                    }
-                                }
-                                MessageFromEdge::HandshakeToHub(msg) => {
-                                    let epoch = settings.read().unwrap().balance_epoch();
-                                    let edge = settings.read().unwrap().id_edge().to_string();
-                                    if msg.balance_epoch >= epoch
-                                        && msg.metadata.sender_user_id == edge.as_str()
-                                    {
-                                        if let Err(e) = self
-                                            .core_to_fsm_service
-                                            .try_send(FsmServiceCommand::Handshake(msg.flag))
-                                        {
-                                            error!("no se pudo enviar UpdateFirmware en core. {e}");
+                            MessageServiceResponse::Message(idx) => {
+                                let mut index_forwarded = false;
+                                {
+                                    let slot = CORE_DATA_POOL[idx].lock().unwrap();
+                                    match &slot.from_edge {
+                                        Some(msg_from_edge) => {
+                                            match msg_from_edge {
+                                                MessageFromEdge::FromServerSettings(_) => {
+                                                    if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::UpdateConfig(idx)) {
+                                                        error!("no se pudo enviar UpdateConfig desde core. {e}");
+                                                    } else {
+                                                        index_forwarded = true;
+                                                    }
+                                                }
+                                                MessageFromEdge::FromServerSettingsAck(_) => {
+                                                    if let Err(e) = self.core_to_config_service.try_send(ConfigCommand::SettingsAck(idx)) {
+                                                        error!("no se pudo enviar SettingsAck desde core. {e}");
+                                                    } else {
+                                                        index_forwarded = true;
+                                                    }
+                                                }
+                                                MessageFromEdge::State(_) => {
+                                                    if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::EdgeState(idx)) {
+                                                        error!("no se pudo enviar EdgeState desde core. {e}");
+                                                    } else {
+                                                        index_forwarded = true;
+                                                    }
+                                                }
+                                                MessageFromEdge::HandshakeToHub(msg) => {
+                                                    let epoch = settings.read().unwrap().balance_epoch();
+                                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                                    if msg.balance_epoch >= epoch
+                                                        && msg.metadata.sender_user_id == edge.as_str()
+                                                    {
+                                                        if let Err(e) = self
+                                                            .core_to_fsm_service
+                                                            .try_send(FsmServiceCommand::Handshake(msg.flag.clone()))
+                                                        {
+                                                            error!("no se pudo enviar UpdateFirmware en core. {e}");
+                                                        }
+                                                    }
+                                                }
+                                                MessageFromEdge::Heartbeat(_) => {
+                                                    if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::HeartbeatIncoming) {
+                                                        error!("no se pudo enviar HeartbeatIncoming desde core. {e}");
+                                                    }
+                                                }
+                                                MessageFromEdge::LinkageAck(msg) => {
+                                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                                    if msg.metadata.sender_user_id == edge.as_str() && msg.linkage_ack {
+                                                        if let Err(e) = self
+                                                            .core_to_fsm_service
+                                                            .try_send(FsmServiceCommand::LinkageOk)
+                                                        {
+                                                            error!("no se pudo enviar LinkageOk en core. {e}");
+                                                        }
+                                                    }
+                                                }
+                                                MessageFromEdge::PhaseNotification(msg) => {
+                                                    if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::Phase((msg.epoch, msg.phase.clone(), msg.frequency, msg.jitter))) {
+                                                        error!("no se pudo enviar Phase desde core. {e}");
+                                                    }
+                                                }
+                                                MessageFromEdge::UpdateFirmware(msg) => {
+                                                    let edge = settings.read().unwrap().id_edge().to_string();
+                                                    let network = settings.read().unwrap().id_network().to_string();
+                                                    let mac = settings.read().unwrap().mac_addr().to_string();
+                                                    if msg.metadata.sender_user_id == edge.as_str()
+                                                        && msg.network == network.as_str()
+                                                    {
+                                                        if msg.metadata.destination_id == mac.as_str()
+                                                            || msg.metadata.destination_id == "all"
+                                                        {
+                                                            restart();
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
+                                        _ => {}
                                     }
                                 }
-                                MessageFromEdge::Heartbeat(_) => {
-                                    if let Err(e) = self.core_to_heartbeat_service.try_send(HeartbeatCommand::HeartbeatIncoming) {
-                                        error!("no se pudo enviar HeartbeatIncoming desde core. {e}");
-                                    }
-                                }
-                                MessageFromEdge::LinkageAck(msg) => {
-                                    let edge = settings.read().unwrap().id_edge().to_string();
-                                    if msg.metadata.sender_user_id == edge.as_str() && msg.linkage_ack {
-                                        if let Err(e) = self
-                                            .core_to_fsm_service
-                                            .try_send(FsmServiceCommand::LinkageOk)
-                                        {
-                                            error!("no se pudo enviar LinkageOk en core. {e}");
-                                        }
-                                    }
-                                }
-                                MessageFromEdge::PhaseNotification(msg) => {
-                                    if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::Phase((msg.epoch, msg.phase, msg.frequency, msg.jitter))) {
-                                        error!("no se pudo enviar Phase desde core. {e}");
-                                    }
-                                }
-                                MessageFromEdge::State(msg) => {
-                                    if let Err(e) = self.core_to_fsm_service.try_send(FsmServiceCommand::EdgeState(msg)) {
-                                        error!("no se pudo enviar EdgeState desde core. {e}");
-                                    }
-                                }
-                                MessageFromEdge::UpdateFirmware(msg) => {
-                                    let edge = settings.read().unwrap().id_edge().to_string();
-                                    let network = settings.read().unwrap().id_network().to_string();
-                                    let mac = settings.read().unwrap().mac_addr().to_string();
-                                    if msg.metadata.sender_user_id == edge.as_str()
-                                        && msg.network == network.as_str()
-                                    {
-                                        if msg.metadata.destination_id == mac.as_str()
-                                            || msg.metadata.destination_id == "all"
-                                        {
-                                            restart();
-                                        }
-                                    }
+                                if !index_forwarded {
+                                    { CORE_DATA_POOL[idx].lock().unwrap().from_edge = None; }
+                                    self.free_pool_index_tx.try_send(idx).unwrap();
                                 }
                             },
                         },

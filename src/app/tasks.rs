@@ -63,6 +63,8 @@ pub(crate) fn core0_executor_task(
         hub_cert,
         hub_key,
         root_ca,
+        channels.free_pool_index_tx.clone(),
+        channels.free_pool_index_rx.clone(),
     )
     .map_err(|e| anyhow::anyhow!("error al crear MQTT: {}", e))?;
 
@@ -145,6 +147,7 @@ pub(crate) fn core1_executor_task(
                 channels.message_service_to_core,
                 channels.message_service_from_core,
                 Arc::clone(&settings),
+                channels.free_pool_index_rx.clone(),
             )
             .run(&executor),
         )
@@ -193,6 +196,7 @@ pub(crate) fn core1_executor_task(
                 channels.fsm_service_from_core,
                 Arc::clone(&settings),
                 http_client,
+                channels.free_pool_index_tx.clone(),
             )
             .run(&executor),
         )

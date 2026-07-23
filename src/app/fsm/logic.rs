@@ -3,7 +3,8 @@ use std::sync::{Arc, RwLock};
 use crate::{
     app::{
         fsm::domain::{ACTION_VECTOR_CAPACITY, Action, Event, FsmState, StateGeneral, Transition},
-        message::domain::{EdgeState, SerializedMessage},
+        message::domain::MessageFromEdge,
+        pool::pool::CORE_DATA_POOL,
         system_settings::domain::SystemSettings,
     },
     svc::http::Http,
@@ -12,7 +13,6 @@ use async_channel::{Receiver, Sender, bounded};
 use edge_executor::LocalExecutor;
 use embassy_futures::select::{Either, Either4, select, select4};
 use embassy_time::{Duration, Timer as EmbassyTimer};
-use esp_idf_hal::reset::restart;
 use heapless::{String, Vec};
 use log::{error, info};
 
@@ -41,6 +41,7 @@ pub enum FsmServiceResponse {
     UpdateLinkageFlag,
     SendHandshake((u32, String<15>)),
     GenerateHubState(String<20>),
+    CleanRestart,
 }
 
 pub enum FsmServiceCommand {
@@ -57,10 +58,10 @@ pub enum FsmServiceCommand {
     TimeoutInitBalance,
     TimeoutHandshake,
     TimeoutAllBalance,
-    BypassAlert(SerializedMessage),
+    BypassAlert(usize),
     NetworkDropped,
     MqttConnected,
-    EdgeState(EdgeState),
+    EdgeState(usize),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -93,6 +94,7 @@ pub struct FsmService<H: Http> {
     receiver: Receiver<FsmServiceCommand>,
     settings: Arc<RwLock<SystemSettings>>,
     http_service: H,
+    free_pool_index_tx: Sender<usize>,
 }
 
 impl<H: Http> FsmService<H> {
@@ -101,6 +103,7 @@ impl<H: Http> FsmService<H> {
         receiver: Receiver<FsmServiceCommand>,
         settings: Arc<RwLock<SystemSettings>>,
         http_service: H,
+        free_pool_index_tx: Sender<usize>,
     ) -> Self {
         info!("creando FsmService...");
         Self {
@@ -108,6 +111,7 @@ impl<H: Http> FsmService<H> {
             receiver,
             settings,
             http_service,
+            free_pool_index_tx,
         }
     }
 
@@ -130,6 +134,7 @@ impl<H: Http> FsmService<H> {
                 Arc::clone(&self.settings),
                 self.http_service,
                 executor,
+                self.free_pool_index_tx.clone(),
             ))
             .detach();
 
@@ -170,11 +175,12 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
     settings: Arc<RwLock<SystemSettings>>,
     http_service: H,
     executor: &'a LocalExecutor<'a>,
+    free_pool_index_tx: Sender<usize>,
 ) {
     let (tx, rx_timer) = bounded::<PeriodicCommand>(3);
     let (tx_timer, rx) = bounded::<InternalEvent>(3);
     let (tx_cmd, control_rx) = bounded::<BypassCommand>(3);
-    let (tx_payload, rx_data) = bounded::<SerializedMessage>(3);
+    let (tx_payload, rx_data) = bounded::<usize>(3);
 
     let (tx_to_msg_timer, rx_msg_timer) = bounded::<PeriodicCommand>(3);
     let (tx_msg_timer, rx_from_msg) = bounded::<InternalEvent>(3);
@@ -184,7 +190,12 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
         .spawn(internal_timer(tx_msg_timer, rx_msg_timer))
         .detach();
     executor
-        .spawn(run_bypass(http_service, control_rx, rx_data))
+        .spawn(run_bypass(
+            http_service,
+            control_rx,
+            rx_data,
+            free_pool_index_tx.clone(),
+        ))
         .detach();
 
     let mut state = StateMemory {
@@ -230,8 +241,10 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                         }
                         Action::OnEntryRestart => {
-                            info!("reiniciando sistema...");
-                            restart();
+                            info!("enviando la orden de reiniciar el sistema...");
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::CleanRestart) {
+                                error!("no se pudo enviar CleanRestart desde el handler. {e}");
+                            }
                         }
                         Action::OnEntryInitSystem => {
                             info!("FSM. Entrando a estado InitSystem.");
@@ -503,8 +516,29 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                         }
                     }
                 }
-                FsmServiceCommand::EdgeState(edge_state) => {
-                    if edge_state.state == "normal" {
+                FsmServiceCommand::EdgeState(idx) => {
+                    // Leer los datos del pool
+                    let (state_str, balance_epoch, durat, evt_frequency, evt_jitter) = {
+                        let slot = crate::app::pool::pool::CORE_DATA_POOL[idx].lock().unwrap();
+                        if let Some(MessageFromEdge::State(s)) = &slot.from_edge {
+                            (
+                                s.state.clone(),
+                                s.balance_epoch,
+                                s.duration,
+                                s.frequency,
+                                s.jitter,
+                            )
+                        } else {
+                            continue; // Si estaba vacío, ignoramos
+                        }
+                    };
+
+                    {
+                        CORE_DATA_POOL[idx].lock().unwrap().from_edge = None;
+                    }
+                    free_pool_index_tx.try_send(idx).unwrap();
+
+                    if state_str == "normal" {
                         if state.new == StateGeneral::Normal {
                             continue;
                         }
@@ -514,7 +548,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                         }
                         continue;
                     }
-                    if edge_state.state == "balance" {
+                    if state_str == "balance" {
                         if state.new == StateGeneral::Normal
                             || state.new == StateGeneral::Bypass
                             || state.new == StateGeneral::Store
@@ -522,27 +556,25 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                         {
                             info!("FSM. Ingresando evento para ir a InitBalance...");
                             let epoch = settings.read().unwrap().balance_epoch();
-                            if edge_state.balance_epoch >= epoch {
+                            if balance_epoch >= epoch {
                                 if let Err(e) = tx_events.try_send(Event::EventInitBalance) {
                                     error!(
                                         "no se pudo enviar evento EventInitBalance desde handler. {e}"
                                     );
                                 }
-                                if let Err(e) =
-                                    tx_response.try_send(FsmServiceResponse::UpdateBalanceEpoch(
-                                        edge_state.balance_epoch,
-                                    ))
+                                if let Err(e) = tx_response
+                                    .try_send(FsmServiceResponse::UpdateBalanceEpoch(balance_epoch))
                                 {
                                     error!(
                                         "no se pudo enviar UpdateBalanceEpoch desde handler. {e}"
                                     );
                                 }
-                                duration = edge_state.duration;
+                                duration = durat;
                             }
                         }
                         continue;
                     }
-                    if edge_state.state == "safe" {
+                    if state_str == "safe" {
                         match state.new {
                             StateGeneral::Safe {
                                 frequency: _,
@@ -552,8 +584,8 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                             }
                             _ => {
                                 info!("FSM. Ingresando evento para ir a Safe...");
-                                frequency = edge_state.frequency;
-                                jitter = edge_state.jitter;
+                                frequency = evt_frequency;
+                                jitter = evt_jitter;
                                 if let Err(e) = tx_events.try_send(Event::EventToSafe) {
                                     error!(
                                         "no se pudo enviar evento EventToSafe desde handler. {e}"
@@ -650,10 +682,14 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                         error!("no se pudo enviar evento EventToNormal desde handler. {e}");
                     }
                 }
-                FsmServiceCommand::BypassAlert(msg) => {
+                FsmServiceCommand::BypassAlert(idx) => {
                     info!("FSM. Se recibió mensaje de alerta para Bypass.");
-                    if let Err(e) = tx_payload.try_send(msg) {
+                    if let Err(e) = tx_payload.try_send(idx) {
                         error!("no se pudo enviar Payload desde el handler. {e}");
+                        {
+                            CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                        }
+                        free_pool_index_tx.try_send(idx).unwrap();
                     }
                 }
                 FsmServiceCommand::NetworkDropped => {
@@ -819,7 +855,8 @@ async fn internal_timer(tx: Sender<InternalEvent>, rx_cmd: Receiver<PeriodicComm
 async fn run_bypass<S: Http>(
     mut service: S,
     control_rx: Receiver<BypassCommand>,
-    rx_data: Receiver<SerializedMessage>,
+    rx_data: Receiver<usize>,
+    free_idx_tx: Sender<usize>,
 ) {
     info!("iniciando Bypass...");
     loop {
@@ -839,10 +876,18 @@ async fn run_bypass<S: Http>(
                         error!("{e}");
                     }
 
-                    Either::Second(Ok(msg)) => {
-                        if let Err(e) = service.send_payload(msg.get_payload()) {
-                            error!("{e}");
+                    Either::Second(Ok(idx)) => {
+                        let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                        match &slot.serialized {
+                            Some(msg) => {
+                                if let Err(e) = service.send_payload(msg.get_payload()) {
+                                    error!("{e}");
+                                }
+                            }
+                            _ => {}
                         }
+                        slot.serialized = None;
+                        free_idx_tx.try_send(idx).unwrap();
                     }
                     Either::Second(Err(e)) => {
                         error!("{e}");

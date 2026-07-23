@@ -15,17 +15,24 @@
 //! Los canales se agrupan en pares bidireccionales por cada subsistema (excepto monitor,
 //! que es unidireccional por naturaleza).
 
-use crate::app::data::domain::{DataServiceCommand, DataServiceResponse};
-use crate::app::fsm::logic::{FsmServiceCommand, FsmServiceResponse};
-use crate::app::heartbeat::domain::{HeartbeatCommand, HeartbeatResponse};
-use crate::app::message::domain::{MessageServiceCommand, MessageServiceResponse};
-use crate::app::system_settings::domain::{ConfigCommand, ConfigResponse};
-use crate::app::timer::logic::{TimerCommand, TimerResponse};
-use crate::bsp::mqtt::MqttData;
-use crate::bsp::ota::{OtaCommand, OtaResponse};
-use crate::bsp::wifi::WifiCommand;
 use async_channel::{Receiver, Sender, bounded};
 use log::info;
+
+use crate::app::{
+    data::domain::{DataServiceCommand, DataServiceResponse},
+    fsm::logic::{FsmServiceCommand, FsmServiceResponse},
+    heartbeat::domain::{HeartbeatCommand, HeartbeatResponse},
+    message::domain::{MessageServiceCommand, MessageServiceResponse},
+    pool::pool::CORE_POOL_SIZE,
+    system_settings::domain::{ConfigCommand, ConfigResponse},
+    timer::logic::{TimerCommand, TimerResponse},
+};
+
+use crate::bsp::{
+    mqtt::MqttData,
+    ota::{OtaCommand, OtaResponse},
+    wifi::WifiCommand,
+};
 
 /// Contenedor maestro de todos los canales MPSC del sistema.
 ///
@@ -78,6 +85,9 @@ pub struct Channels {
     pub core_from_data_service: Receiver<DataServiceResponse>,
     pub core_to_data_service: Sender<DataServiceCommand>,
     pub data_service_from_core: Receiver<DataServiceCommand>,
+
+    pub free_pool_index_tx: Sender<usize>,
+    pub free_pool_index_rx: Receiver<usize>,
 }
 
 impl Channels {
@@ -133,6 +143,13 @@ impl Channels {
         let (data_s2c_tx, data_s2c_rx) = bounded(buffer_size);
         let (data_c2s_tx, data_c2s_rx) = bounded(buffer_size);
 
+        // Pool
+        let (free_tx, free_rx) = bounded(CORE_POOL_SIZE);
+
+        for i in 0..CORE_POOL_SIZE {
+            free_tx.try_send(i).unwrap();
+        }
+
         Self {
             fsm_service_to_core: fsm_s2c_tx,
             core_from_fsm_service: fsm_s2c_rx,
@@ -176,6 +193,9 @@ impl Channels {
             core_from_data_service: data_s2c_rx,
             core_to_data_service: data_c2s_tx,
             data_service_from_core: data_c2s_rx,
+
+            free_pool_index_tx: free_tx,
+            free_pool_index_rx: free_rx,
         }
     }
 }

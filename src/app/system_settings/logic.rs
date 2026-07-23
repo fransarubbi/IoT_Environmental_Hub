@@ -2,9 +2,6 @@
 //!
 //! Controla la lectura concurrente, actualización y persistencia (NVS) de `SystemSettings`.
 
-use crate::app::system_settings::domain::{
-    ConfigCommand, ConfigResponse, EnergyMode, SystemSettings,
-};
 use anyhow::{Result, anyhow};
 use async_channel::{Receiver, Sender, bounded};
 use core::convert::TryFrom;
@@ -20,6 +17,12 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use crate::app::{
+    message::domain::MessageFromEdge,
+    pool::pool::CORE_DATA_POOL,
+    system_settings::domain::{ConfigCommand, ConfigResponse, EnergyMode, SystemSettings},
+};
+
 /// Gestor principal de la configuración.
 /// Escucha órdenes de actualización e impacta los cambios en memoria RAM y memoria Flash (NVS).
 pub struct ConfigManager {
@@ -33,6 +36,7 @@ pub struct ConfigManager {
     nvs: EspNvs<NvsDefault>,
     /// Flag de datos en NVS
     flag: bool,
+    free_pool_index_tx: Sender<usize>,
 }
 
 enum PeriodicCommand {
@@ -52,6 +56,7 @@ impl ConfigManager {
         sender: Sender<ConfigResponse>,
         receiver: Receiver<ConfigCommand>,
         nvs_partition: EspDefaultNvsPartition,
+        free_pool_index_tx: Sender<usize>,
     ) -> Result<(Self, Arc<RwLock<SystemSettings>>)> {
         info!("creando ConfigManager...");
         let nvs = EspNvs::new(nvs_partition, "config", true)?;
@@ -67,6 +72,7 @@ impl ConfigManager {
                     sender,
                     nvs,
                     flag: has_data,
+                    free_pool_index_tx,
                 };
                 info!("ConfigManager creado correctamente.");
 
@@ -92,120 +98,147 @@ impl ConfigManager {
         loop {
             match select(self.receiver.recv(), rx.recv()).await {
                 Either::First(Ok(cmd)) => match cmd {
-                    ConfigCommand::UpdateConfig(new_config) => {
-                        let id = self.config.read().unwrap().message_id();
-                        let dest = self.config.read().unwrap().mac_addr().to_string();
-                        let destination =
-                            heapless::String::<18>::try_from(dest.as_str()).unwrap_or_default();
-                        if new_config.metadata.destination_id == destination {
-                            if new_config.message_id > id {
-                                self.config
-                                    .write()
-                                    .unwrap()
-                                    .set_message_id(new_config.message_id);
-                                self.config
-                                    .write()
-                                    .unwrap()
-                                    .set_id_network(new_config.network);
+                    ConfigCommand::UpdateConfig(idx) => {
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            match &slot.from_edge {
+                                Some(msg) => match msg {
+                                    MessageFromEdge::FromServerSettings(new_config) => {
+                                        let id = self.config.read().unwrap().message_id();
+                                        let dest =
+                                            self.config.read().unwrap().mac_addr().to_string();
+                                        let destination =
+                                            heapless::String::<18>::try_from(dest.as_str())
+                                                .unwrap_or_default();
+                                        if new_config.metadata.destination_id == destination {
+                                            if new_config.message_id > id {
+                                                self.config
+                                                    .write()
+                                                    .unwrap()
+                                                    .set_message_id(new_config.message_id);
+                                                self.config
+                                                    .write()
+                                                    .unwrap()
+                                                    .set_id_network(new_config.network.clone());
 
-                                let wifi_ssid = heapless::String::<20>::try_from(
-                                    self.config.read().unwrap().wifi_ssid().to_string().as_str(),
-                                )
-                                .unwrap_or_default();
+                                                let wifi_ssid = heapless::String::<20>::try_from(
+                                                    self.config
+                                                        .read()
+                                                        .unwrap()
+                                                        .wifi_ssid()
+                                                        .to_string()
+                                                        .as_str(),
+                                                )
+                                                .unwrap_or_default();
 
-                                let wifi_pass = heapless::String::<30>::try_from(
-                                    self.config
-                                        .read()
-                                        .unwrap()
-                                        .wifi_password()
-                                        .to_string()
-                                        .as_str(),
-                                )
-                                .unwrap_or_default();
+                                                let wifi_pass = heapless::String::<30>::try_from(
+                                                    self.config
+                                                        .read()
+                                                        .unwrap()
+                                                        .wifi_password()
+                                                        .to_string()
+                                                        .as_str(),
+                                                )
+                                                .unwrap_or_default();
 
-                                if new_config.wifi_ssid != wifi_ssid
-                                    || new_config.wifi_password != wifi_pass
-                                {
-                                    self.config
-                                        .write()
-                                        .unwrap()
-                                        .set_wifi_ssid(new_config.wifi_ssid);
+                                                if new_config.wifi_ssid != wifi_ssid
+                                                    || new_config.wifi_password != wifi_pass
+                                                {
+                                                    self.config.write().unwrap().set_wifi_ssid(
+                                                        new_config.wifi_ssid.clone(),
+                                                    );
 
-                                    self.config
-                                        .write()
-                                        .unwrap()
-                                        .set_wifi_password(new_config.wifi_password);
+                                                    self.config.write().unwrap().set_wifi_password(
+                                                        new_config.wifi_password.clone(),
+                                                    );
 
-                                    let wifi_ssid = heapless::String::<20>::try_from(
-                                        self.config
-                                            .read()
-                                            .unwrap()
-                                            .wifi_ssid()
-                                            .to_string()
-                                            .as_str(),
-                                    )
-                                    .unwrap_or_default();
+                                                    let wifi_ssid =
+                                                        heapless::String::<20>::try_from(
+                                                            self.config
+                                                                .read()
+                                                                .unwrap()
+                                                                .wifi_ssid()
+                                                                .to_string()
+                                                                .as_str(),
+                                                        )
+                                                        .unwrap_or_default();
 
-                                    let wifi_pass = heapless::String::<30>::try_from(
-                                        self.config
-                                            .read()
-                                            .unwrap()
-                                            .wifi_password()
-                                            .to_string()
-                                            .as_str(),
-                                    )
-                                    .unwrap_or_default();
+                                                    let wifi_pass =
+                                                        heapless::String::<30>::try_from(
+                                                            self.config
+                                                                .read()
+                                                                .unwrap()
+                                                                .wifi_password()
+                                                                .to_string()
+                                                                .as_str(),
+                                                        )
+                                                        .unwrap_or_default();
 
-                                    if let Err(e) =
-                                        self.sender.try_send(ConfigResponse::UpdateWifi {
-                                            ssid: wifi_ssid,
-                                            password: wifi_pass,
-                                        })
-                                    {
-                                        error!("{e}");
+                                                    if let Err(e) = self.sender.try_send(
+                                                        ConfigResponse::UpdateWifi {
+                                                            ssid: wifi_ssid,
+                                                            password: wifi_pass,
+                                                        },
+                                                    ) {
+                                                        error!("{e}");
+                                                    }
+                                                }
+
+                                                self.config
+                                                    .write()
+                                                    .unwrap()
+                                                    .set_mqtt_uri(new_config.mqtt_uri.clone());
+                                                self.config.write().unwrap().set_device_name(
+                                                    new_config.device_name.clone(),
+                                                );
+                                                self.config
+                                                    .write()
+                                                    .unwrap()
+                                                    .set_sample_rate(new_config.sample);
+                                                let energy =
+                                                    EnergyMode::from_u32(new_config.energy_mode);
+                                                if energy.is_some() {
+                                                    self.config
+                                                        .write()
+                                                        .unwrap()
+                                                        .set_energy_mode(energy.unwrap());
+                                                    set_cpu_frequency(energy.unwrap());
+                                                }
+                                                info!("configuración completamente actualizada.");
+                                                if let Err(e) = self.save_to_nvs() {
+                                                    error!(
+                                                        "fallo al guardar la configuración en nvs. {e}"
+                                                    );
+                                                }
+
+                                                if let Err(e) = self.sender.try_send(
+                                                    ConfigResponse::GenerateSettingsAck(
+                                                        new_config.message_id,
+                                                    ),
+                                                ) {
+                                                    error!(
+                                                        "no se pudo enviar GenerateSettingsAck. {e}"
+                                                    );
+                                                }
+                                                self.config.write().unwrap().update_topics();
+                                            } else {
+                                                if let Err(e) = self.sender.try_send(
+                                                    ConfigResponse::GenerateSettingsAck(id),
+                                                ) {
+                                                    error!(
+                                                        "no se pudo enviar GenerateSettingsAck. {e}"
+                                                    );
+                                                }
+                                            }
+                                        }
                                     }
-                                }
-
-                                self.config
-                                    .write()
-                                    .unwrap()
-                                    .set_mqtt_uri(new_config.mqtt_uri);
-                                self.config
-                                    .write()
-                                    .unwrap()
-                                    .set_device_name(new_config.device_name);
-                                self.config
-                                    .write()
-                                    .unwrap()
-                                    .set_sample_rate(new_config.sample);
-                                let energy = EnergyMode::from_u32(new_config.energy_mode);
-                                if energy.is_some() {
-                                    self.config
-                                        .write()
-                                        .unwrap()
-                                        .set_energy_mode(energy.unwrap());
-                                    set_cpu_frequency(energy.unwrap());
-                                }
-                                info!("configuración completamente actualizada.");
-                                if let Err(e) = self.save_to_nvs() {
-                                    error!("fallo al guardar la configuración en nvs. {e}");
-                                }
-
-                                if let Err(e) = self.sender.try_send(
-                                    ConfigResponse::GenerateSettingsAck(new_config.message_id),
-                                ) {
-                                    error!("no se pudo enviar GenerateSettingsAck. {e}");
-                                }
-                                self.config.write().unwrap().update_topics();
-                            } else {
-                                if let Err(e) = self
-                                    .sender
-                                    .try_send(ConfigResponse::GenerateSettingsAck(id))
-                                {
-                                    error!("no se pudo enviar GenerateSettingsAck. {e}");
-                                }
+                                    _ => {}
+                                },
+                                _ => info!("se recibió un mensaje errone en ConfigManager"),
                             }
+                            slot.from_edge = None;
                         }
+                        self.free_pool_index_tx.try_send(idx).unwrap();
                     }
                     ConfigCommand::UpdateField(field) => {
                         {
@@ -215,9 +248,21 @@ impl ConfigManager {
                         info!("campo de configuración actualizado.");
                         let _ = self.save_to_nvs();
                     }
-                    ConfigCommand::SettingsAck(ack) => {
+                    ConfigCommand::SettingsAck(idx) => {
+                        let (ack_msg_id, ack_handshake) = {
+                            let slot = crate::app::pool::pool::CORE_DATA_POOL[idx].lock().unwrap();
+                            if let Some(MessageFromEdge::FromServerSettingsAck(s)) = &slot.from_edge
+                            {
+                                (s.message_id, s.handshake)
+                            } else {
+                                (0, false) // Fallback seguro
+                            }
+                        };
+
+                        self.free_pool_index_tx.try_send(idx).unwrap();
+
                         let id = self.config.read().unwrap().message_id();
-                        if ack.message_id == id && ack.handshake {
+                        if ack_msg_id == id && ack_handshake {
                             if let Err(e) = tx.try_send(PeriodicCommand::Stop) {
                                 error!("no se pudo enviar Stop. {e}");
                             }
