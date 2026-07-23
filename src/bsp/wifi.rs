@@ -16,6 +16,7 @@ pub enum WifiCommand {
         ssid: String<WIFI_SSID_STRING_LEN>,
         password: String<30>,
     },
+    Stop,
 }
 
 pub fn get_unix_epoch() -> u64 {
@@ -126,6 +127,11 @@ impl<'a> EspIdfWifiManager<'a> {
 
                         self.connect().await;
                     }
+                    WifiCommand::Stop => {
+                        info!("desconectando WiFi...");
+                        self.disconnect();
+                        break;
+                    }
                 }
             }
         }
@@ -152,11 +158,10 @@ impl<'a> EspIdfWifiManager<'a> {
         }
     }
 
-    fn disconnect(&mut self) -> Result<(), String<50>> {
-        self.wifi.disconnect().map_err(|e| {
-            let mut s = String::<50>::new();
-            let _ = core::fmt::write(&mut s, format_args!("error al desconectar: {}", e));
-            s
-        })
+    fn disconnect(&mut self) {
+        match self.wifi.disconnect() {
+            Ok(_) => info!("WiFi desconectado correctamente"),
+            Err(e) => error!("error al desconectar WiFi: {e}"),
+        }
     }
 }
