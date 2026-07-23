@@ -489,15 +489,18 @@ impl Core {
                                 }
                             }
                             FsmServiceResponse::CleanRestart => {
-                                // 1. Avisamos al broker MQTT que nos vamos (comando agregado previamente)
                                 if let Err(e) = self.core_to_mqtt_service.try_send(MqttData::Stop) {
                                     error!("no se pudo enviar MqttData Stop desde core. {e}");
                                 }
+                                // Esperar a que MQTT cierre socket
+                                embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
 
-                                // 2. Damos un margen de tiempo para que el socket envíe el paquete DISCONNECT
-                                embassy_time::Timer::after(embassy_time::Duration::from_millis(1000)).await;
+                                if let Err(e) = self.core_to_wifi_service.try_send(WifiCommand::Stop) {
+                                    error!("no se pudo enviar WifiCommand Stop desde core. {e}");
+                                }
 
-                                // 3. Reiniciamos directamente. El hardware apagará el radio WiFi de forma segura
+                                embassy_time::Timer::after(embassy_time::Duration::from_millis(1500)).await;
+
                                 restart();
                             }
                         },
