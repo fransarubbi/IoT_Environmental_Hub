@@ -1,6 +1,5 @@
 use crate::app::message::logic::{generator, parser};
 use crate::app::system_settings::domain::SystemSettings;
-use crate::bsp::mqtt::IncomingMessage;
 use async_channel::{Receiver, Sender, bounded};
 use edge_executor::LocalExecutor;
 use embassy_futures::select::{Either, select};
@@ -17,13 +16,13 @@ pub const DEVICE_NAME_STRING_LEN: usize = 10;
 pub const MAX_MSGPACK_BUFFER_SIZE: usize = 192;
 
 pub enum MessageServiceResponse {
-    Serialized(SerializedMessage),
-    SerializedBypass(SerializedMessage),
-    Message(MessageFromEdge),
+    Serialized(usize),
+    SerializedBypass(usize),
+    Message(usize),
 }
 
 pub enum MessageServiceCommand {
-    ParseMessage(IncomingMessage),
+    ParseMessage(usize),
 
     Report {
         pulse_counter: f32,
@@ -72,6 +71,7 @@ pub struct MessageService {
     sender: Sender<MessageServiceResponse>,
     receiver: Receiver<MessageServiceCommand>,
     settings: Arc<RwLock<SystemSettings>>,
+    free_pool_index_rx: Receiver<usize>,
 }
 
 impl MessageService {
@@ -79,17 +79,19 @@ impl MessageService {
         sender: Sender<MessageServiceResponse>,
         receiver: Receiver<MessageServiceCommand>,
         settings: Arc<RwLock<SystemSettings>>,
+        free_pool_index_rx: Receiver<usize>,
     ) -> Self {
         info!("creando MessageService...");
         Self {
             sender,
             receiver,
             settings,
+            free_pool_index_rx,
         }
     }
 
     pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
-        let (to_parser, from_service_parser) = bounded::<IncomingMessage>(10);
+        let (to_parser, from_service_parser) = bounded::<usize>(10);
         let (to_generator, from_service_generator) = bounded::<MessageServiceCommand>(10);
         let (tx, rx) = bounded::<MessageServiceResponse>(10);
 
@@ -103,14 +105,15 @@ impl MessageService {
                 from_service_generator,
                 tx.clone(),
                 settings_for_generator,
+                self.free_pool_index_rx.clone(),
             ))
             .detach();
         info!("iniciando MessageService...");
         loop {
             match select(self.receiver.recv(), rx.recv()).await {
                 Either::First(Ok(cmd)) => match cmd {
-                    MessageServiceCommand::ParseMessage(msg) => {
-                        if let Err(e) = to_parser.try_send(msg) {
+                    MessageServiceCommand::ParseMessage(idx) => {
+                        if let Err(e) = to_parser.try_send(idx) {
                             error!(
                                 "no se pudo enviar mensaje para parsear, mensaje descartado. {e}"
                             );
@@ -181,6 +184,16 @@ pub struct Measurement {
     pub sample: u16,
 }
 
+impl Measurement {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_data().topic.clone(),
+            settings.read().unwrap().topic_data().qos,
+            settings.read().unwrap().topic_data().retain,
+        )
+    }
+}
+
 /// Alerta de calidad de aire.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AlertAir {
@@ -194,6 +207,16 @@ pub struct AlertAir {
     pub actual_air_quality: f32,
 }
 
+impl AlertAir {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_alert_air().topic.clone(),
+            settings.read().unwrap().topic_alert_air().qos,
+            settings.read().unwrap().topic_alert_air().retain,
+        )
+    }
+}
+
 /// Alerta de Temperatura y Humedad.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AlertTh {
@@ -205,6 +228,16 @@ pub struct AlertTh {
     pub initial_temp: f32,
     #[serde(rename = "a")]
     pub actual_temp: f32,
+}
+
+impl AlertTh {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_alert_temp().topic.clone(),
+            settings.read().unwrap().topic_alert_temp().qos,
+            settings.read().unwrap().topic_alert_temp().retain,
+        )
+    }
 }
 
 /// Datos de telemetría y salud del Hub.
@@ -223,6 +256,16 @@ pub struct Monitor {
     pub heap_largest_block: u32,
     #[serde(rename = "ut")]
     pub uptime_sec: u64,
+}
+
+impl Monitor {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_monitor().topic.clone(),
+            settings.read().unwrap().topic_monitor().qos,
+            settings.read().unwrap().topic_monitor().retain,
+        )
+    }
 }
 
 /// Configuración del dispositivo.
@@ -249,6 +292,16 @@ pub struct Settings {
     pub energy_mode: u32,
 }
 
+impl Settings {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_settings().topic.clone(),
+            settings.read().unwrap().topic_settings().qos,
+            settings.read().unwrap().topic_settings().retain,
+        )
+    }
+}
+
 /// Mensaje de Handshake.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Handshake {
@@ -258,6 +311,21 @@ pub struct Handshake {
     pub flag: String<15>,
     #[serde(rename = "b")]
     pub balance_epoch: u32,
+}
+
+impl Handshake {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings
+                .read()
+                .unwrap()
+                .topic_handshake_to_edge()
+                .topic
+                .clone(),
+            settings.read().unwrap().topic_handshake_to_edge().qos,
+            settings.read().unwrap().topic_handshake_to_edge().retain,
+        )
+    }
 }
 
 /// Envio periódico de estado al servidor.
@@ -272,6 +340,16 @@ pub struct HubState {
     pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "s")]
     pub state: String<20>,
+}
+
+impl HubState {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_hub_state().topic.clone(),
+            settings.read().unwrap().topic_hub_state().qos,
+            settings.read().unwrap().topic_hub_state().retain,
+        )
+    }
 }
 
 /// Mensaje enviado por el Edge indicando su estado actual.
@@ -373,6 +451,16 @@ pub struct SettingOk {
     pub handshake: bool,
 }
 
+impl SettingOk {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_settings_ok().topic.clone(),
+            settings.read().unwrap().topic_settings_ok().qos,
+            settings.read().unwrap().topic_settings_ok().retain,
+        )
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct FirmwareOk {
     #[serde(rename = "m")]
@@ -381,6 +469,21 @@ pub struct FirmwareOk {
     pub version: String<6>,
     #[serde(rename = "o")]
     pub is_ok: bool,
+}
+
+impl FirmwareOk {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings
+                .read()
+                .unwrap()
+                .topic_hub_firmware_ok()
+                .topic
+                .clone(),
+            settings.read().unwrap().topic_hub_firmware_ok().qos,
+            settings.read().unwrap().topic_hub_firmware_ok().retain,
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -395,6 +498,16 @@ pub struct EmptyQueue {
     pub queue_empty: bool,
 }
 
+impl EmptyQueue {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings.read().unwrap().topic_empty_queue().topic.clone(),
+            settings.read().unwrap().topic_empty_queue().qos,
+            settings.read().unwrap().topic_empty_queue().retain,
+        )
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct EmptyQueueSafeMode {
     #[serde(rename = "m")]
@@ -403,6 +516,21 @@ pub struct EmptyQueueSafeMode {
     pub state: String<15>,
     #[serde(rename = "q")]
     pub queue_empty: bool,
+}
+
+impl EmptyQueueSafeMode {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings
+                .read()
+                .unwrap()
+                .topic_empty_queue_safe()
+                .topic
+                .clone(),
+            settings.read().unwrap().topic_empty_queue_safe().qos,
+            settings.read().unwrap().topic_empty_queue_safe().retain,
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -415,6 +543,21 @@ pub struct LinkageRequest {
     pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "l")]
     pub linkage_request: bool,
+}
+
+impl LinkageRequest {
+    pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
+        (
+            settings
+                .read()
+                .unwrap()
+                .topic_linkage_request()
+                .topic
+                .clone(),
+            settings.read().unwrap().topic_linkage_request().qos,
+            settings.read().unwrap().topic_linkage_request().retain,
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]

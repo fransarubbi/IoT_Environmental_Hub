@@ -1,8 +1,11 @@
-use crate::app::heartbeat::domain::{
-    ACTION_VECTOR_CAPACITY, Action, Event, FsmHeartbeat, HeartbeatCommand, HeartbeatResponse,
-    State, StateForHeartbeat, Status, Transition, WatchdogCommand,
+use crate::app::{
+    heartbeat::domain::{
+        ACTION_VECTOR_CAPACITY, Action, Event, FsmHeartbeat, HeartbeatCommand, HeartbeatResponse,
+        State, StateForHeartbeat, Status, Transition, WatchdogCommand,
+    },
+    system_settings::domain::SystemSettings,
 };
-use crate::app::system_settings::domain::SystemSettings;
+
 use async_channel::{Receiver, Sender};
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer as EmbassyTimer};

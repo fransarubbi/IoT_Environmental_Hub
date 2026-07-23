@@ -1,6 +1,3 @@
-use crate::app::message::domain::*;
-use crate::app::system_settings::domain::{EnergyMode, SystemSettings};
-use crate::bsp::mqtt::IncomingMessage;
 use crate::bsp::wifi::get_unix_epoch;
 use anyhow::anyhow;
 use async_channel::{Receiver, Sender};
@@ -9,6 +6,12 @@ use log::{error, info};
 use rmp_serde::{from_slice, to_vec_named as to_vec};
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
+
+use crate::app::{
+    message::domain::*,
+    pool::pool::CORE_DATA_POOL,
+    system_settings::domain::{EnergyMode, SystemSettings},
+};
 
 /// Construye un heapless String<N> desde un &str, truncando si excede la capacidad.
 macro_rules! hl_str {
@@ -21,85 +24,78 @@ macro_rules! hl_str {
     }};
 }
 
-macro_rules! send_serialized {
-    ($tx:expr, $settings:expr, $msg:expr, $variant:expr) => {{
-        let topic = resolve_topic($settings, &$variant);
-        match serialize(topic.0, topic.1, $msg, topic.2) {
-            Ok(msg) => {
-                if let Err(e) = $tx.try_send(MessageServiceResponse::Serialized(msg)) {
-                    error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+pub async fn parser(from_service_parser: Receiver<usize>, tx: Sender<MessageServiceResponse>) {
+    while let Ok(idx) = from_service_parser.recv().await {
+        {
+            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+            match &slot.incoming {
+                Some(msg) => {
+                    let topic = msg.topic.as_str();
+                    let payload = &msg.payload[..];
+
+                    if payload.is_empty() {
+                        info!("Message. Payload vacío en {}, ignorando...", topic);
+                        continue;
+                    }
+
+                    // Enrutar explícitamente según el sufijo del tópico
+                    let decoded: Option<MessageFromEdge> = if topic.ends_with("edge_state") {
+                        info!("Message. Parseando mensaje de EdgeState.");
+                        from_slice::<EdgeState>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::State)
+                    } else if topic.ends_with("phase") {
+                        info!("Message. Parseando mensaje de Phase.");
+                        from_slice::<PhaseNotification>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::PhaseNotification)
+                    } else if topic.ends_with("handshake") {
+                        info!("Message. Parseando mensaje de Handshake.");
+                        from_slice::<Handshake>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::HandshakeToHub)
+                    } else if topic.ends_with("heartbeat") {
+                        info!("Message. Parseando mensaje de Heartbeat.");
+                        from_slice::<Heartbeat>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::Heartbeat)
+                    } else if topic.ends_with("new_firmware") {
+                        info!("Message. Parseando mensaje de NewFirmware.");
+                        from_slice::<UpdateFirmware>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::UpdateFirmware)
+                    } else if topic.ends_with("new_setting") {
+                        info!("Message. Parseando mensaje de NewSetting.");
+                        from_slice::<Settings>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::FromServerSettings)
+                    } else if topic.ends_with("new_setting_ok") {
+                        info!("Message. Parseando mensaje de SettingOk.");
+                        from_slice::<SettingOk>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::FromServerSettingsAck)
+                    } else if topic.ends_with("linkage_ack") {
+                        info!("Message. Parseando mensaje de LinkageAck.");
+                        from_slice::<LinkageAck>(&payload)
+                            .ok()
+                            .map(MessageFromEdge::LinkageAck)
+                    } else {
+                        None
+                    };
+
+                    // Procesar el mensaje decodificado
+                    if let Some(decoded_msg) = decoded {
+                        slot.from_edge = Some(decoded_msg);
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Message(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    } else {
+                        error!("no se pudo deserializar el mensaje del tópico: {}", topic);
+                    }
                 }
+                _ => info!("se recibió un mensaje Incoming en el parser que es incorrecto"),
             }
-            Err(e) => error!("no se pudo serializar mensaje. {e}"),
-        }
-    }};
-}
-
-pub async fn parser(
-    from_service_parser: Receiver<IncomingMessage>,
-    tx: Sender<MessageServiceResponse>,
-) {
-    while let Ok(msg) = from_service_parser.recv().await {
-        let topic = msg.topic.as_str();
-        let payload = &msg.payload[..];
-
-        if payload.is_empty() {
-            log::debug!("Message. Payload vacío en {}, ignorando...", topic);
-            continue;
-        }
-
-        // Enrutar explícitamente según el sufijo del tópico
-        let decoded: Option<MessageFromEdge> = if topic.ends_with("edge_state") {
-            info!("Message. Parseando mensaje de EdgeState.");
-            from_slice::<EdgeState>(&payload)
-                .ok()
-                .map(MessageFromEdge::State)
-        } else if topic.ends_with("phase") {
-            info!("Message. Parseando mensaje de Phase.");
-            from_slice::<PhaseNotification>(&payload)
-                .ok()
-                .map(MessageFromEdge::PhaseNotification)
-        } else if topic.ends_with("handshake") {
-            info!("Message. Parseando mensaje de Handshake.");
-            from_slice::<Handshake>(&payload)
-                .ok()
-                .map(MessageFromEdge::HandshakeToHub)
-        } else if topic.ends_with("heartbeat") {
-            info!("Message. Parseando mensaje de Heartbeat.");
-            from_slice::<Heartbeat>(&payload)
-                .ok()
-                .map(MessageFromEdge::Heartbeat)
-        } else if topic.ends_with("new_firmware") {
-            info!("Message. Parseando mensaje de NewFirmware.");
-            from_slice::<UpdateFirmware>(&payload)
-                .ok()
-                .map(MessageFromEdge::UpdateFirmware)
-        } else if topic.ends_with("new_setting") {
-            info!("Message. Parseando mensaje de NewSetting.");
-            from_slice::<Settings>(&payload)
-                .ok()
-                .map(MessageFromEdge::FromServerSettings)
-        } else if topic.ends_with("new_setting_ok") {
-            info!("Message. Parseando mensaje de SettingOk.");
-            from_slice::<SettingOk>(&payload)
-                .ok()
-                .map(MessageFromEdge::FromServerSettingsAck)
-        } else if topic.ends_with("linkage_ack") {
-            info!("Message. Parseando mensaje de LinkageAck.");
-            from_slice::<LinkageAck>(&payload)
-                .ok()
-                .map(MessageFromEdge::LinkageAck)
-        } else {
-            None
-        };
-
-        // Procesar el mensaje decodificado
-        if let Some(decoded_msg) = decoded {
-            if let Err(e) = tx.try_send(MessageServiceResponse::Message(decoded_msg)) {
-                error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
-            }
-        } else {
-            error!("no se pudo deserializar el mensaje del tópico: {}", topic);
+            slot.incoming = None;
         }
     }
 }
@@ -108,6 +104,7 @@ pub async fn generator(
     from_service_generator: Receiver<MessageServiceCommand>,
     tx: Sender<MessageServiceResponse>,
     settings: Arc<RwLock<SystemSettings>>,
+    free_idx_rx: Receiver<usize>,
 ) {
     while let Ok(cmd) = from_service_generator.recv().await {
         match cmd {
@@ -122,6 +119,7 @@ pub async fn generator(
                 let mac = settings.read().unwrap().mac_addr().to_string();
                 let network = settings.read().unwrap().id_network().to_string();
                 let sample = settings.read().unwrap().sample_rate();
+
                 let metadata = Metadata {
                     sender_user_id: hl_str!(&mac, 18),
                     destination_id: hl_str!("server0", 18),
@@ -137,7 +135,21 @@ pub async fn generator(
                     air_quality: mq135_aqi,
                     sample,
                 };
-                send_serialized!(tx, &settings, msg, MessageToEdge::Report(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::Monitor {
                 timestamp,
@@ -162,7 +174,21 @@ pub async fn generator(
                     heap_largest_block,
                     uptime_sec,
                 };
-                send_serialized!(tx, &settings, msg, MessageToEdge::Monitor(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::AlertAir {
                 initial_air_quality,
@@ -182,7 +208,21 @@ pub async fn generator(
                     initial_air_quality,
                     actual_air_quality,
                 };
-                send_serialized!(tx, &settings, msg, MessageToEdge::AlertAir(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::AlertTemp {
                 initial_temp,
@@ -202,7 +242,21 @@ pub async fn generator(
                     initial_temp,
                     actual_temp,
                 };
-                send_serialized!(tx, &settings, msg, MessageToEdge::AlertTem(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::GenerateFirmwareOk(str) => {
                 info!("Message. Serializando mensaje de FirmwareOk.");
@@ -217,7 +271,21 @@ pub async fn generator(
                     version: str,
                     is_ok: true,
                 };
-                send_serialized!(tx, &settings, msg, MessageToEdge::FirmwareOk(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::GenerateSettings(id) => {
                 info!("Message. Serializando mensaje de Settings.");
@@ -249,12 +317,21 @@ pub async fn generator(
                     sample: sample,
                     energy_mode,
                 };
-                send_serialized!(
-                    tx,
-                    &settings,
-                    msg,
-                    MessageToEdge::FromHubSettings(msg.clone())
-                );
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::GenerateSettingsAck(message_id) => {
                 info!("Message. Serializando mensaje de SettingAck.");
@@ -271,12 +348,21 @@ pub async fn generator(
                     network: hl_str!(&network, NETWORK_STRING_LEN),
                     handshake: true,
                 };
-                send_serialized!(
-                    tx,
-                    &settings,
-                    msg,
-                    MessageToEdge::FromHubSettingsAck(msg.clone())
-                );
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::EmptyQueuePhase { state, phase } => {
                 info!("Message. Serializando mensaje de cola vacía de fase.");
@@ -293,7 +379,21 @@ pub async fn generator(
                     phase,
                     queue_empty: true,
                 };
-                send_serialized!(tx, &settings, msg, MessageToEdge::EmptyQueue(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::GenerateEmptyQueueSafe => {
                 info!("Message. Serializando mensaje de cola vacía en safe.");
@@ -309,12 +409,21 @@ pub async fn generator(
                     state: hl_str!("safe_mode", 15),
                     queue_empty: true,
                 };
-                send_serialized!(
-                    tx,
-                    &settings,
-                    msg,
-                    MessageToEdge::EmptyQueueSafe(msg.clone())
-                );
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::GenerateLinkageRequest => {
                 info!("Message. Serializando mensaje de LinkageRequest.");
@@ -333,12 +442,21 @@ pub async fn generator(
                     network: hl_str!(&network, NETWORK_STRING_LEN),
                     linkage_request: true,
                 };
-                send_serialized!(
-                    tx,
-                    &settings,
-                    msg,
-                    MessageToEdge::LinkageRequest(msg.clone())
-                );
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::GenerateHandshake((balance_epoch, flag)) => {
                 info!("Message. Serializando mensaje de Handshake.");
@@ -354,12 +472,21 @@ pub async fn generator(
                     flag,
                     balance_epoch,
                 };
-                send_serialized!(
-                    tx,
-                    &settings,
-                    msg,
-                    MessageToEdge::HandshakeToEdge(msg.clone())
-                );
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             MessageServiceCommand::GenerateBypassAlertAir {
                 initial_air_quality,
@@ -379,13 +506,17 @@ pub async fn generator(
                     initial_air_quality,
                     actual_air_quality,
                 };
-                let topic = resolve_topic(&settings, &MessageToEdge::AlertAir(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
                 match serialize(topic.0, topic.1, msg, topic.2) {
                     Ok(msg) => {
-                        if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(msg)) {
-                            error!(
-                                "no se pudo enviar mensaje SerializedBypass, mensaje descartado. {e}"
-                            );
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -409,13 +540,17 @@ pub async fn generator(
                     initial_temp,
                     actual_temp,
                 };
-                let topic = resolve_topic(&settings, &MessageToEdge::AlertTem(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
                 match serialize(topic.0, topic.1, msg, topic.2) {
                     Ok(msg) => {
-                        if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(msg)) {
-                            error!(
-                                "no se pudo enviar mensaje SerializedBypass, mensaje descartado. {e}"
-                            );
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -435,93 +570,24 @@ pub async fn generator(
                     network: hl_str!(&network, 20),
                     state,
                 };
-                send_serialized!(tx, &settings, msg, MessageToEdge::State(msg.clone()));
+                let topic = msg.resolve_topic(&settings);
+
+                match serialize(topic.0, topic.1, msg, topic.2) {
+                    Ok(msg) => {
+                        let idx = free_idx_rx.recv().await.unwrap();
+                        {
+                            let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                            slot.serialized = Some(msg);
+                        }
+                        if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
+                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                        }
+                    }
+                    Err(e) => error!("no se pudo serializar mensaje. {e}"),
+                }
             }
             _ => {}
         }
-    }
-}
-
-fn resolve_topic(
-    settings: &Arc<RwLock<SystemSettings>>,
-    message: &MessageToEdge,
-) -> (String<75>, u8, bool) {
-    match message {
-        MessageToEdge::Report(_) => (
-            settings.read().unwrap().topic_data().topic.clone(),
-            settings.read().unwrap().topic_data().qos,
-            settings.read().unwrap().topic_data().retain,
-        ),
-        MessageToEdge::Monitor(_) => (
-            settings.read().unwrap().topic_monitor().topic.clone(),
-            settings.read().unwrap().topic_monitor().qos,
-            settings.read().unwrap().topic_monitor().retain,
-        ),
-        MessageToEdge::AlertAir(_) => (
-            settings.read().unwrap().topic_alert_air().topic.clone(),
-            settings.read().unwrap().topic_alert_air().qos,
-            settings.read().unwrap().topic_alert_air().retain,
-        ),
-        MessageToEdge::AlertTem(_) => (
-            settings.read().unwrap().topic_alert_temp().topic.clone(),
-            settings.read().unwrap().topic_alert_temp().qos,
-            settings.read().unwrap().topic_alert_temp().retain,
-        ),
-        MessageToEdge::HandshakeToEdge(_) => (
-            settings
-                .read()
-                .unwrap()
-                .topic_handshake_to_edge()
-                .topic
-                .clone(),
-            settings.read().unwrap().topic_handshake_to_edge().qos,
-            settings.read().unwrap().topic_handshake_to_edge().retain,
-        ),
-        MessageToEdge::FirmwareOk(_) => (
-            settings
-                .read()
-                .unwrap()
-                .topic_hub_firmware_ok()
-                .topic
-                .clone(),
-            settings.read().unwrap().topic_hub_firmware_ok().qos,
-            settings.read().unwrap().topic_hub_firmware_ok().retain,
-        ),
-        MessageToEdge::FromHubSettings(_) => (
-            settings.read().unwrap().topic_settings().topic.clone(),
-            settings.read().unwrap().topic_settings().qos,
-            settings.read().unwrap().topic_settings().retain,
-        ),
-        MessageToEdge::FromHubSettingsAck(_) => (
-            settings.read().unwrap().topic_settings_ok().topic.clone(),
-            settings.read().unwrap().topic_settings_ok().qos,
-            settings.read().unwrap().topic_settings_ok().retain,
-        ),
-        MessageToEdge::EmptyQueue(_) => (
-            settings.read().unwrap().topic_empty_queue().topic.clone(),
-            settings.read().unwrap().topic_empty_queue().qos,
-            settings.read().unwrap().topic_empty_queue().retain,
-        ),
-        MessageToEdge::EmptyQueueSafe(_) => (
-            settings.read().unwrap().topic_empty_queue().topic.clone(),
-            settings.read().unwrap().topic_empty_queue().qos,
-            settings.read().unwrap().topic_empty_queue().retain,
-        ),
-        MessageToEdge::LinkageRequest(_) => (
-            settings
-                .read()
-                .unwrap()
-                .topic_linkage_request()
-                .topic
-                .clone(),
-            settings.read().unwrap().topic_linkage_request().qos,
-            settings.read().unwrap().topic_linkage_request().retain,
-        ),
-        MessageToEdge::State(_) => (
-            settings.read().unwrap().topic_hub_state().topic.clone(),
-            settings.read().unwrap().topic_hub_state().qos,
-            settings.read().unwrap().topic_hub_state().retain,
-        ),
     }
 }
 

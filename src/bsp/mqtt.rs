@@ -2,7 +2,7 @@
 //! Abstrae la implementación específica del hardware detrás de traits.
 
 use crate::app::{
-    message::domain::{MAX_MSGPACK_BUFFER_SIZE, SerializedMessage},
+    message::domain::MAX_MSGPACK_BUFFER_SIZE, pool::pool::CORE_DATA_POOL,
     system_settings::domain::SystemSettings,
 };
 use crate::svc::mqtt::Mqtt;
@@ -25,10 +25,11 @@ pub enum MqttData {
     Connected,
     Disconnected,
     PubAck { msg_id: u16, return_code: u8 },
-    InMessage(IncomingMessage),
-    OutMessage(SerializedMessage),
+    InMessage(usize),
+    OutMessage(usize),
     SubscribeInitial,
     SubscribeOperational,
+    Stop,
 }
 
 /// Estructura que contiene el mensaje binario y el tópico donde se recibió.
@@ -48,6 +49,7 @@ pub struct EspIdfMqttManager {
     client: EspMqttClient<'static>, // El cliente nativo de esp-idf-svc
     settings: Arc<RwLock<SystemSettings>>,
     receiver: Receiver<MqttData>,
+    free_idx_tx: Sender<usize>,
 }
 
 impl EspIdfMqttManager {
@@ -59,9 +61,25 @@ impl EspIdfMqttManager {
         hub_cert: &'static [u8],
         hub_key: &'static [u8],
         root_ca: &'static [u8],
+        free_idx_tx: Sender<usize>,
+        free_idx_rx: Receiver<usize>,
     ) -> Result<Self, String<50>> {
-        let id: std::string::String = settings.read().unwrap().mac_addr().to_string();
-        let uri: std::string::String = settings.read().unwrap().mqtt_uri().to_string();
+        let id: &'static str = Box::leak(
+            settings
+                .read()
+                .unwrap()
+                .mac_addr()
+                .to_string()
+                .into_boxed_str(),
+        );
+        let uri: &'static str = Box::leak(
+            settings
+                .read()
+                .unwrap()
+                .mqtt_uri()
+                .to_string()
+                .into_boxed_str(),
+        );
 
         // Convertimos los slices de bytes nulo-terminados a CStr sin reservar memoria
         let root_ca_cstr = CStr::from_bytes_with_nul(root_ca)
@@ -72,7 +90,7 @@ impl EspIdfMqttManager {
             .map_err(|_| String::<50>::try_from("hub_key sin null").unwrap_or_default())?;
 
         let config = MqttClientConfiguration {
-            client_id: Some(&id),
+            client_id: Some(id),
             keep_alive_interval: Some(Duration::from_secs(60)),
             network_timeout: Duration::from_secs(30),
             crt_bundle_attach: None,
@@ -87,9 +105,11 @@ impl EspIdfMqttManager {
             buffer: Vec::new(),
         }));
 
+        let free_tx_cb = free_idx_tx.clone();
         let sender_to_closure = sender.clone();
+        let free_rx = free_idx_rx.clone();
 
-        let client = EspMqttClient::new_cb(&uri, &config, move |event| {
+        let client = EspMqttClient::new_cb(uri, &config, move |event| {
             // Hacemos match directamente sobre EventPayload
             match event.payload() {
                 EventPayload::Connected(_) => {
@@ -134,12 +154,30 @@ impl EspIdfMqttManager {
                             let _ = topic_hl.push_str(topic_str);
                             let mut payload_hl = Vec::<u8, MAX_MSGPACK_BUFFER_SIZE>::new();
                             let _ = payload_hl.extend_from_slice(data);
-                            let msg = IncomingMessage {
-                                topic: topic_hl,
-                                payload: payload_hl,
+
+                            // Pedimos un índice libre al canal de llaves. Si no hay, esto espera (await).
+                            let idx = match free_rx.try_recv() {
+                                Ok(i) => i,
+                                Err(_) => {
+                                    error!("pool lleno. Descartando paquete MQTT entrante.");
+                                    return;
+                                }
                             };
-                            if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(msg)) {
+
+                            {
+                                let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                                slot.incoming = Some(IncomingMessage {
+                                    topic: topic_hl,
+                                    payload: payload_hl,
+                                });
+                            }
+
+                            if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(idx)) {
                                 error!("cola llena, mensaje descartado. {e}");
+                                {
+                                    CORE_DATA_POOL[idx].lock().unwrap().incoming = None;
+                                }
+                                free_tx_cb.try_send(idx).unwrap();
                             }
                         }
 
@@ -164,16 +202,23 @@ impl EspIdfMqttManager {
 
                             // Comprobamos si con este fragmento ya alcanzamos el tamaño total esperado
                             if state.buffer.len() == chunk_info.total_data_size {
-                                let msg = IncomingMessage {
-                                    topic: state.topic.clone(),
-                                    // std::mem::take extrae los bytes del buffer y deja el vector
-                                    // original vacío pero listo para ser reutilizado.
-                                    payload: std::mem::take(&mut state.buffer),
+                                let idx = match free_rx.try_recv() {
+                                    Ok(i) => i,
+                                    Err(_) => {
+                                        error!("pool lleno. Descartando paquete MQTT entrante.");
+                                        return;
+                                    }
                                 };
-
-                                if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(msg))
                                 {
-                                    error!("Cola llena, mensaje fragmentado descartado. {e}");
+                                    let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                                    slot.incoming = Some(IncomingMessage {
+                                        topic: state.topic.clone(),
+                                        payload: std::mem::take(&mut state.buffer),
+                                    });
+                                }
+                                if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(idx))
+                                {
+                                    error!("cola llena, mensaje descartado. {e}");
                                 }
                             }
                         }
@@ -194,31 +239,44 @@ impl EspIdfMqttManager {
             s
         })?;
 
-        // 5. Devolvemos también los settings
         Ok(Self {
             client,
             settings,
             receiver,
+            free_idx_tx,
         })
     }
 
     pub async fn run(mut self) {
         while let Ok(cmd) = self.receiver.recv().await {
             match cmd {
-                MqttData::OutMessage(msg) => {
-                    debug!("MQTT. Enviando mensaje.");
-                    let qos = msg.get_qos();
-                    match self.publish(
-                        &msg.get_topic(),
-                        &msg.get_payload(),
-                        match_qos(qos),
-                        msg.get_retain(),
-                    ) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            error!("fallo al publicar mensaje en {}: {}", msg.get_topic(), e);
+                MqttData::OutMessage(idx) => {
+                    {
+                        let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
+                        match &slot.serialized {
+                            Some(msg) => {
+                                let qos = msg.get_qos();
+                                match self.publish(
+                                    &msg.get_topic(),
+                                    &msg.get_payload(),
+                                    match_qos(qos),
+                                    msg.get_retain(),
+                                ) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        error!(
+                                            "fallo al publicar mensaje en {}: {}",
+                                            msg.get_topic(),
+                                            e
+                                        );
+                                    }
+                                }
+                            }
+                            _ => info!("no se recibió un mensaje valido en OutMessage"),
                         }
+                        slot.serialized = None;
                     }
+                    self.free_idx_tx.try_send(idx).unwrap();
                 }
                 MqttData::SubscribeInitial => {
                     debug!("MQTT. Subscribiendo a los topicos iniciales.");
@@ -227,6 +285,10 @@ impl EspIdfMqttManager {
                 MqttData::SubscribeOperational => {
                     debug!("MQTT. Subscribiendo a todos los topicos.");
                     self.subscribe_all_topics();
+                }
+                MqttData::Stop => {
+                    info!("MQTT. Recibido comando STOP. Apagando cliente...");
+                    break;
                 }
                 _ => {}
             }

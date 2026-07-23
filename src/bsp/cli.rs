@@ -211,7 +211,7 @@ impl<U: Uart> Cli<U> {
             self.send("Error, comando inválido. Use HELP para ver los comandos disponibles.\r\n");
             return None;
         }
-        let param = parts.next().unwrap_or("").trim_start();
+        let param = parts.next().unwrap_or("").trim();
         let has_param = !param.is_empty();
         let cmd = cmd_raw.to_uppercase();
 

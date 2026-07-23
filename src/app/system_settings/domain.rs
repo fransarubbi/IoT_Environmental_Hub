@@ -4,8 +4,7 @@
 //! El `SystemSettings` actúa como el repositorio central de parámetros vitales.
 
 use crate::app::message::domain::{
-    DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, SettingOk, Settings,
-    WIFI_SSID_STRING_LEN,
+    DEVICE_NAME_STRING_LEN, MQTT_URI_STRING_LEN, NETWORK_STRING_LEN, WIFI_SSID_STRING_LEN,
 };
 use heapless::String;
 use serde::{Deserialize, Serialize};
@@ -13,11 +12,11 @@ use serde::{Deserialize, Serialize};
 /// Comandos para el gestor de configuración.
 pub enum ConfigCommand {
     /// Reemplaza toda la configuración
-    UpdateConfig(Settings),
+    UpdateConfig(usize),
     /// Actualiza solo un campo específico
     UpdateField(ConfigField),
     /// Recibe el ACK para no enviar mas el mensaje
-    SettingsAck(SettingOk),
+    SettingsAck(usize),
     /// Recibe la orden para enviar el mensaje de settings
     StartSendingSettings,
 }
@@ -64,6 +63,8 @@ pub struct SystemSettings {
     topic_handshake_to_edge: Topic,
     #[serde(skip)]
     topic_empty_queue: Topic,
+    #[serde(skip)]
+    topic_empty_queue_safe: Topic,
     #[serde(skip)]
     topic_linkage_request: Topic,
     #[serde(skip)]
@@ -377,6 +378,13 @@ impl SystemSettings {
         self.topic_empty_queue = t;
     }
 
+    pub fn topic_empty_queue_safe(&self) -> &Topic {
+        &self.topic_empty_queue_safe
+    }
+    pub fn set_topic_empty_queue_safe(&mut self, t: Topic) {
+        self.topic_empty_queue_safe = t;
+    }
+
     pub fn topic_linkage_request(&self) -> &Topic {
         &self.topic_linkage_request
     }
@@ -525,6 +533,11 @@ impl SystemSettings {
         self.topic_empty_queue.topic = build_topic!("iot/{}/hub/{}/empty_queue", net, mac);
         self.topic_empty_queue.qos = 0;
         self.topic_empty_queue.retain = false;
+
+        self.topic_empty_queue_safe.topic =
+            build_topic!("iot/{}/hub/{}/empty_queue_safe", net, mac);
+        self.topic_empty_queue_safe.qos = 0;
+        self.topic_empty_queue_safe.retain = false;
 
         self.topic_linkage_request.topic = build_topic!("iot/{}/linkage_request", edge);
         self.topic_linkage_request.qos = 0;

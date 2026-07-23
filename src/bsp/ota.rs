@@ -15,7 +15,7 @@ const URL_VERSION: &str =
 const URL_BIN_TEMPLATE: &str =
     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v{}/firmware.bin";
 
-const CURRENT_FIRMWARE_VERSION: &str = "0.13.0";
+const CURRENT_FIRMWARE_VERSION: &str = "0.14.0";
 
 pub enum OtaResponse {
     NoUpdateAvailable,
@@ -85,6 +85,8 @@ impl EspIdfOtaManager {
         let config = HttpConfig {
             crt_bundle_attach: Some(esp_crt_bundle_attach),
             timeout: Some(std::time::Duration::from_secs(10)),
+            buffer_size: Some(4096),
+            buffer_size_tx: Some(1024),
             ..Default::default()
         };
 
@@ -177,6 +179,7 @@ impl Ota for EspIdfOtaManager {
             let _ = s.push_str("GET bin err");
             s
         })?;
+
         let mut response = request.submit().map_err(|_| {
             let mut s = String::<20>::new();
             let _ = s.push_str("submit bin err");
