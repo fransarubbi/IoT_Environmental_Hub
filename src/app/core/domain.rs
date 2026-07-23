@@ -751,8 +751,8 @@ impl Core {
                 res = self.core_from_data_service.recv().fuse() => {
                     match res {
                         Ok(response) => match response {
-                            DataServiceResponse::Report { pulse_counter, pulse_max_duration, mq135_aqi, dht11_temp, dht11_hum } => {
-                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::Report { pulse_counter, pulse_max_duration, mq135_aqi, dht11_temp, dht11_hum }) {
+                            DataServiceResponse::Report { pulse_counter, mq135_aqi, dht11_temp, dht11_hum } => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::Report { pulse_counter, mq135_aqi, dht11_temp, dht11_hum }) {
                                     error!("no se pudo enviar Report desde core. {e}");
                                 }
                             }

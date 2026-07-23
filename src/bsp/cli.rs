@@ -35,6 +35,15 @@ const CHANGE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Prefijo obligatorio de la URI de MQTT (`MQTTS_PREFIX`).
 const MQTTS_PREFIX: &str = "mqtts://";
 
+/// Ancho de la columna "PARAMETRO" del recuadro de `SHOW` (ver [`Cli::print_row`]).
+const SHOW_LABEL_WIDTH: usize = 19;
+
+/// Ancho de la columna "VALOR ACTUAL" del recuadro de `SHOW`. Se fija en 70 porque
+/// `url_bypass` (guardado con `hl_str!(v, 70)`) es el campo más largo que puede
+/// llegar a mostrarse. Si en el futuro se agrega un campo más largo que 70,
+/// alcanza con actualizar este valor: el recuadro entero se re-dimensiona solo.
+const SHOW_VALUE_WIDTH: usize = 70;
+
 mod color {
     pub const B_WHT: &str = "\x1b[1;37m"; // Bordes
     pub const T_RST: &str = "\x1b[0m"; // Reset
@@ -134,31 +143,48 @@ impl<U: Uart> Cli<U> {
                 continue;
             };
 
-            if c == b'\n' || c == b'\r' {
-                if self.buffer.is_empty() {
-                    continue;
-                }
-                self.send("\r\n");
-                let line: String<BUFFER_SIZE> = {
-                    let raw = core::str::from_utf8(&self.buffer).unwrap_or("");
-                    let mut s = String::<BUFFER_SIZE>::new();
-                    let _ = s.push_str(raw);
-                    s
-                };
-                self.buffer.clear();
+            match c {
+                b'\n' | b'\r' => {
+                    if self.buffer.is_empty() {
+                        continue;
+                    }
+                    self.send("\r\n");
+                    let line: String<BUFFER_SIZE> = {
+                        let raw = core::str::from_utf8(&self.buffer).unwrap_or("");
+                        let mut s = String::<BUFFER_SIZE>::new();
+                        let _ = s.push_str(raw);
+                        s
+                    };
+                    self.buffer.clear();
 
-                // process_command ahora devuelve un Option<bool>
-                // Some(true) = Salir y Guardar | Some(false) = Salir sin guardar | None = Continuar en el menú
-                if let Some(save_required) = self.process_command(line.as_str(), flag_process) {
-                    return save_required;
-                }
+                    // process_command ahora devuelve un Option<bool>
+                    // Some(true) = Salir y Guardar | Some(false) = Salir sin guardar | None = Continuar en el menú
+                    if let Some(save_required) = self.process_command(line.as_str(), flag_process) {
+                        return save_required;
+                    }
 
-                self.send("\r\n");
-                self.show_menu();
-                self.send(" >  ");
-            } else if self.buffer.len() < BUFFER_SIZE - 1 {
-                let _ = self.buffer.push(c);
-                self.uart.send(&[c]);
+                    self.send("\r\n");
+                    self.show_menu();
+                    self.send(" >  ");
+                }
+                // Tecla de borrado: según el programa de terminal llega como
+                // 0x08 (BS, "Backspace") o 0x7F (DEL). Se manejan los dos.
+                0x08 | 0x7F => {
+                    if self.buffer.pop().is_some() {
+                        // BS + espacio + BS: le pide a la terminal del usuario que
+                        // retroceda el cursor, pinte un espacio (tapando el
+                        // carácter) y vuelva a retroceder. El byte de borrado en
+                        // sí nunca se guarda en `self.buffer`, por eso no llega a
+                        // process_command ni corrompe el comando enviado.
+                        self.send("\x08 \x08");
+                    }
+                    // Si el buffer ya está vacío no hay nada que borrar: se ignora.
+                }
+                _ if self.buffer.len() < BUFFER_SIZE - 1 => {
+                    let _ = self.buffer.push(c);
+                    self.uart.send(&[c]);
+                }
+                _ => {}
             }
         }
     }
@@ -181,24 +207,33 @@ impl<U: Uart> Cli<U> {
                 continue;
             };
 
-            if c == b'\n' || c == b'\r' {
-                if buf.is_empty() {
-                    continue;
-                }
-                self.send("\r\n");
+            match c {
+                b'\n' | b'\r' => {
+                    if buf.is_empty() {
+                        continue;
+                    }
+                    self.send("\r\n");
 
-                match buf[0].to_ascii_uppercase() {
-                    b'Y' => return true,
-                    b'N' => return false,
-                    _ => self.send("Error, comando invalido. Ingrese y o n\r\n"),
-                }
+                    match buf[0].to_ascii_uppercase() {
+                        b'Y' => return true,
+                        b'N' => return false,
+                        _ => self.send("Error, comando invalido. Ingrese y o n\r\n"),
+                    }
 
-                buf.clear();
-                self.send("\r\n");
-                self.show_menu_change_settings();
-            } else if buf.len() < BUFFER_SIZE - 1 {
-                let _ = buf.push(c);
-                self.uart.send(&[c]);
+                    buf.clear();
+                    self.send("\r\n");
+                    self.show_menu_change_settings();
+                }
+                0x08 | 0x7F => {
+                    if buf.pop().is_some() {
+                        self.send("\x08 \x08");
+                    }
+                }
+                _ if buf.len() < BUFFER_SIZE - 1 => {
+                    let _ = buf.push(c);
+                    self.uart.send(&[c]);
+                }
+                _ => {}
             }
         }
     }
@@ -297,7 +332,7 @@ impl<U: Uart> Cli<U> {
                 if let Some(v) =
                     self.require_param(has_param, param, "Error: falta parametro <url>\r\n")
                 {
-                    self.store.write().unwrap().set_url_bypass(hl_str!(v, 60));
+                    self.store.write().unwrap().set_url_bypass(hl_str!(v, 70));
                     self.flags |= flag::URL_HTTPS_OK;
                     self.send("Info: bypass url configurado correctamente\r\n");
                 }
@@ -345,7 +380,7 @@ impl<U: Uart> Cli<U> {
                             ));
                             set_cpu_frequency(mode);
                         }
-                        None => self.send("Error: ingrese un modo de energia valido\r\n"),
+                        _ => self.send("Error: ingrese un modo de energia valido\r\n"),
                     }
                 }
                 return None;
@@ -505,14 +540,39 @@ impl<U: Uart> Cli<U> {
 
     fn print_row(&mut self, text_color: &str, label: &str, value: &str) {
         let line = format!(
-            "{b}│ {c}{label:<19} {b}│{r} {value:<30} {b}│\r\n",
+            "{b}│ {c}{label:<lw$} {b}│{r} {value:<vw$} {b}│\r\n",
             b = color::B_WHT,
             c = text_color,
             r = color::T_RST,
             label = label,
             value = value,
+            lw = SHOW_LABEL_WIDTH,
+            vw = SHOW_VALUE_WIDTH,
         );
         self.send(&line);
+    }
+
+    /// Construye una línea separadora del recuadro de `SHOW` (sin color ni `\r\n`),
+    /// ya ajustada al ancho de columnas definido por `SHOW_LABEL_WIDTH` y
+    /// `SHOW_VALUE_WIDTH`. `left`/`mid`/`right` son los caracteres de esquina o
+    /// cruce (p. ej. `'┌'`, `'┬'`, `'┐'` para el borde superior).
+    fn show_border(left: char, mid: char, right: char) -> String<288> {
+        let mut s = String::<288>::new();
+        // Agregamos el carácter izquierdo
+        let _ = s.push(left);
+        // Agregamos la primera línea horizontal (h1)
+        for _ in 0..(SHOW_LABEL_WIDTH + 2) {
+            let _ = s.push('─');
+        }
+        // Agregamos el separador central
+        let _ = s.push(mid);
+        // Agregamos la segunda línea horizontal (h2)
+        for _ in 0..(SHOW_VALUE_WIDTH + 2) {
+            let _ = s.push('─');
+        }
+        // Agregamos el carácter derecho
+        let _ = s.push(right);
+        s
     }
 
     fn show_help(&mut self) {
@@ -537,7 +597,7 @@ impl<U: Uart> Cli<U> {
 │ {cyn}EDGE-ID <id_edge>            {b}│{r} Configura el ID del Edge al que se conectará                  {b}│\r\n\
 │ {cyn}URL-BYPASS <url>             {b}│{r} Configura la URL para conexión Bypass (https)                 {b}│\r\n\
 │ {cyn}NAME-DEVICE <name>           {b}│{r} Configura el nombre del dispositivo                           {b}│\r\n\
-│ {cyn}SAMPLE-TIME <time>           {b}│{r} Configura la frecuencia de envío de datos (min)               {b}│\r\n\
+│ {cyn}SAMPLE-TIME <time>           {b}│{r} Configura la frecuencia de envío de datos (seg)               {b}│\r\n\
 │ {cyn}ENERGY-MODE <energy>         {b}│{r} Modo de energía [0 = Ahorro | 1 = Medio | 2 = Max]            {b}│\r\n\
 │ {cyn}DELETE-LINKAGE               {b}│{r} Elimina el flag de linkage para una nueva conexión            {b}│\r\n\
 │ {cyn}HEARTBEAT-BALANCE <time>     {b}│{r} Latidos recibidos en estado Balance (seg)                     {b}│\r\n\
@@ -563,34 +623,34 @@ impl<U: Uart> Cli<U> {
 
     fn show_config(&mut self, s: &SystemSettings) {
         let b = color::B_WHT;
+        let top = Self::show_border('┌', '┬', '┐');
+        let mid = Self::show_border('├', '┼', '┤');
+        let bottom = Self::show_border('└', '┴', '┘');
+
+        self.send(&format!("\r\n{b}{top}\r\n"));
         self.send(&format!(
-            "\r\n{b}┌─────────────────────┬────────────────────────────────┐\r\n"
-        ));
-        self.send(&format!(
-            "│{mag} PARAMETRO           {b}│{mag} VALOR ACTUAL                   {b}│\r\n",
+            "│{mag} {label:<lw$} {b}│{mag} {value:<vw$} {b}│\r\n",
             mag = color::C_MAG,
-            b = b
+            b = b,
+            label = "PARAMETRO",
+            value = "VALOR ACTUAL",
+            lw = SHOW_LABEL_WIDTH,
+            vw = SHOW_VALUE_WIDTH,
         ));
-        self.send(&format!(
-            "├─────────────────────┼────────────────────────────────┤\r\n"
-        ));
+        self.send(&format!("{mid}\r\n"));
 
         self.print_row(color::C_CYN, "WiFi SSID", &s.wifi_ssid());
         self.print_row(color::C_CYN, "WiFi Password", &s.wifi_password());
         self.print_row(color::C_CYN, "MQTT URI", &s.mqtt_uri());
 
-        self.send(&format!(
-            "{b}├─────────────────────┼────────────────────────────────┤\r\n"
-        ));
+        self.send(&format!("{b}{mid}\r\n"));
 
         self.print_row(color::C_CYN, "Red ID", &s.id_network());
         self.print_row(color::C_CYN, "Edge ID", &s.id_edge());
         self.print_row(color::C_CYN, "Bypass URL", &s.url_bypass());
         self.print_row(color::C_CYN, "Nombre Dispositivo", &s.device_name());
 
-        self.send(&format!(
-            "{b}├─────────────────────┼────────────────────────────────┤\r\n"
-        ));
+        self.send(&format!("{b}{mid}\r\n"));
 
         self.print_row(
             color::C_YEL,
@@ -608,14 +668,12 @@ impl<U: Uart> Cli<U> {
             &format!("{} s", s.heartbeat_safe_mode()),
         );
 
-        self.send(&format!(
-            "{b}├─────────────────────┼────────────────────────────────┤\r\n"
-        ));
+        self.send(&format!("{b}{mid}\r\n"));
 
         self.print_row(
             color::C_GRN,
             "Sample Rate",
-            &format!("{} min", s.sample_rate()),
+            &format!("{} seg", s.sample_rate()),
         );
         self.print_row(color::C_GRN, "Modo de Energia", s.energy_mode().as_str());
         self.print_row(color::C_GRN, "MQ135 R0", &format!("{:.2} kOhm", s.air_r0()));
@@ -631,9 +689,7 @@ impl<U: Uart> Cli<U> {
         );
 
         let r = color::T_RST;
-        self.send(&format!(
-            "{b}└─────────────────────┴────────────────────────────────┘\r\n{r}\r\n"
-        ));
+        self.send(&format!("{b}{bottom}\r\n{r}\r\n"));
     }
 
     fn show_menu(&mut self) {

@@ -24,6 +24,7 @@ use std::thread::Builder;
 use crate::hal::uart::EspIdfUartManager;
 
 use crate::bsp::cli::Cli;
+use crate::bsp::ota::CURRENT_FIRMWARE_VERSION as version;
 
 use crate::app::{
     channels::domain::Channels,
@@ -36,7 +37,7 @@ fn main() -> anyhow::Result<()> {
     esp_idf_svc::sys::link_patches();
     EspLogger::initialize_default();
 
-    info!("Iniciando IoT Environmental Hub...");
+    info!("Iniciando IoT Environmental Hub v{version}");
 
     let peripherals =
         Peripherals::take().map_err(|e| anyhow::anyhow!("fallo periféricos: {:?}", e))?;

@@ -26,7 +26,6 @@ pub enum MessageServiceCommand {
 
     Report {
         pulse_counter: f32,
-        pulse_max_duration: f32,
         mq135_aqi: f32,
         dht11_temp: f32,
         dht11_hum: f32,
@@ -172,8 +171,6 @@ pub struct Measurement {
     pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "pc")]
     pub pulse_counter: f32,
-    #[serde(rename = "pm")]
-    pub pulse_max_duration: f32,
     #[serde(rename = "t")]
     pub temperature: f32,
     #[serde(rename = "h")]
