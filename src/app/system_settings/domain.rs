@@ -118,7 +118,7 @@ struct Heartbeat {
 struct Network {
     pub id_network: String<NETWORK_STRING_LEN>,
     pub id_edge: String<18>,
-    pub url_bypass: String<60>,
+    pub url_bypass: String<70>,
     pub message_id: u32,
     pub balance_epoch: u32,
     pub linkage_flag: bool,
@@ -245,7 +245,7 @@ impl SystemSettings {
     pub fn url_bypass(&self) -> &str {
         self.network.url_bypass.as_str()
     }
-    pub fn set_url_bypass(&mut self, url: String<60>) {
+    pub fn set_url_bypass(&mut self, url: String<70>) {
         self.network.url_bypass = url;
     }
 

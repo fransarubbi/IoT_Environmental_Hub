@@ -62,7 +62,6 @@ impl DataService {
             dht11_temp: None,
             dht11_hum: None,
             pulse_counter: None,
-            pulse_max_duration: None,
             last_updated: 0,
         };
 
@@ -101,22 +100,14 @@ impl DataService {
 
         // Extrae los datos del caché y arma el paquete Report
         let send_report = |cache: &DataCache, sender: &Sender<DataServiceResponse>| {
-            if let (
-                Some(mq135_aqi),
-                Some(dht11_temp),
-                Some(dht11_hum),
-                Some(pulse_counter),
-                Some(pulse_max_duration),
-            ) = (
+            if let (Some(mq135_aqi), Some(dht11_temp), Some(dht11_hum), Some(pulse_counter)) = (
                 cache.mq135_aqi,
                 cache.dht11_temp,
                 cache.dht11_hum,
                 cache.pulse_counter,
-                cache.pulse_max_duration,
             ) {
                 let _ = sender.try_send(DataServiceResponse::Report {
                     pulse_counter,
-                    pulse_max_duration,
                     mq135_aqi,
                     dht11_temp,
                     dht11_hum,
@@ -373,10 +364,8 @@ impl DataService {
 
                         if let Ok(ky_data) = ky037.read() {
                             data_cache.pulse_counter = Some(ky_data.values[0].value);
-                            data_cache.pulse_max_duration = Some(ky_data.values[1].value);
                         } else {
                             data_cache.pulse_counter = Some(0.0);
-                            data_cache.pulse_max_duration = Some(0.0);
                         }
 
                         match state {

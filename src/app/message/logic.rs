@@ -110,7 +110,6 @@ pub async fn generator(
         match cmd {
             MessageServiceCommand::Report {
                 pulse_counter,
-                pulse_max_duration,
                 mq135_aqi,
                 dht11_temp,
                 dht11_hum,
@@ -129,7 +128,6 @@ pub async fn generator(
                     metadata,
                     network: hl_str!(&network, 20),
                     pulse_counter,
-                    pulse_max_duration,
                     temperature: dht11_temp,
                     humidity: dht11_hum,
                     air_quality: mq135_aqi,

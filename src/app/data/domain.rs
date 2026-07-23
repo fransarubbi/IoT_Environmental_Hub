@@ -18,7 +18,6 @@ const HYSTERESIS: f32 = 0.8;
 pub enum DataServiceResponse {
     Report {
         pulse_counter: f32,
-        pulse_max_duration: f32,
         mq135_aqi: f32,
         dht11_temp: f32,
         dht11_hum: f32,
@@ -62,7 +61,6 @@ pub enum DataServiceCommand {
 pub struct DataCache {
     pub last_updated: u64,
     pub pulse_counter: Option<f32>,
-    pub pulse_max_duration: Option<f32>,
     pub mq135_aqi: Option<f32>,
     pub dht11_temp: Option<f32>,
     pub dht11_hum: Option<f32>,
@@ -74,7 +72,6 @@ impl DataCache {
             && self.dht11_hum.is_some()
             && self.mq135_aqi.is_some()
             && self.pulse_counter.is_some()
-            && self.pulse_max_duration.is_some()
     }
 }
 
