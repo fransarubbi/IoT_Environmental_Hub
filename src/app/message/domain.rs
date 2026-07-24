@@ -45,9 +45,9 @@ pub enum MessageServiceCommand {
         initial_temp: f32,
         actual_temp: f32,
     },
-    GenerateFirmwareOk(String<6>), // version
-    GenerateSettings(u32),         // message_id
-    GenerateSettingsAck(u32),      // message_id
+    GenerateFirmwareOk((bool, bool)), // is_updated, success
+    GenerateSettings(u32),            // message_id
+    GenerateSettingsAck(u32),         // message_id
     EmptyQueuePhase {
         state: String<15>,
         phase: String<10>,
@@ -459,16 +459,26 @@ impl SettingOk {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct FirmwareOk {
+pub struct FirmwareRequest {
     #[serde(rename = "m")]
     pub metadata: Metadata,
+    #[serde(rename = "n")]
+    pub network: String<NETWORK_STRING_LEN>,
     #[serde(rename = "v")]
-    pub version: String<6>,
-    #[serde(rename = "o")]
-    pub is_ok: bool,
+    pub version: String<10>,
 }
 
-impl FirmwareOk {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct FirmwareResponse {
+    #[serde(rename = "m")]
+    pub metadata: Metadata,
+    #[serde(rename = "u")]
+    pub is_updated: bool,
+    #[serde(rename = "s")]
+    pub success: bool,
+}
+
+impl FirmwareResponse {
     pub fn resolve_topic(&self, settings: &Arc<RwLock<SystemSettings>>) -> (String<75>, u8, bool) {
         (
             settings
@@ -566,18 +576,10 @@ pub struct LinkageAck {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct UpdateFirmware {
-    #[serde(rename = "m")]
-    pub metadata: Metadata,
-    #[serde(rename = "n")]
-    pub network: String<NETWORK_STRING_LEN>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MessageFromEdge {
     // Mensajes de bajada
-    UpdateFirmware(UpdateFirmware),
+    UpdateFirmware(FirmwareRequest),
     FromServerSettings(Settings),
     FromServerSettingsAck(SettingOk),
     Heartbeat(Heartbeat),
@@ -596,7 +598,7 @@ pub enum MessageToEdge {
     AlertAir(AlertAir),
     AlertTem(AlertTh),
     HandshakeToEdge(Handshake),
-    FirmwareOk(FirmwareOk),
+    FirmwareOk(FirmwareResponse),
     FromHubSettings(Settings),
     FromHubSettingsAck(SettingOk),
     EmptyQueue(EmptyQueue),

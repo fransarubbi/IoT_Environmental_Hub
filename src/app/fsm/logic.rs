@@ -23,7 +23,7 @@ enum BypassCommand {
 
 pub enum FsmServiceResponse {
     CheckFirmware,
-    NotifyFirmware(String<6>),
+    NotifyFirmware,
     SubscribeInitialTopic,
     LinkageProtocol,
     InitSystem,
@@ -41,12 +41,11 @@ pub enum FsmServiceResponse {
     UpdateLinkageFlag,
     SendHandshake((u32, String<15>)),
     GenerateHubState(String<20>),
-    CleanRestart,
 }
 
 pub enum FsmServiceCommand {
     NotUpdateFirmware, // Incluye error tambien
-    UpdateFirmware(String<6>),
+    UpdateFirmware,
     LinkageOk,
     Handshake(String<15>),
     Phase((u32, String<10>, u32, u32)),
@@ -202,7 +201,6 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
         old: StateGeneral::InitSystem,
         new: StateGeneral::InitSystem,
     };
-    let mut firmware_version = String::new();
     let mut handshake_flag = String::new();
     let mut frequency: u32 = 0;
     let mut jitter: u32 = 0;
@@ -230,20 +228,9 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                         }
                         Action::OnEntryNotifyFirmware => {
                             info!("FSM. Entrando a estado NotifyHardware.");
-                            if !firmware_version.is_empty() {
-                                if let Err(e) = tx_response.try_send(
-                                    FsmServiceResponse::NotifyFirmware(firmware_version.clone()),
-                                ) {
-                                    error!(
-                                        "no se pudo enviar NotifyFirmware desde el handler. {e}"
-                                    );
-                                }
-                            }
-                        }
-                        Action::OnEntryRestart => {
-                            info!("enviando la orden de reiniciar el sistema...");
-                            if let Err(e) = tx_response.try_send(FsmServiceResponse::CleanRestart) {
-                                error!("no se pudo enviar CleanRestart desde el handler. {e}");
+                            if let Err(e) = tx_response.try_send(FsmServiceResponse::NotifyFirmware)
+                            {
+                                error!("no se pudo enviar NotifyFirmware desde el handler. {e}");
                             }
                         }
                         Action::OnEntryInitSystem => {
@@ -451,11 +438,18 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                         error!("no se pudo enviar evento EventNotUpdate desde handler. {e}");
                     }
                 }
-                FsmServiceCommand::UpdateFirmware(version) => {
+                FsmServiceCommand::UpdateFirmware => {
                     info!("FSM. Se recibió comando UpdateFirmware.");
-                    firmware_version = version;
-                    if let Err(e) = tx_events.try_send(Event::EventUpdateSuccessful) {
-                        error!("no se pudo enviar evento EventUpdateSuccessful desde handler. {e}");
+                    if state.new != StateGeneral::InitSystem {
+                        if let Err(e) = tx_response.try_send(FsmServiceResponse::NotifyFirmware) {
+                            error!("no se pudo enviar NotifyFirmware desde el handler. {e}");
+                        }
+                    } else {
+                        if let Err(e) = tx_events.try_send(Event::EventUpdateSuccessful) {
+                            error!(
+                                "no se pudo enviar evento EventUpdateSuccessful desde handler. {e}"
+                            );
+                        }
                     }
                 }
                 FsmServiceCommand::LinkageOk => {

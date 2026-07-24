@@ -15,11 +15,11 @@ const URL_VERSION: &str =
 const URL_BIN_TEMPLATE: &str =
     "https://github.com/fransarubbi/IoT_Environmental_Hub/releases/download/v{}/firmware.bin";
 
-pub const CURRENT_FIRMWARE_VERSION: &str = "0.16.0";
+pub const CURRENT_FIRMWARE_VERSION: &str = "0.17.0";
 
 pub enum OtaResponse {
     NoUpdateAvailable,
-    UpdatedSuccesful(String<6>),
+    UpdatedSuccesful,
 }
 
 pub enum OtaCommand {
@@ -44,14 +44,13 @@ impl EspIdfOtaManager {
                         debug!("OTA. Se recibió comando de CheckFirmware.");
                         match self.check_update(CURRENT_FIRMWARE_VERSION) {
                             Ok(update) => {
-                                let version = update.clone();
                                 if update.is_some() {
                                     match self.perform_update(&update.unwrap()) {
                                         Ok(_) => {
                                             debug!("OTA. Actualización exitosa.");
-                                            if let Err(e) = self.sender.try_send(
-                                                OtaResponse::UpdatedSuccesful(version.unwrap()),
-                                            ) {
+                                            if let Err(e) =
+                                                self.sender.try_send(OtaResponse::UpdatedSuccesful)
+                                            {
                                                 error!("no se pudo enviar UpdatedSuccesful. {e}");
                                             }
                                         }
@@ -236,7 +235,7 @@ impl Ota for EspIdfOtaManager {
 
 /// Compara versiones semánticas (ej. "1.2.3" vs "1.2.0")
 /// Retorna `true` si `remote` es mayor que `local`
-fn is_newer_version(remote: &str, local: &str) -> bool {
+pub fn is_newer_version(remote: &str, local: &str) -> bool {
     let mut r_parts = remote.split('.');
     let mut l_parts = local.split('.');
 
