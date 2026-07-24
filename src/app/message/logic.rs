@@ -61,7 +61,7 @@ pub async fn parser(from_service_parser: Receiver<usize>, tx: Sender<MessageServ
                             .map(MessageFromEdge::Heartbeat)
                     } else if topic.ends_with("new_firmware") {
                         info!("Message. Parseando mensaje de NewFirmware.");
-                        from_slice::<UpdateFirmware>(&payload)
+                        from_slice::<FirmwareRequest>(&payload)
                             .ok()
                             .map(MessageFromEdge::UpdateFirmware)
                     } else if topic.ends_with("new_setting") {
@@ -256,18 +256,19 @@ pub async fn generator(
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
                 }
             }
-            MessageServiceCommand::GenerateFirmwareOk(str) => {
-                info!("Message. Serializando mensaje de FirmwareOk.");
+            MessageServiceCommand::GenerateFirmwareOk((is_updated, success)) => {
+                info!("Message. Serializando mensaje de FirmwareResponse.");
                 let mac = settings.read().unwrap().mac_addr().to_string();
+                let edge = settings.read().unwrap().id_edge().to_string();
                 let metadata = Metadata {
                     sender_user_id: hl_str!(&mac, 18),
-                    destination_id: hl_str!("server0", 18),
+                    destination_id: hl_str!(&edge, 18),
                     timestamp: get_unix_epoch(),
                 };
-                let msg = FirmwareOk {
+                let msg = FirmwareResponse {
                     metadata,
-                    version: str,
-                    is_ok: true,
+                    is_updated,
+                    success,
                 };
                 let topic = msg.resolve_topic(&settings);
 

@@ -30,6 +30,7 @@ pub enum MqttData {
     SubscribeInitial,
     SubscribeOperational,
     Stop,
+    FirmwareRestart,
 }
 
 /// Estructura que contiene el mensaje binario y el tópico donde se recibió.
@@ -49,6 +50,7 @@ pub struct EspIdfMqttManager {
     client: EspMqttClient<'static>, // El cliente nativo de esp-idf-svc
     settings: Arc<RwLock<SystemSettings>>,
     receiver: Receiver<MqttData>,
+    sender: Sender<MqttData>,
     free_idx_tx: Sender<usize>,
 }
 
@@ -243,6 +245,7 @@ impl EspIdfMqttManager {
             client,
             settings,
             receiver,
+            sender,
             free_idx_tx,
         })
     }
@@ -262,7 +265,17 @@ impl EspIdfMqttManager {
                                     match_qos(qos),
                                     msg.get_retain(),
                                 ) {
-                                    Ok(_) => {}
+                                    Ok(_) => {
+                                        let settings_arc = Arc::clone(&self.settings);
+                                        let cfg = settings_arc.read().unwrap();
+                                        if msg.get_topic() == cfg.topic_hub_firmware_ok().topic {
+                                            if let Err(e) =
+                                                self.sender.try_send(MqttData::FirmwareRestart)
+                                            {
+                                                error!("cola llena, mensaje descartado. {e}");
+                                            }
+                                        }
+                                    }
                                     Err(e) => {
                                         error!(
                                             "fallo al publicar mensaje en {}: {}",

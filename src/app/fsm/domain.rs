@@ -113,7 +113,6 @@ pub enum Action {
     OnEntryCheckFirmware,
     OnEntryLinkageProtocol,
     OnEntryNotifyFirmware,
-    OnEntryRestart,
     OnEntryInitSystem,
     OnEntryStore,
     OnEntryNormal,
@@ -450,7 +449,7 @@ fn compute_on_entry(old: &FsmState, new: &FsmState) -> Vec<Action, ACTION_VECTOR
                 }
                 SubStateInit::NotifyFirmwareUpdated => {
                     actions
-                        .push(Action::OnEntryRestart)
+                        .push(Action::OnEntryNotifyFirmware)
                         .expect("ACTION_VECTOR_CAPACITY demasiado chico");
                 }
             }

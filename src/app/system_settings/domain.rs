@@ -522,7 +522,7 @@ impl SystemSettings {
         self.topic_settings_ok.retain = false;
 
         self.topic_hub_firmware_ok.topic = build_topic!("iot/{}/hub/{}/hub_firmware_ok", net, mac);
-        self.topic_hub_firmware_ok.qos = 0;
+        self.topic_hub_firmware_ok.qos = 2;
         self.topic_hub_firmware_ok.retain = false;
 
         self.topic_handshake_to_edge.topic =
@@ -567,7 +567,7 @@ impl SystemSettings {
         self.topic_heartbeat.retain = false;
 
         self.topic_new_firmware.topic = build_topic!("iot/{}/new_firmware", net);
-        self.topic_new_firmware.qos = 0;
+        self.topic_new_firmware.qos = 2;
         self.topic_new_firmware.retain = false;
 
         self.topic_new_settings.topic = build_topic!("iot/{}/new_setting", net);

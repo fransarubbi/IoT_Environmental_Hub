@@ -11,13 +11,6 @@
 //! El sistema sigue una arquitectura de estrella donde todos los servicios se comunican únicamente
 //! con el `Core`, y el `Core` redistribuye los mensajes. Esto desacopla los servicios entre sí.
 
-use anyhow::{Result, anyhow};
-use async_channel::{Receiver, Sender};
-use esp_idf_hal::reset::restart;
-use futures::{FutureExt, select};
-use log::{error, info};
-use std::sync::{Arc, RwLock};
-
 use crate::app::{
     data::domain::{DataServiceCommand, DataServiceResponse},
     fsm::{
@@ -30,6 +23,13 @@ use crate::app::{
     system_settings::domain::{ConfigCommand, ConfigField, ConfigResponse, SystemSettings},
     timer::logic::{TimerCommand, TimerResponse},
 };
+use crate::bsp::ota::{CURRENT_FIRMWARE_VERSION as firmware_version, is_newer_version};
+use anyhow::{Result, anyhow};
+use async_channel::{Receiver, Sender};
+use esp_idf_hal::reset::restart;
+use futures::{FutureExt, select};
+use log::{error, info};
+use std::sync::{Arc, RwLock};
 
 use crate::bsp::mqtt::MqttData;
 use crate::bsp::ota::{OtaCommand, OtaResponse};
@@ -285,8 +285,8 @@ impl Core {
                                     error!("no se pudo enviar SubscribeInitial desde core. {e}");
                                 }
                             }
-                            FsmServiceResponse::NotifyFirmware(version) => {
-                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateFirmwareOk(version)) {
+                            FsmServiceResponse::NotifyFirmware => {
+                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateFirmwareOk((false, true))) {
                                     error!("no se pudo enviar GenerateFirmwareOk desde core. {e}");
                                 }
                             }
@@ -488,21 +488,6 @@ impl Core {
                                     error!("no se pudo enviar GenerateHubState desde core. {e}");
                                 }
                             }
-                            FsmServiceResponse::CleanRestart => {
-                                if let Err(e) = self.core_to_mqtt_service.try_send(MqttData::Stop) {
-                                    error!("no se pudo enviar MqttData Stop desde core. {e}");
-                                }
-                                // Esperar a que MQTT cierre socket
-                                embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
-
-                                if let Err(e) = self.core_to_wifi_service.try_send(WifiCommand::Stop) {
-                                    error!("no se pudo enviar WifiCommand Stop desde core. {e}");
-                                }
-
-                                embassy_time::Timer::after(embassy_time::Duration::from_millis(1500)).await;
-
-                                restart();
-                            }
                         },
                         Err(e) => error!("el canal core_from_fsm_service se ha cerrado. {e}"),
                     }
@@ -601,10 +586,20 @@ impl Core {
                                                     if msg.metadata.sender_user_id == edge.as_str()
                                                         && msg.network == network.as_str()
                                                     {
-                                                        if msg.metadata.destination_id == mac.as_str()
-                                                            || msg.metadata.destination_id == "all"
-                                                        {
-                                                            restart();
+                                                        if msg.metadata.destination_id == mac.as_str() {
+                                                            if firmware_version == msg.version {
+                                                                info!("misma version de firmware!");
+                                                                if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::GenerateFirmwareOk((true, false))) {
+                                                                    error!("no se pudo enviar GenerateFirmwareOk desde core. {e}");
+                                                                }
+                                                            } else {
+                                                                if is_newer_version(msg.version.as_str(), firmware_version) {
+                                                                    info!("el firmware propuesto es mas nuevo");
+                                                                    if let Err(e) = self.core_to_ota_service.try_send(OtaCommand::CheckFirmware) {
+                                                                        error!("no se pudo enviar CheckFirmware desde core. {e}");
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -671,6 +666,22 @@ impl Core {
                                     }
                                 }
                             }
+                            MqttData::FirmwareRestart => {
+                                embassy_time::Timer::after(embassy_time::Duration::from_millis(1500)).await;
+                                if let Err(e) = self.core_to_mqtt_service.try_send(MqttData::Stop) {
+                                    error!("no se pudo enviar MqttData Stop desde core. {e}");
+                                }
+                                // Esperar a que MQTT cierre socket
+                                embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+
+                                if let Err(e) = self.core_to_wifi_service.try_send(WifiCommand::Stop) {
+                                    error!("no se pudo enviar WifiCommand Stop desde core. {e}");
+                                }
+
+                                embassy_time::Timer::after(embassy_time::Duration::from_millis(1500)).await;
+
+                                restart();
+                            }
                             _ => {}
                         },
                         Err(e) => error!("{e}"),
@@ -688,10 +699,10 @@ impl Core {
                                     error!("no se pudo enviar NotUpdateFirmware en core. {e}");
                                 }
                             }
-                            OtaResponse::UpdatedSuccesful(version) => {
+                            OtaResponse::UpdatedSuccesful => {
                                 if let Err(e) = self
                                     .core_to_fsm_service
-                                    .try_send(FsmServiceCommand::UpdateFirmware(version))
+                                    .try_send(FsmServiceCommand::UpdateFirmware)
                                 {
                                     error!("no se pudo enviar UpdateFirmware en core. {e}");
                                 }
