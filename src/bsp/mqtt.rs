@@ -218,9 +218,12 @@ impl EspIdfMqttManager {
                                         payload: std::mem::take(&mut state.buffer),
                                     });
                                 }
-                                if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(idx))
-                                {
+                                if let Err(e) = sender_to_closure.try_send(MqttData::InMessage(idx)) {
                                     error!("cola llena, mensaje descartado. {e}");
+                                    {
+                                        CORE_DATA_POOL[idx].lock().unwrap().incoming = None;
+                                    }
+                                    free_tx_cb.try_send(idx).unwrap();
                                 }
                             }
                         }

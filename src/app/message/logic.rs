@@ -24,7 +24,11 @@ macro_rules! hl_str {
     }};
 }
 
-pub async fn parser(from_service_parser: Receiver<usize>, tx: Sender<MessageServiceResponse>) {
+pub async fn parser(
+    from_service_parser: Receiver<usize>,
+    tx: Sender<MessageServiceResponse>,
+    free_idx_tx: Sender<usize>,
+) {
     while let Ok(idx) = from_service_parser.recv().await {
         {
             let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
@@ -88,6 +92,8 @@ pub async fn parser(from_service_parser: Receiver<usize>, tx: Sender<MessageServ
                         slot.from_edge = Some(decoded_msg);
                         if let Err(e) = tx.try_send(MessageServiceResponse::Message(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            slot.from_edge = None;
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     } else {
                         error!("no se pudo deserializar el mensaje del tópico: {}", topic);
@@ -105,6 +111,7 @@ pub async fn generator(
     tx: Sender<MessageServiceResponse>,
     settings: Arc<RwLock<SystemSettings>>,
     free_idx_rx: Receiver<usize>,
+    free_idx_tx: Sender<usize>,
 ) {
     while let Ok(cmd) = from_service_generator.recv().await {
         match cmd {
@@ -144,6 +151,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -183,6 +194,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -217,6 +232,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -251,6 +270,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -281,6 +304,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -327,6 +354,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -358,6 +389,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -389,6 +424,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -419,6 +458,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -452,6 +495,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -482,6 +529,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -516,6 +567,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -550,6 +605,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::SerializedBypass(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),
@@ -580,6 +639,10 @@ pub async fn generator(
                         }
                         if let Err(e) = tx.try_send(MessageServiceResponse::Serialized(idx)) {
                             error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
+                            {
+                                CORE_DATA_POOL[idx].lock().unwrap().serialized = None;
+                            }
+                            free_idx_tx.try_send(idx).unwrap();
                         }
                     }
                     Err(e) => error!("no se pudo serializar mensaje. {e}"),

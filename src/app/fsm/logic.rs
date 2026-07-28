@@ -523,7 +523,7 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                                 s.jitter,
                             )
                         } else {
-                            continue; // Si estaba vacío, ignoramos
+                            (heapless::String::new(), 0, 0, 0, 0)
                         }
                     };
 
@@ -531,6 +531,10 @@ async fn handler_events_and_actions<'a, H: Http + 'a>(
                         CORE_DATA_POOL[idx].lock().unwrap().from_edge = None;
                     }
                     free_pool_index_tx.try_send(idx).unwrap();
+
+                    if state_str.is_empty() {
+                        continue;
+                    }
 
                     if state_str == "normal" {
                         if state.new == StateGeneral::Normal {

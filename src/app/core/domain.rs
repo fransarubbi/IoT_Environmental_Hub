@@ -657,6 +657,10 @@ impl Core {
                             MqttData::InMessage(msg) => {
                                 if let Err(e) = self.core_to_msg_service.try_send(MessageServiceCommand::ParseMessage(msg)) {
                                     error!("no se pudo enviar ParseMessage desde core. {e}");
+                                    {
+                                        CORE_DATA_POOL[msg].lock().unwrap().incoming = None;
+                                    }
+                                    self.free_pool_index_tx.try_send(msg).unwrap();
                                 }
                             }
                             MqttData::PubAck { msg_id: _, return_code } => {
