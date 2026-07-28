@@ -148,6 +148,7 @@ pub(crate) fn core1_executor_task(
                 channels.message_service_from_core,
                 Arc::clone(&settings),
                 channels.free_pool_index_rx.clone(),
+                channels.free_pool_index_tx.clone(),
             )
             .run(&executor),
         )

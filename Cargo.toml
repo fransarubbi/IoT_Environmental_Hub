@@ -1,6 +1,6 @@
 [package]
 name = "iot_environmental_hub"
-version = "0.17.0"
+version = "0.18.0"
 authors = ["Franco Sarubbi <sarubbi.fe@gmail.com>"]
 edition = "2024"
 resolver = "2"

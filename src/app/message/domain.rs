@@ -71,6 +71,7 @@ pub struct MessageService {
     receiver: Receiver<MessageServiceCommand>,
     settings: Arc<RwLock<SystemSettings>>,
     free_pool_index_rx: Receiver<usize>,
+    free_pool_index_tx: Sender<usize>,
 }
 
 impl MessageService {
@@ -79,6 +80,7 @@ impl MessageService {
         receiver: Receiver<MessageServiceCommand>,
         settings: Arc<RwLock<SystemSettings>>,
         free_pool_index_rx: Receiver<usize>,
+        free_pool_index_tx: Sender<usize>,
     ) -> Self {
         info!("creando MessageService...");
         Self {
@@ -86,6 +88,7 @@ impl MessageService {
             receiver,
             settings,
             free_pool_index_rx,
+            free_pool_index_tx,
         }
     }
 
@@ -97,7 +100,11 @@ impl MessageService {
         let settings_for_generator = Arc::clone(&self.settings);
 
         executor
-            .spawn(parser(from_service_parser, tx.clone()))
+            .spawn(parser(
+                from_service_parser,
+                tx.clone(),
+                self.free_pool_index_tx.clone(),
+            ))
             .detach();
         executor
             .spawn(generator(
@@ -105,6 +112,7 @@ impl MessageService {
                 tx.clone(),
                 settings_for_generator,
                 self.free_pool_index_rx.clone(),
+                self.free_pool_index_tx.clone(),
             ))
             .detach();
         info!("iniciando MessageService...");
@@ -116,6 +124,7 @@ impl MessageService {
                             error!(
                                 "no se pudo enviar mensaje para parsear, mensaje descartado. {e}"
                             );
+                            self.free_pool_index_tx.try_send(idx).unwrap();
                         }
                     }
                     _ => {
@@ -136,6 +145,27 @@ impl MessageService {
                         error!(
                             "no se pudo enviar mensaje MessageServiceResponse, mensaje descartado. {e}"
                         );
+                        match e.into_inner() {
+                            MessageServiceResponse::Serialized(idx)
+                            | MessageServiceResponse::SerializedBypass(idx) => {
+                                {
+                                    crate::app::pool::pool::CORE_DATA_POOL[idx]
+                                        .lock()
+                                        .unwrap()
+                                        .serialized = None;
+                                }
+                                self.free_pool_index_tx.try_send(idx).unwrap();
+                            }
+                            MessageServiceResponse::Message(idx) => {
+                                {
+                                    crate::app::pool::pool::CORE_DATA_POOL[idx]
+                                        .lock()
+                                        .unwrap()
+                                        .from_edge = None;
+                                }
+                                self.free_pool_index_tx.try_send(idx).unwrap();
+                            }
+                        }
                     }
                 }
                 Either::Second(Err(_)) => {
@@ -368,41 +398,6 @@ pub struct EdgeState {
     #[serde(rename = "d")]
     pub duration: u32,
 
-    #[serde(rename = "f")]
-    pub frequency: u32,
-    #[serde(rename = "j")]
-    pub jitter: u32,
-}
-
-/// Notificación de cambio a Modo Balance.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct MessageStateBalanceMode {
-    #[serde(rename = "m")]
-    pub metadata: Metadata,
-    #[serde(rename = "s")]
-    pub state: String<15>,
-    #[serde(rename = "b")]
-    pub balance_epoch: u32,
-    #[serde(rename = "d")]
-    pub duration: u32,
-}
-
-/// Notificación de cambio a Modo Normal.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct MessageStateNormal {
-    #[serde(rename = "m")]
-    pub metadata: Metadata,
-    #[serde(rename = "s")]
-    pub state: String<10>,
-}
-
-/// Notificación de cambio a Modo Seguro.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct MessageStateSafeMode {
-    #[serde(rename = "m")]
-    pub metadata: Metadata,
-    #[serde(rename = "s")]
-    pub state: String<15>,
     #[serde(rename = "f")]
     pub frequency: u32,
     #[serde(rename = "j")]
