@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
     )?;
     let uart = EspIdfUartManager::new(uart_driver);
 
-    let channels = Channels::new(3);
+    let channels = Channels::new(10);
 
     let core = Core::builder()
         .core_from_fsm_service(channels.core_from_fsm_service.clone())

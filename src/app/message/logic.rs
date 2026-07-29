@@ -30,6 +30,9 @@ pub async fn parser(
     free_idx_tx: Sender<usize>,
 ) {
     while let Ok(idx) = from_service_parser.recv().await {
+        // Flag para rastrear si el índice fue transferido a la siguiente etapa
+        let mut index_freed = false;
+
         {
             let mut slot = CORE_DATA_POOL[idx].lock().unwrap();
             match &slot.incoming {
@@ -39,69 +42,66 @@ pub async fn parser(
 
                     if payload.is_empty() {
                         info!("Message. Payload vacío en {}, ignorando...", topic);
-                        continue;
-                    }
-
-                    // Enrutar explícitamente según el sufijo del tópico
-                    let decoded: Option<MessageFromEdge> = if topic.ends_with("edge_state") {
-                        info!("Message. Parseando mensaje de EdgeState.");
-                        from_slice::<EdgeState>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::State)
-                    } else if topic.ends_with("phase") {
-                        info!("Message. Parseando mensaje de Phase.");
-                        from_slice::<PhaseNotification>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::PhaseNotification)
-                    } else if topic.ends_with("handshake") {
-                        info!("Message. Parseando mensaje de Handshake.");
-                        from_slice::<Handshake>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::HandshakeToHub)
-                    } else if topic.ends_with("heartbeat") {
-                        info!("Message. Parseando mensaje de Heartbeat.");
-                        from_slice::<Heartbeat>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::Heartbeat)
-                    } else if topic.ends_with("new_firmware") {
-                        info!("Message. Parseando mensaje de NewFirmware.");
-                        from_slice::<FirmwareRequest>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::UpdateFirmware)
-                    } else if topic.ends_with("new_setting") {
-                        info!("Message. Parseando mensaje de NewSetting.");
-                        from_slice::<Settings>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::FromServerSettings)
-                    } else if topic.ends_with("new_setting_ok") {
-                        info!("Message. Parseando mensaje de SettingOk.");
-                        from_slice::<SettingOk>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::FromServerSettingsAck)
-                    } else if topic.ends_with("linkage_ack") {
-                        info!("Message. Parseando mensaje de LinkageAck.");
-                        from_slice::<LinkageAck>(&payload)
-                            .ok()
-                            .map(MessageFromEdge::LinkageAck)
                     } else {
-                        None
-                    };
+                        let decoded: Option<MessageFromEdge> = if topic.ends_with("edge_state") {
+                            from_slice::<EdgeState>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::State)
+                        } else if topic.ends_with("phase") {
+                            from_slice::<PhaseNotification>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::PhaseNotification)
+                        } else if topic.ends_with("handshake") {
+                            from_slice::<Handshake>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::HandshakeToHub)
+                        } else if topic.ends_with("heartbeat") {
+                            from_slice::<Heartbeat>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::Heartbeat)
+                        } else if topic.ends_with("new_firmware") {
+                            from_slice::<FirmwareRequest>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::UpdateFirmware)
+                        } else if topic.ends_with("new_setting") {
+                            from_slice::<Settings>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::FromServerSettings)
+                        } else if topic.ends_with("new_setting_ok") {
+                            from_slice::<SettingOk>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::FromServerSettingsAck)
+                        } else if topic.ends_with("linkage_ack") {
+                            from_slice::<LinkageAck>(&payload)
+                                .ok()
+                                .map(MessageFromEdge::LinkageAck)
+                        } else {
+                            None
+                        };
 
-                    // Procesar el mensaje decodificado
-                    if let Some(decoded_msg) = decoded {
-                        slot.from_edge = Some(decoded_msg);
-                        if let Err(e) = tx.try_send(MessageServiceResponse::Message(idx)) {
-                            error!("no se pudo enviar mensaje Serialized, mensaje descartado. {e}");
-                            slot.from_edge = None;
-                            free_idx_tx.try_send(idx).unwrap();
+                        if let Some(decoded_msg) = decoded {
+                            slot.from_edge = Some(decoded_msg);
+                            if let Err(e) = tx.try_send(MessageServiceResponse::Message(idx)) {
+                                error!(
+                                    "no se pudo enviar mensaje Serialized, mensaje descartado. {e}"
+                                );
+                                slot.from_edge = None;
+                            } else {
+                                index_freed = true;
+                            }
+                        } else {
+                            error!("no se pudo deserializar el mensaje del tópico: {}", topic);
                         }
-                    } else {
-                        error!("no se pudo deserializar el mensaje del tópico: {}", topic);
                     }
                 }
                 _ => info!("se recibió un mensaje Incoming en el parser que es incorrecto"),
             }
             slot.incoming = None;
+        }
+
+        // Si el índice no fue cedido, se devuelve al pool
+        if !index_freed {
+            free_idx_tx.try_send(idx).unwrap();
         }
     }
 }

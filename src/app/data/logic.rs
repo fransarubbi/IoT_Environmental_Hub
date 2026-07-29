@@ -42,10 +42,10 @@ impl DataService {
         mut mq135: impl Sensor + 'a,
         mut ky037: impl Sensor + 'a,
     ) {
-        let (tx_to_service, rx) = bounded::<InternalEvent>(3);
-        let (tx_scan, rx_scan) = bounded::<PeriodicCommand>(2);
-        let (tx_sample, rx_sample) = bounded::<PeriodicCommand>(2);
-        let (tx_sweeper, rx_sweeper) = bounded::<PeriodicCommand>(2);
+        let (tx_to_service, rx) = bounded::<InternalEvent>(5);
+        let (tx_scan, rx_scan) = bounded::<PeriodicCommand>(5);
+        let (tx_sample, rx_sample) = bounded::<PeriodicCommand>(5);
+        let (tx_sweeper, rx_sweeper) = bounded::<PeriodicCommand>(5);
 
         let mut data_backup: Deque<DataCache, 25> = Deque::new();
         let mut monitor_backup: Deque<Monitor, 25> = Deque::new();

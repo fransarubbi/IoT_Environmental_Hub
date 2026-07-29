@@ -144,7 +144,7 @@ impl Channels {
         let (data_c2s_tx, data_c2s_rx) = bounded(buffer_size);
 
         // Pool
-        let (free_tx, free_rx) = bounded(CORE_POOL_SIZE);
+        let (free_tx, free_rx) = bounded(CORE_POOL_SIZE + 1);
 
         for i in 0..CORE_POOL_SIZE {
             free_tx.try_send(i).unwrap();

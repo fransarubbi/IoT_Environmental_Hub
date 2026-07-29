@@ -53,11 +53,11 @@ impl HeartbeatService {
     }
 
     pub async fn run<'a>(self, executor: &'a LocalExecutor<'a>) {
-        let (tx_to_core, rx) = bounded::<HeartbeatResponse>(3);
-        let (tx_to_fsm, rx_from_heartbeat) = bounded::<Event>(3);
-        let (tx_to_timer, rx_watchdog_heartbeat) = bounded::<WatchdogCommand>(3);
-        let (tx_msg, rx_from_server) = bounded::<HeartbeatCommand>(3);
-        let (tx_actions, rx_fsm) = bounded::<Vec<Action, ACTION_VECTOR_CAPACITY>>(3);
+        let (tx_to_core, rx) = bounded::<HeartbeatResponse>(5);
+        let (tx_to_fsm, rx_from_heartbeat) = bounded::<Event>(5);
+        let (tx_to_timer, rx_watchdog_heartbeat) = bounded::<WatchdogCommand>(5);
+        let (tx_msg, rx_from_server) = bounded::<HeartbeatCommand>(5);
+        let (tx_actions, rx_fsm) = bounded::<Vec<Action, ACTION_VECTOR_CAPACITY>>(5);
 
         let heartbeat_tx_to_fsm = tx_to_fsm.clone();
         executor
