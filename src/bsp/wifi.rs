@@ -3,6 +3,8 @@
 
 use crate::app::message::domain::WIFI_SSID_STRING_LEN;
 use async_channel::Receiver;
+use embassy_futures::select::{select, Either};
+use embassy_time::{Duration, Timer};
 use esp_idf_hal::modem::Modem;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
@@ -25,6 +27,8 @@ pub fn get_unix_epoch() -> u64 {
         .unwrap()
         .as_secs()
 }
+
+const HEALTHCHECK_INTERVAL: Duration = Duration::from_secs(10);
 
 pub struct EspIdfWifiManager<'a> {
     // Usamos BlockingWifi que envuelve al cliente WiFi de esp-idf-svc y maneja
@@ -98,9 +102,24 @@ impl<'a> EspIdfWifiManager<'a> {
         self.connect().await;
 
         loop {
-            // Esperamos comandos (ej. si cambian la config de red)
-            if let Ok(cmd) = self.receiver.recv().await {
-                match cmd {
+            // Sondeamos el estado de la red cada HEALTHCHECK_INTERVAL, en
+            // paralelo con la espera de comandos por el canal.
+            let timeout_fut = Timer::after(HEALTHCHECK_INTERVAL);
+            let cmd_fut = self.receiver.recv();
+
+            match select(timeout_fut, cmd_fut).await {
+                // El timeout expiró: verificamos si seguimos conectados de verdad.
+                Either::First(_) => match self.wifi.is_connected() {
+                    Ok(true) => {
+                        // Todo OK, seguimos esperando normalmente.
+                    }
+                    Ok(false) | Err(_) => {
+                        warn!("WiFi desconectado sin comando. Reintentando...");
+                        self.connect().await;
+                    }
+                },
+                // Llegó un comando por el canal
+                Either::Second(Ok(cmd)) => match cmd {
                     WifiCommand::Update { ssid, password } => {
                         info!("recibidas nuevas credenciales. Reconectando...");
 
@@ -132,6 +151,11 @@ impl<'a> EspIdfWifiManager<'a> {
                         self.disconnect();
                         break;
                     }
+                },
+                // El canal se cerró (todos los senders fueron drop-eados)
+                Either::Second(Err(_)) => {
+                    warn!("canal de comandos WiFi cerrado. Finalizando tarea WiFi.");
+                    break;
                 }
             }
         }
